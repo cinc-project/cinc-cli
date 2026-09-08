@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/cinc-project/cinc-cli/cli/config"
 )
 
 func TestConfigValidateCommandReportsValidConfig(t *testing.T) {
@@ -35,6 +38,59 @@ cinc_server_url = "%s/organizations/acme"
 	for _, want := range []string{"is valid", "default profile [VALID]", "✓ Server URL is valid", "✓ Server is reachable"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
+// TestConfigValidateBudgetsEachNetworkCheckSeparately covers a file with more
+// than one profile. The checks run in sequence, so a shared deadline meant an
+// unreachable endpoint early on could burn the whole budget and leave later
+// profiles reported as failures when the only thing wrong was the clock. Each
+// network check gets its own deadline instead.
+func TestConfigValidateBudgetsEachNetworkCheckSeparately(t *testing.T) {
+	// Stands in for a slow endpoint: it consumes the caller's deadline in full
+	// rather than answering.
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(slow.Close)
+	healthy := configValidateServer(t, http.StatusOK)
+
+	// "aaa" sorts before "zzz", so the slow profile is checked first.
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[aaa_slow]
+client_name = "tim"
+client_key = %q
+cinc_server_url = "%s/organizations/acme"
+
+[zzz_healthy]
+client_name = "tim"
+client_key = %q
+cinc_server_url = "%s/organizations/acme"
+`, writeTestKey(t), slow.URL, writeTestKey(t), healthy.URL))
+
+	prev := networkCheckTimeout
+	networkCheckTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { networkCheckTimeout = prev })
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := runConfigChecks(context.Background(), cfgPath, cfg)
+
+	var healthyProfile *profileResult
+	for i := range result.Profiles {
+		if result.Profiles[i].Name == "zzz_healthy" {
+			healthyProfile = &result.Profiles[i]
+		}
+	}
+	if healthyProfile == nil {
+		t.Fatal("zzz_healthy profile missing from the report")
+	}
+	for _, c := range healthyProfile.Checks {
+		if c.Name == "Server is reachable" && !c.Passed {
+			t.Errorf("a healthy profile was reported unreachable because an earlier profile was slow: %s", c.Detail)
 		}
 	}
 }
