@@ -162,3 +162,7 @@ Repository layout:
 
 See [`CLAUDE.md`](CLAUDE.md) for conventions followed when developing
 with Claude Code.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
