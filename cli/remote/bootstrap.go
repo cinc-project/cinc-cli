@@ -78,10 +78,20 @@ func BootstrapCommand(opts BootstrapOptions) (string, error) {
 	}
 	commands := []string{
 		"set -e",
-		// Trust assumption: this pipes the installer script straight into a
-		// shell, so the target trusts opts.BootstrapURL (HTTPS omnitruck by
-		// default) and its TLS chain — standard Chef/Cinc bootstrap behavior.
-		"curl -L " + shellQuote(opts.BootstrapURL) + " | " + prefix + "bash -s --" + installArgs,
+		// The installer is downloaded to a file and then run, rather than
+		// piped into a shell. A pipeline reports only the exit status of its
+		// last command, so `curl ... | bash` hides a failed download from
+		// `set -e`: the script would carry on and run a cinc-client that was
+		// never installed. curl -f turns an HTTP error into a failure instead
+		// of saving the error page as the "installer".
+		//
+		// Trust assumption is unchanged: the target executes whatever
+		// opts.BootstrapURL serves (HTTPS omnitruck by default), so it trusts
+		// that host and its TLS chain, as with any Chef/Cinc bootstrap.
+		`CINC_INSTALLER="$(mktemp)"`,
+		`trap 'rm -f "$CINC_INSTALLER"' EXIT`,
+		"curl -fsSL " + shellQuote(opts.BootstrapURL) + ` -o "$CINC_INSTALLER"`,
+		prefix + `bash "$CINC_INSTALLER"` + installArgs,
 		prefix + "mkdir -p /etc/cinc",
 		// Create the private key 0600 *before* writing, so it is never
 		// world-readable on the target (tee would otherwise create it with the

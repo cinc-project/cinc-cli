@@ -535,7 +535,7 @@ func TestNodeBootstrapDryRunCommand(t *testing.T) {
 	}
 	got := buf.String()
 	for _, want := range []string{
-		"curl -L 'https://omnitruck.cinc.sh/install.sh'",
+		"curl -fsSL 'https://omnitruck.cinc.sh/install.sh'",
 		"chef_server_url 'https://cinc.example.test/organizations/acme'",
 		"node_name 'web01'",
 		"\"run_list\": [",

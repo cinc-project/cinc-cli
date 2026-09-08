@@ -21,7 +21,8 @@ func TestBootstrapCommandBuildsCincClientScript(t *testing.T) {
 		t.Fatalf("BootstrapCommand: %v", err)
 	}
 	for _, want := range []string{
-		"curl -L 'https://omnitruck.cinc.sh/install.sh' | sudo bash -s -- -v '18'",
+		"curl -fsSL 'https://omnitruck.cinc.sh/install.sh' -o",
+		"sudo bash \"$CINC_INSTALLER\" -v '18'",
 		"sudo mkdir -p /etc/cinc",
 		"sudo install -m 0600 /dev/null /etc/cinc/client.pem",
 		"chef_server_url 'https://cinc.example.test/organizations/acme'",
@@ -34,6 +35,47 @@ func TestBootstrapCommandBuildsCincClientScript(t *testing.T) {
 		if !strings.Contains(cmd, want) {
 			t.Fatalf("command missing %q:\n%s", want, cmd)
 		}
+	}
+}
+
+// TestBootstrapCommandStopsWhenTheInstallerCannotBeFetched pins that a failed
+// download aborts the bootstrap. `curl ... | bash` reports only bash's status,
+// so under plain `set -e` a 404 or a TLS failure was swallowed and the script
+// carried on to run a cinc-client that had never been installed.
+func TestBootstrapCommandStopsWhenTheInstallerCannotBeFetched(t *testing.T) {
+	cmd, err := BootstrapCommand(BootstrapOptions{
+		NodeName:     "web01",
+		ServerURL:    "https://cinc.example.test/organizations/acme",
+		ClientKeyPEM: "PRIVATE KEY",
+		Sudo:         true,
+	})
+	if err != nil {
+		t.Fatalf("BootstrapCommand: %v", err)
+	}
+	if strings.Contains(cmd, "| sudo bash") || strings.Contains(cmd, "| bash") {
+		t.Errorf("installer is still piped into a shell, so its exit status is lost:\n%s", cmd)
+	}
+	// -f makes curl fail on an HTTP error rather than saving the error page.
+	if !strings.Contains(cmd, "curl -fsSL") {
+		t.Errorf("curl should use -f so HTTP errors are failures:\n%s", cmd)
+	}
+	if !strings.Contains(cmd, "set -e") {
+		t.Errorf("script should still abort on the first failing command:\n%s", cmd)
+	}
+}
+
+// The downloaded installer is removed even when a later step fails.
+func TestBootstrapCommandCleansUpTheInstaller(t *testing.T) {
+	cmd, err := BootstrapCommand(BootstrapOptions{
+		NodeName:     "web01",
+		ServerURL:    "https://cinc.example.test/organizations/acme",
+		ClientKeyPEM: "PRIVATE KEY",
+	})
+	if err != nil {
+		t.Fatalf("BootstrapCommand: %v", err)
+	}
+	if !strings.Contains(cmd, "trap") || !strings.Contains(cmd, "rm -f") {
+		t.Errorf("script should remove the downloaded installer on exit:\n%s", cmd)
 	}
 }
 
