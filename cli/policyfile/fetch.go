@@ -188,7 +188,15 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 
 	root := clone
 	if sub := stringOption(lock.SourceOptions, "path"); sub != "" {
+		// "path" selects a subdirectory of the clone and comes from the
+		// untrusted lock, so it has to stay inside it. Nested paths are
+		// legitimate (the "cookbooks/<name>" monorepo layout), so this is a
+		// containment check rather than the stricter safeJoin used for
+		// single-segment names like cache keys.
 		root = filepath.Join(clone, sub)
+		if !withinDir(clone, root) {
+			return fmt.Errorf("refusing git source path %q: it escapes the repository", sub)
+		}
 	}
 	if !hasCookbookMetadata(root) {
 		return fmt.Errorf("no cookbook (metadata.rb or metadata.json) found at %q in the git repository", root)
