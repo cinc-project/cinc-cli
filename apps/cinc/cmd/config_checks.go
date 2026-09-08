@@ -71,7 +71,17 @@ type profileCheck struct {
 	name    string
 	applies func(config.Profile) bool
 	run     func(ctx context.Context, p config.Profile) checkOutcome
+	// network marks a check that talks to the outside world and so needs its
+	// own time budget. Structural checks are instant and take none.
+	network bool
 }
+
+// networkCheckTimeout is how long any single network check may take. It is
+// per check, not shared: a slow or unreachable endpoint in one profile must
+// not spend the budget that a later profile's checks need, or those profiles
+// get reported as broken when the only problem is the clock. It is a var (not
+// a const) only so tests can shrink it; production never reassigns it.
+var networkCheckTimeout = 10 * time.Second
 
 // profileChecks is the ordered registry of per-profile pre-flight checks, each
 // with a friendly name. Structural checks come first (instant), then the
@@ -157,6 +167,7 @@ var profileChecks = []profileCheck{
 	},
 	{
 		name:    "Server is reachable",
+		network: true,
 		applies: func(p config.Profile) bool { return p.ServerURL != "" && p.Org != "" },
 		run: func(ctx context.Context, p config.Profile) checkOutcome {
 			// Resolve DNS first so a name-resolution failure is reported
@@ -178,6 +189,7 @@ var profileChecks = []profileCheck{
 	},
 	{
 		name:    "Supermarket is reachable",
+		network: true,
 		applies: func(p config.Profile) bool { return p.SupermarketSite != "" },
 		run: func(ctx context.Context, p config.Profile) checkOutcome {
 			client, err := supermarket.NewAnonymous(p.SupermarketSite)
@@ -193,11 +205,8 @@ var profileChecks = []profileCheck{
 }
 
 // runConfigChecks evaluates the top-level and per-profile checks for a loaded
-// config. Network checks share a 10s budget.
+// config. Each network check gets its own timeout; see networkCheckTimeout.
 func runConfigChecks(ctx context.Context, path string, cfg *config.Config) configValidationResult {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	hasProfiles := len(cfg.Profiles) > 0
 	result := configValidationResult{
 		Path: path,
@@ -223,7 +232,7 @@ func runConfigChecks(ctx context.Context, path string, cfg *config.Config) confi
 			if def.applies != nil && !def.applies(p) {
 				continue
 			}
-			out := def.run(ctx, p)
+			out := runProfileCheck(ctx, def, p)
 			pr.Checks = append(pr.Checks, checkResult{
 				Name:   def.name,
 				Passed: out.passed,
@@ -244,6 +253,17 @@ func runConfigChecks(ctx context.Context, path string, cfg *config.Config) confi
 		}
 	}
 	return result
+}
+
+// runProfileCheck runs one check, giving a network check its own deadline so
+// no single slow endpoint can starve the checks that follow it.
+func runProfileCheck(ctx context.Context, def profileCheck, p config.Profile) checkOutcome {
+	if !def.network {
+		return def.run(ctx, p)
+	}
+	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)
+	defer cancel()
+	return def.run(ctx, p)
 }
 
 // parseServerHost validates that serverURL is a well-formed http(s) URL and
