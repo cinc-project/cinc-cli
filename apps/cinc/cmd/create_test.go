@@ -6,9 +6,52 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
 )
+
+// TestConfigureStopsWhenStdinIsExhausted covers `cinc config create` run
+// without an interactive terminal (for example `cinc config create <
+// /dev/null`, or from CI) against a credentials file that already holds
+// profiles. The action prompt defaults to "Add a new profile", which then
+// asks for a name it will not accept as empty. With no more input to read
+// the command has to give up with a clear error rather than re-asking forever.
+func TestConfigureStopsWhenStdinIsExhausted(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "credentials")
+	if err := config.WriteProfile(cfgPath, "default", config.Profile{
+		ServerURL:  "https://old.example.test",
+		Org:        "old",
+		ClientName: "old",
+		KeyPath:    "/keys/old.pem",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(new(bytes.Buffer))
+	root.SetIn(strings.NewReader(""))
+	root.SetArgs([]string{"config", "create", "--config", cfgPath})
+
+	done := make(chan error, 1)
+	go func() { done <- root.Execute() }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error when stdin is exhausted, got nil")
+		}
+		if !strings.Contains(err.Error(), "ran out of input") {
+			t.Fatalf("error = %v, want it to explain that input ran out", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("config create never returned; it asked for a profile name %d times",
+			strings.Count(out.String(), "New profile name"))
+	}
+}
 
 func TestConfigureCommandWritesTOMLCredentialsProfile(t *testing.T) {
 	dir := t.TempDir()

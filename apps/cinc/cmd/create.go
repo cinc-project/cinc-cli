@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -386,11 +387,23 @@ func splitChefServerURL(raw string) (host, org string) {
 	return u.Host, ""
 }
 
+// errStdinExhausted is returned by promptNoDefault when there is no input
+// left to read. The prompts that have no sensible default re-ask until they
+// get an answer, so without this the flow would spin forever against a
+// closed stdin (`cinc config create < /dev/null`, or a CI run).
+var errStdinExhausted = errors.New("we ran out of input while waiting for an answer. `cinc config create` needs an interactive terminal; to configure without prompts, pass --client-name, --client-key, and --server-url")
+
+// promptNoDefault asks for an answer that has no default. An empty line is a
+// valid (if usually rejected) answer, so it is reported as one; only a reader
+// with nothing left to give yields errStdinExhausted.
 func promptNoDefault(reader *bufio.Reader, out io.Writer, label string) (string, error) {
 	fmt.Fprintf(out, "%s: ", label)
 	answer, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", err
+	}
+	if err == io.EOF && answer == "" {
+		return "", errStdinExhausted
 	}
 	return strings.TrimSpace(answer), nil
 }
