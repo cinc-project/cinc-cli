@@ -173,7 +173,11 @@ release, bump `cincZeroVersion` in `test/acceptance/helpers_test.go`.
 1. Add (or extend) `apps/cinc/cmd/<noun>.go` with a `new<Noun>Cmd()` constructor.
 2. Register it in `root.go` via `root.AddCommand(...)`.
 3. Use `resolveClient(cmd)` and `resolveFormat(cmd)` from `common.go` to obtain a
-   configured `cinc-api` client and the chosen output format.
+   configured `cinc-api` client and the chosen output format. **Resolve flags
+   before anything with a side effect.** `resolveFormat` rejects an unknown
+   `--format`, and that rejection is worthless if it happens after the command
+   has already created a client on the server or SSHed into a host. The rule
+   is: validate every flag, then act.
 4. Render results through `cli/printer` — never format output inline.
 5. Add unit tests in `apps/cinc/cmd/<noun>_test.go` and acceptance
    tests in `test/acceptance/<noun>_test.go`. Both are required (see
@@ -185,4 +189,75 @@ release, bump `cincZeroVersion` in `test/acceptance/helpers_test.go`.
 7. Run `make docs` so the per-command reference under `docs/commands/`
    picks up the new command, short/long help, and flags. CI also runs
    this on every push to `main` and commits the result, but landing
-   the docs alongside the code keeps PR review honest.
+   the docs alongside the code keeps PR review honest. Changing an existing
+   `Short`/`Long`/`Example` or a flag's help string also needs `make docs`,
+   not just adding a command.
+
+## Writing tests here
+
+### Isolate the environment, or you will test the developer's machine
+
+`resolveConfigPath` falls back to the real `~/.cinc/credentials` whenever
+`--config` is unset, and several helpers read `$HOME`. A test that forgets
+either will quietly pass or fail based on whoever's laptop it runs on.
+
+- Drive the real command tree with `--config <tempfile>` in `SetArgs`.
+- For unit-testing a helper that takes a `*cobra.Command`, use `fakeCmd`
+  from `common_test.go`. Setting a persistent flag on a root command
+  **before** `Execute()` does not reach `cmd.Flags()`, so
+  `root.PersistentFlags().Set("config", ...)` followed by a direct helper
+  call silently reads the real credentials file instead.
+- `t.Setenv("HOME", t.TempDir())` whenever the code under test might look
+  there.
+
+### Test seams are package-level vars
+
+The codebase avoids interfaces-for-testing in favour of swappable package
+vars, each documented at its declaration. Reach for the existing one rather
+than restructuring: `stdinIsTTY`, `migrateChef`, `runFirstRunConfigure`
+(`common.go`), `resolveHost` (`config_checks.go`), the editor hooks
+(`editor.go`), `tlsWarnWriter` plus `SilenceTLSWarning` (`cli/client`),
+`nodeRemoteRunner` (`node.go`), and the extraction caps in
+`cli/policyfile` and `cli/cookbook`. Restore them with `t.Cleanup`.
+
+### Tests must not touch the network
+
+An httptest server is the only acceptable endpoint. Watch for the case where
+a command falls back to a public default (the Chef Supermarket, omnitruck)
+when config resolution misses: the test still passes, it is just slow and
+flaky, and it is talking to the internet. A suspiciously long test is the
+usual tell.
+
+### Concurrency
+
+Anything touching `cli/remote` should be run with `-race -count=N`. Beware
+stub runners that return instantly: they finish before the next job is even
+dispatched, so a test meaning to exercise concurrent work may be testing
+nothing. Use a barrier that blocks until every worker has genuinely started.
+
+### Unix sockets in tests
+
+`t.TempDir()` embeds the test name and blows past the 104 byte `sun_path`
+limit on macOS, failing with a bare `bind: invalid argument`. Use a short
+`os.MkdirTemp("", "...")` path for socket tests.
+
+## Gotchas worth knowing
+
+- **`CookbookLock.Origin()` picks by key precedence, not by intent.**
+  `cinc-api` checks `source_options` in the order path, artifactserver, git,
+  chef_server, and returns the first hit. A lock carrying both a repository
+  URL and a `path` is therefore classified as a *path* source, and the
+  repository fetch never runs. Reason about which branch actually executes
+  before concluding a code path is reachable.
+- **Two places decide what counts as a cookbook file.** `archiveEntries`
+  in `cli/cookbook` (for uploads) and `copyTree` in `cli/policyfile` (for
+  export bundles) walk a cookbook independently. Changing the rules in one
+  without the other makes `upload` and `export` disagree about the same
+  directory.
+- **The credentials file is shared with knife.** It holds keys this CLI has
+  no model for. Anything that rewrites it must merge, not re-serialize a
+  struct, or those keys are silently dropped.
+- **`bufio.Reader` returns `("", io.EOF)` at end of input but `("\n", nil)`
+  for a bare Enter.** Prompt loops that reject an empty answer must tell
+  those apart or they spin forever when stdin is closed. `promptWithDefault`
+  treats EOF as "accept the default"; a prompt with no default cannot.
