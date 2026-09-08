@@ -31,7 +31,7 @@ cinc supermarket show nginx 1.2.0
 
 ```
   -h, --help                      help for show
-      --supermarket-site string   URL of the Chef Supermarket site (default: https://supermarket.chef.io)
+      --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
 ```
 
 ### Options inherited from parent commands
