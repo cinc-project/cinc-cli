@@ -104,8 +104,16 @@ func sortedLockNames(m map[string]cinc.CookbookLock) []string {
 	return names
 }
 
-// copyTree recursively copies the directory src into dst, preserving file
-// modes and skipping any .git directory.
+// copyTree recursively copies the directory src into dst, clamping file modes
+// and skipping any .git directory.
+//
+// Only regular files are copied. filepath.Walk reports symlinks via Lstat, so
+// without an explicit check a link would be opened, following it and writing
+// the contents of whatever it points at into the destination: a cookbook
+// carrying "files/creds -> ~/.ssh/id_rsa" would put that key in an export
+// bundle bound for the server. Skipping them also keeps a dangling link, which
+// cookbooks legitimately carry, from failing the whole copy. This matches how
+// cli/cookbook's archiveEntries builds an upload.
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -121,6 +129,9 @@ func copyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {
 			return os.MkdirAll(target, extractDirMode)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 		if err := os.MkdirAll(filepath.Dir(target), extractDirMode); err != nil {
 			return err
