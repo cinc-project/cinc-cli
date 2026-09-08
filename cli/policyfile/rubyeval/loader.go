@@ -204,8 +204,16 @@ func verifyFileSHA256(path, wantHex string) error {
 }
 
 // extractTarGz unpacks a .tar.gz archive under dest. It guards against path
-// traversal (a "../" entry escaping dest is rejected).
+// traversal (a "../" entry escaping dest is rejected) and writes through an
+// os.Root handle, so the kernel refuses an escape the lexical check cannot
+// see (a symlink already sitting in dest, say).
 func extractTarGz(archive []byte, dest string) error {
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return fmt.Errorf("policyfile: open extraction dir %s: %w", dest, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return err
@@ -224,16 +232,22 @@ func extractTarGz(archive []byte, dest string) error {
 		if !withinDir(dest, target) {
 			return fmt.Errorf("policyfile: archive entry %q escapes extraction dir", hdr.Name)
 		}
+		rel, err := filepath.Rel(dest, target)
+		if err != nil {
+			return fmt.Errorf("policyfile: archive entry %q escapes extraction dir", hdr.Name)
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := root.MkdirAll(rel, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
+			if dir := filepath.Dir(rel); dir != "." {
+				if err := root.MkdirAll(dir, 0o755); err != nil {
+					return err
+				}
 			}
-			f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode)&0o777)
+			f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode)&0o777)
 			if err != nil {
 				return err
 			}
