@@ -33,6 +33,18 @@ func BootstrapCommand(opts BootstrapOptions) (string, error) {
 	if opts.ClientKeyPEM == "" {
 		return "", fmt.Errorf("client key is required")
 	}
+	// rubyQuote keeps these out of Ruby's reach, but the client.rb it builds
+	// is delivered inside a shell heredoc one layer down. A newline can close
+	// that heredoc early and turn the remainder into commands run through
+	// sudo on the target, so reject it here rather than try to escape it.
+	for _, field := range []struct{ name, value string }{
+		{"node name", opts.NodeName},
+		{"server URL", opts.ServerURL},
+	} {
+		if strings.ContainsAny(field.value, "\n\r") {
+			return "", fmt.Errorf("refusing a %s containing a newline: %q", field.name, field.value)
+		}
+	}
 	if opts.BootstrapURL == "" {
 		opts.BootstrapURL = DefaultBootstrapURL
 	}
@@ -52,6 +64,18 @@ func BootstrapCommand(opts BootstrapOptions) (string, error) {
 	if opts.BootstrapVersion != "" {
 		installArgs = " -v " + shellQuote(opts.BootstrapVersion)
 	}
+	writeKey, err := writeFileCommand(prefix, "/etc/cinc/client.pem", opts.ClientKeyPEM)
+	if err != nil {
+		return "", err
+	}
+	writeClientRB, err := writeFileCommand(prefix, "/etc/cinc/client.rb", clientRB)
+	if err != nil {
+		return "", err
+	}
+	writeFirstBoot, err := writeFileCommand(prefix, "/etc/cinc/first-boot.json", string(firstBoot))
+	if err != nil {
+		return "", err
+	}
 	commands := []string{
 		"set -e",
 		// Trust assumption: this pipes the installer script straight into a
@@ -63,10 +87,10 @@ func BootstrapCommand(opts BootstrapOptions) (string, error) {
 		// world-readable on the target (tee would otherwise create it with the
 		// remote umask, typically 0644, until the chmod ran).
 		prefix + "install -m 0600 /dev/null /etc/cinc/client.pem",
-		writeFileCommand(prefix, "/etc/cinc/client.pem", opts.ClientKeyPEM),
+		writeKey,
 		prefix + "chmod 0600 /etc/cinc/client.pem",
-		writeFileCommand(prefix, "/etc/cinc/client.rb", clientRB),
-		writeFileCommand(prefix, "/etc/cinc/first-boot.json", string(firstBoot)),
+		writeClientRB,
+		writeFirstBoot,
 		prefix + "cinc-client -j /etc/cinc/first-boot.json",
 	}
 	return strings.Join(commands, "\n"), nil
@@ -111,8 +135,20 @@ func rubyQuote(s string) string {
 	return "'" + s + "'"
 }
 
-func writeFileCommand(prefix, path, content string) string {
-	return "cat <<'CINC_EOF' | " + prefix + "tee " + shellQuote(path) + " >/dev/null\n" + content + "\nCINC_EOF"
+// heredocDelimiter terminates every file the bootstrap script writes. A line
+// in the body equal to it would close the heredoc early and leave the rest of
+// the body to be executed as shell, so writeFileCommand refuses that content
+// outright. Callers validate their own inputs; this is the backstop that
+// makes the heredoc safe regardless.
+const heredocDelimiter = "CINC_EOF"
+
+func writeFileCommand(prefix, path, content string) (string, error) {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimRight(line, "\r") == heredocDelimiter {
+			return "", fmt.Errorf("refusing to write %s: its content contains a %s line, which would end the heredoc early", path, heredocDelimiter)
+		}
+	}
+	return "cat <<'" + heredocDelimiter + "' | " + prefix + "tee " + shellQuote(path) + " >/dev/null\n" + content + "\n" + heredocDelimiter, nil
 }
 
 func shellQuote(s string) string {

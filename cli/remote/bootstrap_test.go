@@ -99,6 +99,52 @@ func TestClientRBEscapesQuotesAndBackslashes(t *testing.T) {
 	}
 }
 
+// rubyQuote stops a node name interpolating Ruby, but the client.rb it
+// produces is then delivered inside a shell heredoc. A newline in the node
+// name (or the profile's server URL) can close that heredoc early and turn the
+// rest of the value into commands, which run through sudo on the target. The
+// quoting above operates one layer up and cannot see this.
+func TestBootstrapCommandRejectsNewlinesInValues(t *testing.T) {
+	breakout := "web01\nCINC_EOF\nid > /tmp/pwned\ncat <<'CINC_EOF' | sudo tee /dev/null\nx"
+	cases := []struct {
+		name string
+		opts BootstrapOptions
+	}{
+		{"node name", BootstrapOptions{
+			NodeName:     breakout,
+			ServerURL:    "https://cinc.example.test/organizations/acme",
+			ClientKeyPEM: "key",
+		}},
+		{"server URL", BootstrapOptions{
+			NodeName:     "web01",
+			ServerURL:    "https://cinc.example.test/organizations/acme\nCINC_EOF\nid > /tmp/pwned",
+			ClientKeyPEM: "key",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, err := BootstrapCommand(tc.opts)
+			if err == nil {
+				t.Fatalf("BootstrapCommand accepted a newline in the %s; generated script:\n%s", tc.name, cmd)
+			}
+			if !strings.Contains(err.Error(), "newline") {
+				t.Errorf("error = %v, want it to name the newline as the problem", err)
+			}
+		})
+	}
+}
+
+// Belt and braces for the heredoc itself: whatever the callers validate, a
+// body that contains the terminator must never be emitted as a heredoc.
+func TestWriteFileCommandRejectsDelimiterInContent(t *testing.T) {
+	if _, err := writeFileCommand("sudo ", "/etc/cinc/client.rb", "harmless\nCINC_EOF\nid\n"); err == nil {
+		t.Error("writeFileCommand accepted content containing its own heredoc terminator")
+	}
+	if _, err := writeFileCommand("sudo ", "/etc/cinc/client.rb", "harmless\n"); err != nil {
+		t.Errorf("ordinary content should still be accepted: %v", err)
+	}
+}
+
 // A run-list bootstrap (no policy) keeps chef_environment as before.
 func TestFirstBootJSONKeepsEnvironmentForRunListBootstrap(t *testing.T) {
 	doc := firstBoot(t, BootstrapOptions{
