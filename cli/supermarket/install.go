@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 
 	localcookbook "github.com/cinc-project/cinc-cli/cli/cookbook"
 )

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // ExportResult describes a completed export.

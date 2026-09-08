@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
+	cinc "github.com/cinc-project/cinc-api"
 	rubyast "github.com/goruby/goruby/ast"
 	rubyparser "github.com/goruby/goruby/parser"
-	cinc "github.com/tas50/cinc-api"
 )
 
 // Metadata is the minimal cookbook metadata this CLI needs for upload flows.

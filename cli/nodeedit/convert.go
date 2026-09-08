@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"strings"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // attrBags is the object presented in the attributes JSON editor: the

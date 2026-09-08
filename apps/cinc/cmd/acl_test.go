@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // writeACLConfig writes a credentials file pointed at srv for org "acme"

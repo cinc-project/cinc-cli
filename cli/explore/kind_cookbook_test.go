@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 func TestLatestCookbookVersion(t *testing.T) {

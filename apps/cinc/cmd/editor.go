@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/jsoneditor"
 	"github.com/cinc-project/cinc-cli/cli/nodeedit"

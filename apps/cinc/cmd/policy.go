@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
-	cinc "github.com/tas50/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
 )

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // policyKind is the top-level Policies kind. A policy is a named set of

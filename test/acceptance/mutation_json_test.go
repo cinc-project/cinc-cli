@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // JSON output is part of what cinc ships, but the acceptance suite asserts it

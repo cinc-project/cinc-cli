@@ -9,8 +9,8 @@ import (
 	"sort"
 
 	tea "github.com/charmbracelet/bubbletea"
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/mattn/go-isatty"
-	cinc "github.com/tas50/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"

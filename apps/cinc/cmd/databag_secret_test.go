@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // writeSecretFile writes secret bytes to a temp file and returns the path.

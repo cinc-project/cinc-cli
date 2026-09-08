@@ -16,7 +16,7 @@ import (
 	"slices"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // cookbookServer starts an httptest server that serves a cookbook index

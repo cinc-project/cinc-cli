@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // summaryField is one label/value row in the right-hand summary panel.

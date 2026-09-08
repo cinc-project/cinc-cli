@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // The org root verbs (list/show/create/edit/delete) hit the server root at

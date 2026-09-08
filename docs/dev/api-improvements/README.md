@@ -1,7 +1,7 @@
 # API improvements
 
 This directory tracks improvements we'd like in the
-[`github.com/tas50/cinc-api`](https://github.com/cinc-project/cinc-api) library
+[`github.com/cinc-project/cinc-api`](https://github.com/cinc-project/cinc-api) library
 (and, where it reaches that far, the Cinc/Chef Server API behind it) that
 would let the CLI do its job more simply, cheaply, or correctly.
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // writeBundle builds a minimal extracted bundle on disk: a Policyfile.lock.json

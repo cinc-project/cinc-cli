@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // dataBagKind is the top-level Data Bags kind: a bag is a named

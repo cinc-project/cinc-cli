@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // nodeRunList fetches a node and returns its run list via `node show --json`.

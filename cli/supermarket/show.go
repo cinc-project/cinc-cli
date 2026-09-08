@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 // ShowOptions controls a show operation. When Version is empty the
@@ -18,7 +18,7 @@ type ShowOptions struct {
 
 // Cookbook and CookbookVersion are re-exported from the SDK so the
 // cmd layer can render Show results without importing
-// github.com/tas50/cinc-supermarket directly.
+// github.com/cinc-project/cinc-supermarket-api directly.
 type (
 	Cookbook        = sm.Cookbook
 	CookbookVersion = sm.CookbookVersion
