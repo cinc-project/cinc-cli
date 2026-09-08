@@ -65,3 +65,28 @@ func TestExtractCookbookTarballDoesNotFollowSymlinkOutOfDest(t *testing.T) {
 		t.Fatal("archive entry escaped dest through a pre-existing symlink")
 	}
 }
+
+// TestRelEscapes pins the lexical rules the extractor rejects entries on.
+// "a/../b" normalizes back inside the destination and is fine; anything that
+// climbs above it, or arrives absolute, is not.
+func TestRelEscapes(t *testing.T) {
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{"metadata.rb", false},
+		{"recipes/default.rb", false},
+		{"a/../b", false},
+		{".", false},
+		{"..", true},
+		{"../escape.txt", true},
+		{"a/../../escape.txt", true},
+		// os.TempDir is absolute on every platform, unlike a hardcoded "/etc".
+		{filepath.Join(os.TempDir(), "escape.txt"), true},
+	}
+	for _, tc := range cases {
+		if got := relEscapes(tc.rel); got != tc.want {
+			t.Errorf("relEscapes(%q) = %v, want %v", tc.rel, got, tc.want)
+		}
+	}
+}

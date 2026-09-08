@@ -89,7 +89,7 @@ func extractCookbookTarball(r io.Reader, dest string) error {
 			continue
 		}
 		rel = filepath.FromSlash(rel)
-		if !withinDir(dest, filepath.Join(dest, rel)) {
+		if relEscapes(rel) {
 			return fmt.Errorf("supermarket: unsafe path in tarball: %q", hdr.Name)
 		}
 		switch hdr.Typeflag {
@@ -127,6 +127,22 @@ func stripLeadingSegment(name string) string {
 		return ""
 	}
 	return strings.Trim(name[idx+1:], "/")
+}
+
+// relEscapes reports whether a relative archive path would resolve outside
+// the directory it is extracted into. The entry name is already relative by
+// this point, so it is checked directly rather than joined onto the
+// destination and relativized straight back off it.
+//
+// This is a lexical check and is not what enforces containment: it rejects a
+// bad entry early, with an error naming it, while the os.Root handle refuses
+// the escape at the syscall when the entry is created.
+func relEscapes(rel string) bool {
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	clean := filepath.Clean(rel)
+	return clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 // withinDir reports whether target stays inside dir (no "../" escape).
