@@ -154,6 +154,44 @@ client_key      = "/keys/tim.pem"
 	}
 }
 
+// TestMigrateChefWritesNothingWhenAProfileIsUnmigratable pins migration as
+// all-or-nothing. A half-written credentials file is worse than none at all:
+// the first-run flow only offers to migrate when ~/.cinc/credentials is
+// absent, so a partial file leaves the user stuck with some profiles missing
+// and no prompt to finish the job.
+func TestMigrateChefWritesNothingWhenAProfileIsUnmigratable(t *testing.T) {
+	chefPath := writeChefCredentials(t, `
+[default]
+chef_server_url = "https://chef.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+
+[aaa_broken]
+chef_server_url = "https://other.example.com/organizations/acme"
+ssl_verify_mode = ":verify_none"
+
+[zzz_fine]
+chef_server_url = "https://z.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+`)
+	cincPath := filepath.Join(t.TempDir(), ".cinc", "credentials")
+
+	n, err := MigrateChef(chefPath, cincPath)
+	if err == nil {
+		t.Fatal("expected an error for the profile with no client_name")
+	}
+	if n != 0 {
+		t.Errorf("migrated count = %d, want 0 when migration fails", n)
+	}
+	if !strings.Contains(err.Error(), "aaa_broken") {
+		t.Errorf("error = %v, want it to name the profile at fault", err)
+	}
+	if _, statErr := os.Stat(cincPath); statErr == nil {
+		t.Errorf("migration failed but left a partial file at %s:\n%s", cincPath, readFile(t, cincPath))
+	}
+}
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	body, err := os.ReadFile(path)

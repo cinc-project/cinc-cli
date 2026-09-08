@@ -7,6 +7,7 @@ package setup
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/BurntSushi/toml"
 
@@ -36,12 +37,29 @@ type chefRawProfile struct {
 // resulting file is byte-identical to what `cinc config create` would
 // produce for the same inputs. Returns the number of profiles
 // migrated.
+//
+// Migration is all-or-nothing: every profile is resolved and validated
+// before any of them is written. A half-migrated file would be worse than
+// none at all, because the first-run flow only offers to migrate while
+// ~/.cinc/credentials is still absent, so a partial write would strand the
+// user with some profiles missing and no prompt to finish.
 func MigrateChef(chefPath, cincPath string) (int, error) {
 	var raw map[string]chefRawProfile
 	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
 		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
 	}
-	for name, rp := range raw {
+
+	// Resolve every profile first. Sorted so a file with more than one
+	// unmigratable profile always reports the same one.
+	names := make([]string, 0, len(raw))
+	for name := range raw {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	resolved := make([]config.Profile, 0, len(names))
+	for _, name := range names {
+		rp := raw[name]
 		serverURL := rp.CincServerURL
 		if serverURL == "" {
 			serverURL = rp.ChefServerURL
@@ -51,14 +69,18 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 			return 0, fmt.Errorf("setup: profile %q: %w", name, err)
 		}
 		// NewProfile only takes the core connection fields, so carry the
-		// remaining profile keys across by hand. WriteProfile serializes
-		// each of these, so nothing the Chef file held gets dropped.
+		// remaining keys chefRawProfile models across by hand.
 		profile.SecretFile = rp.SecretFile
 		profile.SupermarketClientName = rp.SupermarketClientName
 		profile.SupermarketKey = rp.SupermarketKey
-		if err := config.WriteProfile(cincPath, name, profile); err != nil {
+		resolved = append(resolved, profile)
+	}
+
+	// Everything validated, so the writes below can only fail on I/O.
+	for i, name := range names {
+		if err := config.WriteProfile(cincPath, name, resolved[i]); err != nil {
 			return 0, err
 		}
 	}
-	return len(raw), nil
+	return len(names), nil
 }
