@@ -58,8 +58,16 @@ func boundedCopy(dst io.Writer, src io.Reader, name string, total *int64) error 
 // entries under dest, stripping the single leading path segment that
 // Supermarket tarballs wrap a cookbook in (e.g. "nginx/metadata.rb" lands at
 // dest/metadata.rb), so dest ends up holding the cookbook root directly. Paths
-// that would escape dest are rejected.
+// that would escape dest are rejected, and every write goes through an os.Root
+// handle so the kernel refuses an escape the lexical check cannot see (a
+// symlink already sitting in dest, say).
 func extractCookbookTarball(r io.Reader, dest string) error {
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return fmt.Errorf("supermarket: open destination %s: %w", dest, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("supermarket: open gzip: %w", err)
@@ -80,20 +88,22 @@ func extractCookbookTarball(r io.Reader, dest string) error {
 		if rel == "" {
 			continue
 		}
-		target := filepath.Join(dest, rel)
-		if !withinDir(dest, target) {
+		rel = filepath.FromSlash(rel)
+		if relEscapes(rel) {
 			return fmt.Errorf("supermarket: unsafe path in tarball: %q", hdr.Name)
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, extractDirMode); err != nil {
+			if err := root.MkdirAll(rel, extractDirMode); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), extractDirMode); err != nil {
-				return err
+			if dir := filepath.Dir(rel); dir != "." {
+				if err := root.MkdirAll(dir, extractDirMode); err != nil {
+					return err
+				}
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
+			f, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
 			if err != nil {
 				return err
 			}
@@ -117,6 +127,22 @@ func stripLeadingSegment(name string) string {
 		return ""
 	}
 	return strings.Trim(name[idx+1:], "/")
+}
+
+// relEscapes reports whether a relative archive path would resolve outside
+// the directory it is extracted into. The entry name is already relative by
+// this point, so it is checked directly rather than joined onto the
+// destination and relativized straight back off it.
+//
+// This is a lexical check and is not what enforces containment: it rejects a
+// bad entry early, with an error naming it, while the os.Root handle refuses
+// the escape at the syscall when the entry is created.
+func relEscapes(rel string) bool {
+	if filepath.IsAbs(rel) {
+		return true
+	}
+	clean := filepath.Clean(rel)
+	return clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 // withinDir reports whether target stays inside dir (no "../" escape).

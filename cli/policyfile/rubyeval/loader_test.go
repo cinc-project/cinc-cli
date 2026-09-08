@@ -169,3 +169,22 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 	}
 	return buf.Bytes()
 }
+
+// TestExtractTarGzDoesNotFollowSymlinkOutOfDest covers the case the lexical
+// check misses: "usr/evil" stays inside dest by string comparison, so a "usr"
+// symlink already in dest redirects the write outside it.
+func TestExtractTarGzDoesNotFollowSymlinkOutOfDest(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "usr")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	archive := makeTarGz(t, map[string]string{"usr/evil": "pwned"})
+	if err := extractTarGz(archive, dir); err == nil {
+		t.Error("extractTarGz wrote through a symlink in dest without complaint")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "evil")); err == nil {
+		t.Fatal("archive entry escaped dest through a pre-existing symlink")
+	}
+}

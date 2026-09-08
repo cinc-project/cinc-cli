@@ -31,8 +31,16 @@ var (
 // archive creates (Supermarket tarballs are rooted at <cookbook>/...).
 //
 // Entries whose paths escape destDir are refused, so a hostile tarball
-// can't write outside the destination.
+// can't write outside the destination. Every write goes through an os.Root
+// handle on destDir, so the kernel refuses an escape even when the lexical
+// check cannot see one (a symlink already sitting in destDir, say).
 func ExtractArchive(r io.Reader, destDir string) (string, error) {
+	destRoot, err := os.OpenRoot(destDir)
+	if err != nil {
+		return "", fmt.Errorf("open destination %s: %w", destDir, err)
+	}
+	defer func() { _ = destRoot.Close() }()
+
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return "", fmt.Errorf("open gzip: %w", err)
@@ -51,7 +59,7 @@ func ExtractArchive(r io.Reader, destDir string) (string, error) {
 			return "", fmt.Errorf("read tar: %w", err)
 		}
 
-		target, err := safeJoin(destDir, hdr.Name)
+		rel, err := safeRel(destDir, hdr.Name)
 		if err != nil {
 			return "", err
 		}
@@ -61,11 +69,11 @@ func ExtractArchive(r io.Reader, destDir string) (string, error) {
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, extractDirMode); err != nil {
-				return "", fmt.Errorf("mkdir %s: %w", target, err)
+			if err := destRoot.MkdirAll(rel, extractDirMode); err != nil {
+				return "", fmt.Errorf("mkdir %s: %w", rel, err)
 			}
 		case tar.TypeReg:
-			if err := writeFile(tr, target, hdr.Name, &total); err != nil {
+			if err := writeFile(destRoot, tr, rel, hdr.Name, &total); err != nil {
 				return "", err
 			}
 		default:
@@ -83,15 +91,18 @@ func ExtractArchive(r io.Reader, destDir string) (string, error) {
 	return filepath.Join(destDir, root), nil
 }
 
-// safeJoin joins name onto destDir and verifies the result stays within
-// destDir, guarding against path-traversal ("zip slip") entries.
-func safeJoin(destDir, name string) (string, error) {
+// safeRel resolves a tar entry name to a path relative to destDir, refusing
+// entries that would escape it ("zip slip"). The result is what the os.Root
+// handle is asked to create, so containment is checked twice: lexically here,
+// for a clear error naming the offending entry, and again by the kernel when
+// the file is actually opened.
+func safeRel(destDir, name string) (string, error) {
 	target := filepath.Join(destDir, filepath.FromSlash(name))
 	rel, err := filepath.Rel(destDir, target)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("archive entry %q escapes the destination directory", name)
 	}
-	return target, nil
+	return rel, nil
 }
 
 // topLevel returns the first real path segment of a tar entry name, or ""
@@ -107,23 +118,25 @@ func topLevel(name string) string {
 	return root
 }
 
-// writeFile creates target (with parent directories) and copies the
+// writeFile creates rel (with parent directories) under root and copies the
 // current tar entry into it, capping output so a zip bomb can't fill the
 // disk. total accumulates across every entry in one archive.
-func writeFile(r io.Reader, target, name string, total *int64) error {
-	if err := os.MkdirAll(filepath.Dir(target), extractDirMode); err != nil {
-		return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
+func writeFile(root *os.Root, r io.Reader, rel, name string, total *int64) error {
+	if dir := filepath.Dir(rel); dir != "." {
+		if err := root.MkdirAll(dir, extractDirMode); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
 	}
-	f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
+	f, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
 	if err != nil {
-		return fmt.Errorf("create %s: %w", target, err)
+		return fmt.Errorf("create %s: %w", rel, err)
 	}
 	if err := boundedCopy(f, r, name, total); err != nil {
 		_ = f.Close() // already returning an error
-		return fmt.Errorf("write %s: %w", target, err)
+		return fmt.Errorf("write %s: %w", rel, err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", target, err)
+		return fmt.Errorf("close %s: %w", rel, err)
 	}
 	return nil
 }

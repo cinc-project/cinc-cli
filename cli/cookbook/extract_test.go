@@ -195,3 +195,25 @@ func TestExtractArchiveClampsFileMode(t *testing.T) {
 		t.Errorf("extracted file mode = %o, want %o", got, extractFileMode)
 	}
 }
+
+// TestExtractArchiveDoesNotFollowSymlinkOutOfDest covers the hole a purely
+// lexical containment check leaves open. "nginx/metadata.rb" is inside destDir
+// by every string comparison, so safeJoin passes it; if destDir already holds
+// a "nginx" symlink pointing elsewhere, the create still lands on the far side
+// of that link. Containment has to be enforced when the file is opened, not
+// when its name is computed.
+func TestExtractArchiveDoesNotFollowSymlinkOutOfDest(t *testing.T) {
+	dest := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dest, "nginx")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	archive := buildCookbookTarball(t, map[string]string{"nginx/metadata.rb": "pwned"})
+	if _, err := ExtractArchive(bytes.NewReader(archive), dest); err == nil {
+		t.Error("ExtractArchive wrote through a symlink in destDir without complaint")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "metadata.rb")); err == nil {
+		t.Fatal("archive entry escaped destDir through a pre-existing symlink")
+	}
+}
