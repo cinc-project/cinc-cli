@@ -471,6 +471,78 @@ func TestWriteProfilePreservesExistingProfiles(t *testing.T) {
 	}
 }
 
+// TestWriteProfilePreservesUnknownKeys guards the compatibility promise that
+// cinc can share a credentials file with knife. knife stores keys cinc has no
+// model for (validation_client_name, validation_key, node_name, ...), and
+// rewriting the file to add or update one profile must not quietly drop them
+// from that profile or from any other.
+func TestWriteProfilePreservesUnknownKeys(t *testing.T) {
+	path := writeConfig(t, `
+[default]
+chef_server_url        = "https://chef.example.com/organizations/acme"
+client_name            = "tim"
+client_key             = "/keys/tim.pem"
+validation_client_name = "acme-validator"
+validation_key         = "/keys/acme-validator.pem"
+node_name              = "tim"
+cookbook_path          = "/repo/cookbooks"
+
+[staging]
+chef_server_url        = "https://staging.example.com/organizations/acme"
+client_name            = "tim"
+client_key             = "/keys/tim.pem"
+validation_client_name = "staging-validator"
+`)
+
+	// Add a brand new profile, the way `cinc config create` does.
+	if err := WriteProfile(path, "prod", Profile{
+		ServerURL:  "https://prod.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "/keys/tim.pem",
+	}); err != nil {
+		t.Fatalf("WriteProfile: %v", err)
+	}
+	// And update an existing one, which is the more dangerous case: its own
+	// unmodelled keys have to survive being rewritten.
+	if err := WriteProfile(path, "default", Profile{
+		ServerURL:  "https://chef.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "/keys/new.pem",
+	}); err != nil {
+		t.Fatalf("WriteProfile: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`validation_client_name = "acme-validator"`,
+		`validation_key = "/keys/acme-validator.pem"`,
+		`node_name = "tim"`,
+		`cookbook_path = "/repo/cookbooks"`,
+		`validation_client_name = "staging-validator"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("WriteProfile dropped %s\nfile:\n%s", want, body)
+		}
+	}
+	// The managed keys still round-trip.
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load written credentials: %v", err)
+	}
+	if got := cfg.Profiles["default"].KeyPath; got != "/keys/new.pem" {
+		t.Errorf("default client_key = %q, want the updated /keys/new.pem", got)
+	}
+	if got := cfg.Profiles["prod"].Org; got != "acme" {
+		t.Errorf("prod org = %q, want acme", got)
+	}
+}
+
 func TestWriteProfileRequiresName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "credentials")
 

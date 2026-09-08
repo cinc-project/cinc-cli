@@ -194,9 +194,28 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// managedKeys are the credentials keys cinc itself owns. WriteProfile sets or
+// clears exactly these on the profile it writes and leaves every other key in
+// the file alone, so a file shared with knife keeps the settings knife needs
+// (validation_client_name, validation_key, node_name, ...) that cinc has no
+// model for.
+var managedKeys = []string{
+	"cinc_server_url",
+	"chef_server_url",
+	"supermarket_site",
+	"client_name",
+	"client_key",
+	"supermarket_client_name",
+	"supermarket_key",
+	"ssl_verify_mode",
+	"secret_file",
+}
+
 // WriteProfile creates or updates one profile in the credentials file at path.
-// Existing profiles are preserved, but comments and original key ordering are
-// not retained because the file is rewritten as TOML.
+// Other profiles are left untouched, and within the profile being written only
+// the keys cinc manages are rewritten; anything else the file holds is carried
+// across verbatim. Comments and original key ordering are not retained, because
+// the file is re-encoded as TOML.
 func WriteProfile(path, name string, p Profile) error {
 	if name == "" {
 		return fmt.Errorf("config: profile name is required")
@@ -204,7 +223,9 @@ func WriteProfile(path, name string, p Profile) error {
 	if err := p.ValidateIdentity(); err != nil {
 		return err
 	}
-	raw := map[string]rawProfile{}
+	// Decode into an untyped map so keys cinc does not model survive the
+	// round trip rather than being silently dropped on re-encode.
+	raw := map[string]map[string]any{}
 	if _, err := os.Stat(path); err == nil {
 		if _, err := toml.DecodeFile(path, &raw); err != nil {
 			return fmt.Errorf("config: %w", err)
@@ -212,19 +233,34 @@ func WriteProfile(path, name string, p Profile) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("config: stat %s: %w", path, err)
 	}
-	raw[name] = rawProfile{
-		// Write the cinc-canonical key. Reads still accept chef_server_url
-		// (cinc wins when both appear), so existing chef-prefixed and
-		// knife-shared files keep loading unchanged.
-		CincServerURL:         profileServerURL(p),
-		SupermarketSite:       p.SupermarketSite,
-		ClientName:            p.ClientName,
-		ClientKey:             p.KeyPath,
-		SupermarketClientName: p.SupermarketClientName,
-		SupermarketKey:        p.SupermarketKey,
-		SSLVerifyMode:         p.SSLVerifyMode,
-		SecretFile:            p.SecretFile,
+
+	profile := raw[name]
+	if profile == nil {
+		profile = map[string]any{}
 	}
+	// Write the cinc-canonical server URL key and retire the chef-prefixed one
+	// on this profile. Reads still accept chef_server_url (cinc wins when both
+	// appear), so knife-shared files keep loading unchanged.
+	managed := map[string]string{
+		"cinc_server_url":         profileServerURL(p),
+		"chef_server_url":         "",
+		"supermarket_site":        p.SupermarketSite,
+		"client_name":             p.ClientName,
+		"client_key":              p.KeyPath,
+		"supermarket_client_name": p.SupermarketClientName,
+		"supermarket_key":         p.SupermarketKey,
+		"ssl_verify_mode":         p.SSLVerifyMode,
+		"secret_file":             p.SecretFile,
+	}
+	for _, key := range managedKeys {
+		if value := managed[key]; value != "" {
+			profile[key] = value
+		} else {
+			delete(profile, key)
+		}
+	}
+	raw[name] = profile
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("config: create credentials directory: %w", err)
 	}
@@ -232,7 +268,7 @@ func WriteProfile(path, name string, p Profile) error {
 	if err != nil {
 		return fmt.Errorf("config: write %s: %w", path, err)
 	}
-	if err := toml.NewEncoder(f).Encode(tomlProfiles(raw)); err != nil {
+	if err := toml.NewEncoder(f).Encode(raw); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("config: encode %s: %w", path, err)
 	}
@@ -240,42 +276,6 @@ func WriteProfile(path, name string, p Profile) error {
 		return fmt.Errorf("config: close %s: %w", path, err)
 	}
 	return nil
-}
-
-func tomlProfiles(raw map[string]rawProfile) map[string]map[string]string {
-	out := make(map[string]map[string]string, len(raw))
-	for name, profile := range raw {
-		values := map[string]string{}
-		if profile.CincServerURL != "" {
-			values["cinc_server_url"] = profile.CincServerURL
-		}
-		if profile.ChefServerURL != "" {
-			values["chef_server_url"] = profile.ChefServerURL
-		}
-		if profile.SupermarketSite != "" {
-			values["supermarket_site"] = profile.SupermarketSite
-		}
-		if profile.ClientName != "" {
-			values["client_name"] = profile.ClientName
-		}
-		if profile.ClientKey != "" {
-			values["client_key"] = profile.ClientKey
-		}
-		if profile.SupermarketClientName != "" {
-			values["supermarket_client_name"] = profile.SupermarketClientName
-		}
-		if profile.SupermarketKey != "" {
-			values["supermarket_key"] = profile.SupermarketKey
-		}
-		if profile.SSLVerifyMode != "" {
-			values["ssl_verify_mode"] = profile.SSLVerifyMode
-		}
-		if profile.SecretFile != "" {
-			values["secret_file"] = profile.SecretFile
-		}
-		out[name] = values
-	}
-	return out
 }
 
 // NewProfile builds a Profile from user-supplied configure values.
