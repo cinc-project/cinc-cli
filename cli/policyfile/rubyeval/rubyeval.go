@@ -324,7 +324,7 @@ func readCapped(path string, max int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read handle
 	if info, err := f.Stat(); err == nil && info.Size() > max {
 		return nil, fmt.Errorf("policyfile: engine result is %d bytes, over the %d-byte cap", info.Size(), max)
 	}

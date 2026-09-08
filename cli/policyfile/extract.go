@@ -64,7 +64,7 @@ func extractCookbookTarball(r io.Reader, dest string) error {
 	if err != nil {
 		return fmt.Errorf("supermarket: open gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // read handle
 
 	tr := tar.NewReader(gz)
 	var total int64
@@ -98,7 +98,7 @@ func extractCookbookTarball(r io.Reader, dest string) error {
 				return err
 			}
 			if err := boundedCopy(f, tr, hdr.Name, &total); err != nil {
-				f.Close()
+				_ = f.Close() // already returning an error
 				return fmt.Errorf("supermarket: %w", err)
 			}
 			if err := f.Close(); err != nil {

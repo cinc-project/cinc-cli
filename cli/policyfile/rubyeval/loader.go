@@ -191,7 +191,7 @@ func verifyFileSHA256(path, wantHex string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read handle
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return err
@@ -210,7 +210,7 @@ func extractTarGz(archive []byte, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // read handle
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -238,7 +238,7 @@ func extractTarGz(archive []byte, dest string) error {
 				return err
 			}
 			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // pinned, checksum-verified archive
-				f.Close()
+				_ = f.Close() // already returning an error
 				return err
 			}
 			if err := f.Close(); err != nil {

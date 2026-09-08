@@ -274,11 +274,11 @@ func writePrivateKey(out io.Writer, priv, keyFile, fileMsg string) error {
 			return fmt.Errorf("cinc: write key file: %w", err)
 		}
 		if err := f.Chmod(0o600); err != nil {
-			f.Close()
+			_ = f.Close() // already returning an error
 			return fmt.Errorf("cinc: write key file: %w", err)
 		}
 		if _, err := f.WriteString(priv); err != nil {
-			f.Close()
+			_ = f.Close() // already returning an error
 			return fmt.Errorf("cinc: write key file: %w", err)
 		}
 		if err := f.Close(); err != nil {

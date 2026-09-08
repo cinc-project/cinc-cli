@@ -37,7 +37,7 @@ func ExtractArchive(r io.Reader, destDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // read handle
 
 	tr := tar.NewReader(gz)
 	roots := map[string]struct{}{}
@@ -119,7 +119,7 @@ func writeFile(r io.Reader, target, name string, total *int64) error {
 		return fmt.Errorf("create %s: %w", target, err)
 	}
 	if err := boundedCopy(f, r, name, total); err != nil {
-		f.Close()
+		_ = f.Close() // already returning an error
 		return fmt.Errorf("write %s: %w", target, err)
 	}
 	if err := f.Close(); err != nil {

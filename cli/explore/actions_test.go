@@ -39,7 +39,7 @@ func TestEditFlowSavesEditedObject(t *testing.T) {
 
 	// e starts an edit of the selected node; the seed is fetched async.
 	m, cmd = pressRune(t, m, 'e')
-	m, cmd = step(t, m, drain(cmd)) // editSeedMsg → editor opens
+	m, _ = step(t, m, drain(cmd)) // editSeedMsg → editor opens
 	if m.screen != screenEditor {
 		t.Fatalf("screen = %v, want editor", m.screen)
 	}
@@ -74,11 +74,11 @@ func TestCreateWithSecretShowsResultModal(t *testing.T) {
 	m.cur = newUserKind()
 	m.screen = screenList
 
-	m, cmd := m2(m.startCreate()) // n: Creatable → editor with template
+	m, _ = m2(m.startCreate()) // n: Creatable → editor with template
 	if m.screen != screenEditor {
 		t.Fatalf("screen = %v, want editor", m.screen)
 	}
-	m, cmd = commitEditor(t, m)
+	m, cmd := commitEditor(t, m)
 	m, _ = step(t, m, drain(cmd)) // mutationDoneMsg with secret
 
 	if m.screen != screenResult {

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   test:
-    name: Unit tests, vet & build
+    name: Unit tests & build
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -21,18 +21,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l apps)
-          if [ -n "$unformatted" ]; then
-            echo "These files are not gofmt-formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Vet
-        run: go vet ./...
 
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v1.13.0
@@ -45,3 +33,23 @@ jobs:
 
       - name: Build
         run: go build ./apps/cinc
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # Pinned so a new linter release cannot turn a green branch red
+          # without a commit.
+          version: v2.13.2

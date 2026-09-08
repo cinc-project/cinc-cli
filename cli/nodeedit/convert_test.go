@@ -39,7 +39,8 @@ func TestAttributesSeedShowsEditableBagsInOrderAndExcludesAutomatic(t *testing.T
 	iNormal := strings.Index(s, "normal")
 	iDefault := strings.Index(s, "default")
 	iOverride := strings.Index(s, "override")
-	if !(iNormal >= 0 && iNormal < iDefault && iDefault < iOverride) {
+	ordered := iNormal >= 0 && iNormal < iDefault && iDefault < iOverride
+	if !ordered {
 		t.Errorf("editable bags out of order in seed:\n%s", s)
 	}
 	if strings.Contains(s, "automatic") {
