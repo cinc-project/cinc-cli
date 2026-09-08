@@ -228,6 +228,9 @@ cinc node ssh 'web01 web02' uptime --ssh-user ubuntu --skip-search`,
 				printRemoteResults(cmd, results)
 			}
 			if failed := countRemoteFailures(results); failed > 0 {
+				if skipped := countRemoteSkipped(results); skipped > 0 {
+					return fmt.Errorf("node ssh failed on %d host(s); %d not attempted after --exit-on-error", failed, skipped)
+				}
 				return fmt.Errorf("node ssh failed on %d host(s)", failed)
 			}
 			return nil
@@ -677,14 +680,27 @@ func writePrefixedLines(out interface{ Write([]byte) (int, error) }, host, text 
 	}
 }
 
+// countRemoteFailures counts hosts the command actually failed on. Hosts that
+// --exit-on-error skipped are not failures: nothing ran on them, so nothing is
+// known about them.
 func countRemoteFailures(results []remote.CommandResult) int {
 	var failed int
 	for _, result := range results {
-		if result.ExitCode != 0 {
+		if !result.Skipped && result.ExitCode != 0 {
 			failed++
 		}
 	}
 	return failed
+}
+
+func countRemoteSkipped(results []remote.CommandResult) int {
+	var skipped int
+	for _, result := range results {
+		if result.Skipped {
+			skipped++
+		}
+	}
+	return skipped
 }
 
 func validateBootstrapFlags(flags nodeBootstrapFlags, environmentChanged bool) error {
