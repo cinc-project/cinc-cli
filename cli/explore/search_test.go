@@ -55,7 +55,7 @@ func TestSearchNarrowsListToServerMatches(t *testing.T) {
 	m, _ := openNodes(t, searchMux(t))
 
 	// Open the search modal; it defaults to the current list's index.
-	m, cmd := pressRune(t, m, 's')
+	m, _ = pressRune(t, m, 's')
 	if m.screen != screenSearch {
 		t.Fatalf("screen = %v, want search", m.screen)
 	}
@@ -65,7 +65,7 @@ func TestSearchNarrowsListToServerMatches(t *testing.T) {
 
 	// Type a query and run it.
 	m, _ = step(t, m, keyRunes("role:web"))
-	m, cmd = pressKey(t, m, 13) // enter
+	m, cmd := pressKey(t, m, 13) // enter
 	msg := drain(cmd)
 	sl, ok := msg.(searchLoadedMsg)
 	if !ok {

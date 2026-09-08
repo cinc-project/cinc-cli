@@ -15,7 +15,7 @@ LDFLAGS := -X $(LDFLAGS_PKG).version=$(VERSION) \
            -X $(LDFLAGS_PKG).commit=$(COMMIT) \
            -X $(LDFLAGS_PKG).buildDate=$(BUILD_DATE)
 
-.PHONY: all build dist install test test-acceptance vet fmt tidy clean run docs help
+.PHONY: all build dist install test test-acceptance vet lint fmt tidy clean run docs help
 
 all: build
 
@@ -58,6 +58,12 @@ test-acceptance:
 ## vet: run go vet across all packages
 vet:
 	go vet ./...
+
+## lint: run golangci-lint (config in .golangci.yml). Subsumes vet and a gofmt
+## check, and unlike `gofmt -l apps` it covers every package.
+## Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+lint:
+	golangci-lint run ./...
 
 ## fmt: format all Go source
 fmt:

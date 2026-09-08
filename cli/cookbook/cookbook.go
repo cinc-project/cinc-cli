@@ -570,7 +570,7 @@ func writeFileToTar(tw *tar.Writer, dir, entryPath string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", entryPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read handle
 	if _, err := io.Copy(tw, f); err != nil {
 		return fmt.Errorf("write tar entry %s: %w", entryPath, err)
 	}
@@ -745,7 +745,7 @@ func ExtractArchiveFiles(data []byte) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // read handle
 	tr := tar.NewReader(gz)
 	var files []string
 	for {

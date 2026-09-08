@@ -81,7 +81,7 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 		result.Error = fmt.Sprintf("dial ssh: %v", err)
 		return result
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, host, config)
 	if err != nil {
 		result.ExitCode = 255
@@ -89,14 +89,14 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 		return result
 	}
 	client := ssh.NewClient(sshConn, chans, reqs)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	session, err := client.NewSession()
 	if err != nil {
 		result.ExitCode = 255
 		result.Error = fmt.Sprintf("new ssh session: %v", err)
 		return result
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	var stdout, stderr bytes.Buffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr

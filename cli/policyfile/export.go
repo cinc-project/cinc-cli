@@ -129,14 +129,14 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		defer func() { _ = in.Close() }() // read handle
 		// Clamp to a safe mode rather than trusting the source file's bits.
 		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
 		if err != nil {
 			return err
 		}
 		if _, err := io.Copy(out, in); err != nil {
-			out.Close()
+			_ = out.Close() // already returning an error
 			return err
 		}
 		return out.Close()
@@ -145,16 +145,24 @@ func copyTree(src, dst string) error {
 
 // tarGzDir writes dir as a gzip-compressed tarball at archivePath, with entries
 // rooted at the directory's base name.
-func tarGzDir(dir, archivePath string) error {
+func tarGzDir(dir, archivePath string) (err error) {
 	f, err := os.Create(archivePath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	// The tar trailer and the gzip footer are written by Close, so a failure
+	// there means a truncated archive. Closing innermost first and keeping the
+	// first error is what makes that surface instead of being reported as a
+	// successful export.
+	defer func() {
+		for _, c := range []io.Closer{tw, gz, f} {
+			if cerr := c.Close(); err == nil {
+				err = cerr
+			}
+		}
+	}()
 
 	root := filepath.Base(dir)
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -183,7 +191,7 @@ func tarGzDir(dir, archivePath string) error {
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		defer func() { _ = in.Close() }() // read handle
 		_, err = io.Copy(tw, in)
 		return err
 	})

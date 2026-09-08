@@ -86,12 +86,12 @@ func extractBundleTarball(archivePath, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read handle
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("policyfile: open archive %s: %w", archivePath, err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // read handle
 
 	tr := tar.NewReader(gz)
 	var total int64
@@ -122,7 +122,7 @@ func extractBundleTarball(archivePath, dest string) error {
 				return err
 			}
 			if err := boundedCopy(out, tr, hdr.Name, &total); err != nil {
-				out.Close()
+				_ = out.Close() // already returning an error
 				return fmt.Errorf("policyfile: %w", err)
 			}
 			if err := out.Close(); err != nil {
