@@ -41,7 +41,7 @@ func roleSummaryFields(r *cinc.Role) []summaryField {
 The relevant `cinc-api` shapes today:
 
 ```go
-// github.com/tas50/cinc-api
+// github.com/cinc-project/cinc-api
 type Group struct {
 	Name    string
 	Users   []string // direct members only

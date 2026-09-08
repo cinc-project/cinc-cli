@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 	"github.com/mattn/go-isatty"
-	sm "github.com/tas50/cinc-supermarket-api"
 )
 
 // Options configures Run.

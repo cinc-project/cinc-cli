@@ -43,7 +43,7 @@ render from the single already-fetched object).
 The relevant `cinc-api` shapes today:
 
 ```go
-// github.com/tas50/cinc-api
+// github.com/cinc-project/cinc-api
 type User struct {
 	UserName    string
 	DisplayName string

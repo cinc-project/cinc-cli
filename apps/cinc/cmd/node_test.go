@@ -19,7 +19,7 @@ import (
 	"sync"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/remote"
 )

@@ -64,7 +64,7 @@ all flags are documented in `docs/commands.md`.
 
 ## Architecture rules
 
-- **All server communication goes through `github.com/tas50/cinc-api`.** That
+- **All server communication goes through `github.com/cinc-project/cinc-api`.** That
   library owns authentication (request signing), transport, and the API object
   model. The CLI never builds or signs an HTTP request. The single seam between
   CLI state and the API library is `cli/client`.

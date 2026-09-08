@@ -3,7 +3,7 @@ package explore
 import (
 	"context"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // newEnvironmentKind builds the Environments kind: full

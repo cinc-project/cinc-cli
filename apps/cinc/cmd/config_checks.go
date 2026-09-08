@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 	"golang.org/x/term"
 
 	cliclient "github.com/cinc-project/cinc-cli/cli/client"

@@ -3,7 +3,7 @@
 // It owns the local concerns — locating the cookbook on disk, building
 // the upload tarball, and rendering dry-run results — and delegates
 // every network call (signed share, category lookup) to
-// github.com/tas50/cinc-supermarket.
+// github.com/cinc-project/cinc-supermarket-api.
 package supermarket
 
 import (
@@ -14,7 +14,7 @@ import (
 	"net/url"
 	"strings"
 
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
 	localcookbook "github.com/cinc-project/cinc-cli/cli/cookbook"

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 // DownloadOptions controls a cookbook download.

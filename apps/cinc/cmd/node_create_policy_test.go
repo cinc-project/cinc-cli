@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // nodeCreateServer captures the POST body sent to create a node.

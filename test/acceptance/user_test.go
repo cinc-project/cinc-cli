@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // TestUserListAgainstCincZero verifies that `cinc user list` against a

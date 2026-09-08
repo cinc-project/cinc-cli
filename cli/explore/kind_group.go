@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // groupKind is the Groups kind. Groups are created by name only (a

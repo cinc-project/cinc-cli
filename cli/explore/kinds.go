@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"sort"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // Row is one object in a kind's list. Name is the identifier passed to

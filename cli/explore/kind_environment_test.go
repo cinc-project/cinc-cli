@@ -3,7 +3,7 @@ package explore
 import (
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 func TestEnvironmentSummaryFields(t *testing.T) {

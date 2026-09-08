@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // TestNodeStatusAgainstCincZero confirms `node status` reports the seeded

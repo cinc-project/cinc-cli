@@ -9,7 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 // fakeClient is an in-memory apiClient used by model tests. It also

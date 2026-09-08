@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 func TestDataBagItemSummaryFields(t *testing.T) {

@@ -3,7 +3,7 @@ package explore
 import (
 	"context"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // newClientKind builds the Clients kind. Creating a client may return a

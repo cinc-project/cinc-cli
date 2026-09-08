@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // gzTarball builds a gzipped tar whose entries are prefixed with topDir/, as a

@@ -28,6 +28,10 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
+github.com/cinc-project/cinc-api v0.13.0 h1:YD89LRSwU6fCUawDrP90im2aMgJTrF70l5ZI30SKLnk=
+github.com/cinc-project/cinc-api v0.13.0/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
+github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=
+github.com/cinc-project/cinc-supermarket-api v0.6.0/go.mod h1:EAxUjVWn4otvz06+I9rbfIivivUrOxj7tAEKKnjIdug=
 github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSEFgwIwO+UVM8=
 github.com/clipperhouse/displaywidth v0.11.0/go.mod h1:bkrFNkf81G8HyVqmKGxsPufD3JhNl3dSqnGhOoSD/o0=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
@@ -74,10 +78,6 @@ github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiT
 github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
 github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
-github.com/tas50/cinc-api v0.12.0 h1:578YxgSckP5RP/Txoa1Q/MMXKxDxikU6vXTttqV6uUo=
-github.com/tas50/cinc-api v0.12.0/go.mod h1:DhJFiBJAIKTYxm8PvLiq+BM/3wrGyVC+mo9hyJ5TPVQ=
-github.com/tas50/cinc-supermarket-api v0.4.2 h1:14VaiiGzipwTGoskst5y4BzhWs3aPqy02G3eVPbhkBc=
-github.com/tas50/cinc-supermarket-api v0.4.2/go.mod h1:TWjIxxJn1JiknXyoB1rJDhWCFvTVHh1D2kil+QG6FMI=
 github.com/tetratelabs/wazero v1.12.0 h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=
 github.com/tetratelabs/wazero v1.12.0/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
 github.com/xo/terminfo v1.0.0 h1:2ZpYzqWzyyytjk3TP6aJVDhkMAkc99/1xKQdA3TDTBY=

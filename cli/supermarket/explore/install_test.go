@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 func keyRunes(s string) tea.KeyMsg {

@@ -8,13 +8,13 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/cinc-project/cinc-api v0.13.0
+	github.com/cinc-project/cinc-supermarket-api v0.6.0
 	github.com/creack/pty v1.1.24
 	github.com/goruby/goruby v0.0.0-20210827060341-983436007185
 	github.com/kevinburke/ssh_config v1.6.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
-	github.com/tas50/cinc-api v0.12.0
-	github.com/tas50/cinc-supermarket-api v0.4.2
 	github.com/tetratelabs/wazero v1.12.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/term v0.45.0

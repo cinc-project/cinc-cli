@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // ACLs are exposed per-noun as an `acl` subgroup (e.g. `cinc node acl show`).

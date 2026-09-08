@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	sm "github.com/tas50/cinc-supermarket-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 // SearchOptions controls a cookbook search.

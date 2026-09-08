@@ -14,7 +14,7 @@ import (
 	"slices"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // groupServer starts an httptest server that serves a group index for

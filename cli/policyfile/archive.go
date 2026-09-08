@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // BundleLockName is the Policyfile lock file Export writes at the root of a

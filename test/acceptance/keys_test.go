@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // TestClientKeyLifecycleAgainstCincZero adds a second key to a seeded

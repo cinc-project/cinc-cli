@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // cookbookFile is one file that contributes to a cookbook's content identifier:

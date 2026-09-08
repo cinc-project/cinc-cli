@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	cinc "github.com/tas50/cinc-api"
-	sm "github.com/tas50/cinc-supermarket-api"
+	cinc "github.com/cinc-project/cinc-api"
+	sm "github.com/cinc-project/cinc-supermarket-api"
 )
 
 // Fetcher locates the cookbooks a Policyfile lock pins, fetching them from the

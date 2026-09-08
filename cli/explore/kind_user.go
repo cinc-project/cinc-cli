@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // pivotalUser is the Cinc/Chef Server's bootstrap superuser, and

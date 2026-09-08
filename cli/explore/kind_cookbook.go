@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	cinc "github.com/tas50/cinc-api"
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // cookbookKind is the top-level Cookbooks kind. A cookbook is a named
