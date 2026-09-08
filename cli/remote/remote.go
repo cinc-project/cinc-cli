@@ -67,12 +67,16 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 		result.Error = err.Error()
 		return result
 	}
-	config, err := clientConfig(opts)
+	config, closeAgent, err := clientConfig(opts)
 	if err != nil {
 		result.ExitCode = 255
 		result.Error = err.Error()
 		return result
 	}
+	// Held open for the duration of the session: the agent signs during the
+	// handshake, and releasing it here keeps a fleet-wide run from exhausting
+	// the process file descriptor limit one host at a time.
+	defer closeAgent()
 	host := net.JoinHostPort(target.Host, strconv.Itoa(opts.Port))
 	dialer := net.Dialer{Timeout: opts.Timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", host)
@@ -171,9 +175,13 @@ func RunMany(ctx context.Context, runner Runner, targets []Target, command strin
 	return results
 }
 
-func clientConfig(opts SSHOptions) (*ssh.ClientConfig, error) {
+// clientConfig assembles the SSH client configuration. The returned cleanup
+// releases the agent connection the auth methods hold; it is always non-nil
+// and safe to defer.
+func clientConfig(opts SSHOptions) (*ssh.ClientConfig, func(), error) {
+	noop := func() {}
 	if opts.User == "" {
-		return nil, fmt.Errorf("ssh user is required")
+		return nil, noop, fmt.Errorf("ssh user is required")
 	}
 	if opts.Port == 0 {
 		opts.Port = 22
@@ -181,44 +189,66 @@ func clientConfig(opts SSHOptions) (*ssh.ClientConfig, error) {
 	if opts.Timeout == 0 {
 		opts.Timeout = 30 * time.Second
 	}
-	auth, err := authMethods(opts)
+	auth, cleanup, err := authMethods(opts)
 	if err != nil {
-		return nil, err
+		return nil, noop, err
 	}
 	if len(auth) == 0 {
-		return nil, fmt.Errorf("no SSH authentication method configured")
+		cleanup()
+		return nil, noop, fmt.Errorf("no SSH authentication method configured")
 	}
 	hostKeyCallback, err := hostKeyCallback(opts.VerifyHost)
 	if err != nil {
-		return nil, err
+		cleanup()
+		return nil, noop, err
 	}
 	return &ssh.ClientConfig{
 		User:            opts.User,
 		Auth:            auth,
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         opts.Timeout,
-	}, nil
+	}, cleanup, nil
 }
 
-func authMethods(opts SSHOptions) ([]ssh.AuthMethod, error) {
-	var methods []ssh.AuthMethod
+// authMethods builds the authentication methods for one connection. The agent
+// method holds an open unix socket for as long as authentication may need it,
+// so the returned cleanup closes it; it is always non-nil and safe to defer.
+func authMethods(opts SSHOptions) ([]ssh.AuthMethod, func(), error) {
+	var (
+		methods []ssh.AuthMethod
+		conns   []net.Conn
+	)
+	cleanup := func() {
+		for _, conn := range conns {
+			_ = conn.Close()
+		}
+	}
 	if opts.IdentityFile != "" {
 		key, err := os.ReadFile(expandHome(opts.IdentityFile))
 		if err != nil {
-			return nil, fmt.Errorf("read ssh identity file: %w", err)
+			cleanup()
+			return nil, func() {}, fmt.Errorf("read ssh identity file: %w", err)
 		}
 		signer, err := ssh.ParsePrivateKey(key)
 		if err != nil {
-			return nil, fmt.Errorf("parse ssh identity file: %w", err)
+			cleanup()
+			return nil, func() {}, fmt.Errorf("parse ssh identity file: %w", err)
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
 	if opts.UseAgent {
+		// Only the first agent that answers is used. Every key an agent holds
+		// costs one authentication attempt, so offering several agents can
+		// exhaust sshd's MaxAuthTries (6 by default) before the remaining
+		// methods are ever tried.
 		for _, sock := range agentSocketCandidates(opts.AgentSocket) {
 			conn, err := net.Dial("unix", sock)
-			if err == nil {
-				methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+			if err != nil {
+				continue
 			}
+			conns = append(conns, conn)
+			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+			break
 		}
 	}
 	if opts.Password != "" {
@@ -230,9 +260,14 @@ func authMethods(opts SSHOptions) ([]ssh.AuthMethod, error) {
 			return answers, nil
 		}))
 	}
-	return methods, nil
+	return methods, cleanup, nil
 }
 
+// agentSocketCandidates lists agent sockets in the order they should be
+// tried. Only the first one that answers is used, so the order decides which
+// agent signs: the explicit --ssh-agent-socket first, then the agent the
+// environment names, and finally the well-known 1Password paths as a fallback
+// for when 1Password is running but has not exported SSH_AUTH_SOCK.
 func agentSocketCandidates(explicit string) []string {
 	var paths []string
 	seen := map[string]struct{}{}
@@ -248,11 +283,11 @@ func agentSocketCandidates(explicit string) []string {
 		paths = append(paths, path)
 	}
 	add(explicit)
+	add(os.Getenv("SSH_AUTH_SOCK"))
 	if home, err := os.UserHomeDir(); err == nil {
 		add(filepath.Join(home, ".1password", "agent.sock"))
 		add(filepath.Join(home, "Library", "Group Containers", "2BUA8C4S2C.com.1password", "t", "agent.sock"))
 	}
-	add(os.Getenv("SSH_AUTH_SOCK"))
 	return paths
 }
 
