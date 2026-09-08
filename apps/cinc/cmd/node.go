@@ -285,6 +285,13 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			if err != nil {
 				return err
 			}
+			// The bootstrap script hard-codes the server URL into the client.rb
+			// it writes, so the profile must actually name a server. A real run
+			// gets this from resolveClient below, but a dry run never calls it
+			// and would otherwise print a script pointing at "/organizations/".
+			if err := profile.Validate(); err != nil {
+				return err
+			}
 			var privateKey string
 			if !flags.dryRun {
 				c, err := resolveClient(cmd)

@@ -440,6 +440,38 @@ func TestNodeBootstrapRejectsEnvironmentWithPolicy(t *testing.T) {
 	}
 }
 
+// TestNodeBootstrapDryRunRejectsProfileWithoutServer covers a profile that is
+// perfectly valid on disk but names no Cinc Server, such as a Supermarket-only
+// one. A real bootstrap catches this in resolveClient; a dry run never calls
+// it, and used to emit a script whose client.rb pointed at "/organizations/".
+func TestNodeBootstrapDryRunRejectsProfileWithoutServer(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf(`[default]
+supermarket_site = "https://supermarket.cinc.sh"
+client_name      = "tim"
+client_key       = %q
+`, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(new(bytes.Buffer))
+	root.SetArgs([]string{
+		"node", "bootstrap", "web01.example.test",
+		"--ssh-user", "ubuntu", "--config", cfgPath, "--dry-run",
+	})
+
+	if err := root.Execute(); err == nil {
+		t.Fatalf("dry run accepted a profile with no server URL and printed:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "chef_server_url") {
+		t.Errorf("dry run emitted a bootstrap script anyway:\n%s", out.String())
+	}
+}
+
 func TestNodeBootstrapDryRunCommand(t *testing.T) {
 	cfgPath := writeCommandConfig(t, "https://cinc.example.test")
 	root := newRootCmd()
