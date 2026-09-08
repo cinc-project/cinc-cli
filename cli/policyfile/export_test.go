@@ -10,6 +10,56 @@ import (
 	cinc "github.com/cinc-project/cinc-api"
 )
 
+// TestCopyTreeSkipsSymlinks pins how a symlink inside a cookbook is treated.
+// filepath.Walk stats with Lstat, so a symlink is neither a directory nor
+// skipped by default: opening it follows the link and copies whatever it
+// points at. For a cookbook fetched from a repository that means a link such
+// as "files/creds -> ~/.ssh/id_rsa" lands in the export bundle as a real file
+// and is pushed to the server. A dangling link fails the export outright.
+//
+// cli/cookbook's archiveEntries already skips non-regular files; the export
+// path should agree.
+func TestCopyTreeSkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+
+	secret := filepath.Join(root, "id_rsa")
+	if err := os.WriteFile(secret, []byte("PRIVATE KEY MATERIAL\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	src := filepath.Join(root, "cookbook")
+	if err := os.MkdirAll(filepath.Join(src, "files"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "metadata.rb"), []byte("name 'cb'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(src, "files", "innocuous.txt")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// Cookbooks legitimately carry links whose target is absent on this
+	// machine; they must not break the export.
+	if err := os.Symlink(filepath.Join(root, "absent"), filepath.Join(src, "files", "dangling.txt")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	dst := filepath.Join(root, "export")
+	if err := copyTree(src, dst); err != nil {
+		t.Fatalf("copyTree failed on a cookbook containing symlinks: %v", err)
+	}
+
+	if body, err := os.ReadFile(filepath.Join(dst, "files", "innocuous.txt")); err == nil {
+		t.Errorf("symlink was dereferenced into the bundle, exposing %s:\n%s", secret, body)
+	}
+	if _, err := os.Lstat(filepath.Join(dst, "files", "dangling.txt")); err == nil {
+		t.Error("dangling symlink should not have been copied")
+	}
+	// Regular files still come across.
+	if _, err := os.Stat(filepath.Join(dst, "metadata.rb")); err != nil {
+		t.Errorf("metadata.rb was not copied: %v", err)
+	}
+}
+
 func TestExportAssemblesChefCompatibleTree(t *testing.T) {
 	lockDir := t.TempDir()
 	cbDir := filepath.Join(lockDir, "cookbooks", "mycb", "recipes")
