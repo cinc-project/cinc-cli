@@ -271,6 +271,13 @@ Bootstrap a host managed by a Policyfile policy group.
 cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --policy-group prod`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolved up front, before anything with a side effect: bootstrap
+			// creates a client on the server and installs software on the
+			// target, and a rejected --format should not cost the user either.
+			format, err := resolveFormat(cmd)
+			if err != nil {
+				return err
+			}
 			target := argAt(args, 0)
 			if err := promptNodeBootstrap(cmd, &target, &flags); err != nil {
 				return err
@@ -333,10 +340,6 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			result := nodeRemoteRunner.Run(cmd.Context(), remote.Target{Host: target}, bootstrapCommand, remoteOptions(flags.nodeSSHFlags))
 			if result.ExitCode != 0 {
 				return fmt.Errorf("bootstrap failed on %s: %s; client %q was created and may need cleanup before retry", target, firstNonEmpty(result.Error, result.Stderr), flags.nodeName)
-			}
-			format, err := resolveFormat(cmd)
-			if err != nil {
-				return err
 			}
 			if format == printer.FormatJSON {
 				return printer.New(cmd.OutOrStdout(), format).Value(result)

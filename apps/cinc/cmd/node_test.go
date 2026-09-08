@@ -472,6 +472,50 @@ client_key       = %q
 	}
 }
 
+// TestNodeBootstrapRejectsBadFormatBeforeDoingWork pins flag validation ahead
+// of side effects. Bootstrap creates a client on the server and installs
+// software on the target, so a rejected --format must cost the user neither.
+// Every other command resolves the format first; this one used to resolve it
+// after the SSH run.
+func TestNodeBootstrapRejectsBadFormatBeforeDoingWork(t *testing.T) {
+	runner := &recordingRunner{result: remote.CommandResult{Stdout: "bootstrap ok\n"}}
+	prev := nodeRemoteRunner
+	nodeRemoteRunner = runner
+	t.Cleanup(func() { nodeRemoteRunner = prev })
+
+	clientCreated := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/clients", func(w http.ResponseWriter, r *http.Request) {
+		clientCreated = true
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"name":"web01","validator":false}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	cfgPath := writeCommandConfig(t, srv.URL)
+
+	root := newRootCmd()
+	root.SetOut(new(bytes.Buffer))
+	root.SetErr(new(bytes.Buffer))
+	root.SetArgs([]string{
+		"node", "bootstrap", "web01.example.test",
+		"--node-name", "web01", "--ssh-user", "ubuntu",
+		"--config", cfgPath, "--no-host-key-verify",
+		"--format", "yaml",
+	})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected an error for an unknown --format")
+	}
+	if clientCreated {
+		t.Error("a client was created on the server before --format was validated")
+	}
+	if len(runner.calls) != 0 {
+		t.Errorf("bootstrap ran over SSH before --format was validated: %+v", runner.calls)
+	}
+}
+
 func TestNodeBootstrapDryRunCommand(t *testing.T) {
 	cfgPath := writeCommandConfig(t, "https://cinc.example.test")
 	root := newRootCmd()
