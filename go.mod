@@ -16,7 +16,7 @@ require (
 	github.com/tas50/cinc-api v0.12.0
 	github.com/tas50/cinc-supermarket-api v0.4.2
 	github.com/tetratelabs/wazero v1.12.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/term v0.45.0
 )
 
