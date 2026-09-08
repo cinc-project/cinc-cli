@@ -26,7 +26,7 @@ cinc supermarket list
   -h, --help                      help for list
       --limit int                 cap the number of entries returned (default: all)
       --order string              sort order: recently_updated, recently_added, most_downloaded, most_followed
-      --supermarket-site string   URL of the Chef Supermarket site (default: https://supermarket.chef.io)
+      --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
       --user string               only show cookbooks owned by this Supermarket username
   -v, --verbose                   include maintainer and latest version per cookbook
 ```

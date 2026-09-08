@@ -182,7 +182,44 @@ func resolveSupermarketProfile(cmd *cobra.Command) (config.Profile, error) {
 	if err != nil {
 		return config.Profile{}, err
 	}
+	return selectSupermarketProfile(cmd, cfg)
+}
 
+// resolveSupermarketSite returns the Supermarket a command should talk to:
+// the --supermarket-site flag, then the resolved profile's supermarket_site,
+// then "" for the caller's default (the public Supermarket).
+//
+// The read-only Supermarket commands need no credentials, so this never
+// triggers the first-run flow and never fails: an absent or unreadable
+// credentials file simply means no configured preference. Without this, a
+// private supermarket_site was honored by `supermarket share` and ignored by
+// every command that reads.
+func resolveSupermarketSite(cmd *cobra.Command, siteFlag string) string {
+	if siteFlag != "" {
+		return siteFlag
+	}
+	path := resolveConfigPath(cmd)
+	if path == "" {
+		return ""
+	}
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return ""
+	}
+	profile, err := selectSupermarketProfile(cmd, cfg)
+	if err != nil {
+		return ""
+	}
+	return profile.SupermarketSite
+}
+
+// selectSupermarketProfile picks which profile carries the Supermarket
+// settings: an explicit --profile or environment profile wins, otherwise the
+// conventional [supermarket] section, falling back to [default].
+func selectSupermarketProfile(cmd *cobra.Command, cfg *config.Config) (config.Profile, error) {
 	if profileName, _ := cmd.Flags().GetString("profile"); profileName != "" {
 		return cfg.Profile(profileName)
 	}

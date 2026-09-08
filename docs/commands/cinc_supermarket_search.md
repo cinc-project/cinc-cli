@@ -25,7 +25,7 @@ cinc supermarket search nginx
 ```
   -h, --help                      help for search
       --limit int                 cap the number of entries returned (default: all matches)
-      --supermarket-site string   URL of the Chef Supermarket site (default: https://supermarket.chef.io)
+      --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
   -v, --verbose                   include maintainer and latest version per cookbook
 ```
 

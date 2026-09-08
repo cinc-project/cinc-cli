@@ -53,7 +53,7 @@ cinc supermarket list`,
 			if err != nil {
 				return err
 			}
-			client, err := supermarket.NewAnonymous(site)
+			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
 			}
@@ -69,7 +69,7 @@ cinc supermarket list`,
 			return printSupermarketEntries(cmd.OutOrStdout(), result.Entries, verbose)
 		},
 	}
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	cmd.Flags().StringVar(&order, "order", "", "sort order: recently_updated, recently_added, most_downloaded, most_followed")
 	cmd.Flags().StringVar(&user, "user", "", "only show cookbooks owned by this Supermarket username")
 	cmd.Flags().IntVar(&limit, "limit", 0, "cap the number of entries returned (default: all)")
@@ -98,7 +98,7 @@ cinc supermarket search nginx`,
 			if err != nil {
 				return err
 			}
-			client, err := supermarket.NewAnonymous(site)
+			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
 			}
@@ -114,7 +114,7 @@ cinc supermarket search nginx`,
 			return printSupermarketEntries(cmd.OutOrStdout(), result.Entries, verbose)
 		},
 	}
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	cmd.Flags().IntVar(&limit, "limit", 0, "cap the number of entries returned (default: all matches)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "include maintainer and latest version per cookbook")
 	return cmd
@@ -140,7 +140,7 @@ cinc supermarket show nginx 1.2.0`,
 			if err != nil {
 				return err
 			}
-			client, err := supermarket.NewAnonymous(site)
+			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
 			}
@@ -158,7 +158,7 @@ cinc supermarket show nginx 1.2.0`,
 			return printSupermarketShow(cmd.OutOrStdout(), result)
 		},
 	}
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	return cmd
 }
 
@@ -288,8 +288,9 @@ func formatBytes(n int64) string {
 }
 
 // newSupermarketDownloadCmd builds `cinc supermarket download`.
-// Like `explore`, this hits only anonymous endpoints, so we never
-// load a profile or key here.
+// Like `explore`, this hits only anonymous endpoints, so no key is loaded
+// and a missing credentials file is fine. An existing profile is still read
+// for supermarket_site so downloads come from the configured Supermarket.
 func newSupermarketDownloadCmd() *cobra.Command {
 	var (
 		file  string
@@ -319,7 +320,7 @@ cinc supermarket download nginx`,
 			if len(args) == 2 {
 				opts.Version = args[1]
 			}
-			client, err := supermarket.NewAnonymous(site)
+			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
 			}
@@ -336,7 +337,7 @@ cinc supermarket download nginx`,
 	}
 	cmd.Flags().StringVar(&file, "file", "", "output file or directory (default: ./<cookbook>-<version>.tar.gz)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite the output file if it already exists")
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	return cmd
 }
 
@@ -373,7 +374,7 @@ cinc supermarket install nginx 1.2.0`,
 			if err != nil {
 				return err
 			}
-			client, err := supermarket.NewAnonymous(site)
+			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
 			}
@@ -392,13 +393,15 @@ cinc supermarket install nginx 1.2.0`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	return cmd
 }
 
 // newSupermarketExploreCmd builds the `cinc supermarket explore` TUI.
-// It needs no credentials — every endpoint it touches is anonymous —
-// so we never run the first-run flow or load a profile here.
+// It needs no credentials — every endpoint it touches is anonymous — so it
+// never runs the first-run flow. An existing profile is still consulted for
+// supermarket_site, so `explore` browses the same Supermarket the rest of
+// the commands use, but a missing credentials file is not an error.
 func newSupermarketExploreCmd() *cobra.Command {
 	var site string
 	cmd := &cobra.Command{
@@ -413,24 +416,25 @@ cinc supermarket explore`,
 			"quit.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			resolved := resolveSupermarketSite(cmd, site)
 			return explore.Run(cmd.Context(), explore.Options{
-				Site:    site,
+				Site:    resolved,
 				Stdin:   cmd.InOrStdin(),
 				Stdout:  cmd.OutOrStdout(),
 				Stderr:  cmd.ErrOrStderr(),
-				Install: supermarketInstaller(cmd, site),
+				Install: supermarketInstaller(cmd, resolved),
 			})
 		},
 	}
-	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: https://supermarket.chef.io)")
+	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
 	return cmd
 }
 
 // supermarketInstaller returns the closure the explore TUI calls when the
 // user installs a cookbook. Credentials are resolved lazily — only when
 // the closure runs — so launching `cinc supermarket explore` stays
-// credential-free. Any credential or upload failure flows back to the
-// TUI footer.
+// credential-free. site is already resolved by the caller. Any credential
+// or upload failure flows back to the TUI footer.
 func supermarketInstaller(cmd *cobra.Command, site string) func(context.Context, string, string) error {
 	return func(ctx context.Context, name, version string) error {
 		server, err := resolveClient(cmd)
