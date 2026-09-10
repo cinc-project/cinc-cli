@@ -1,6 +1,7 @@
 /cinc
 /dist/
 *.test
-.claude/
+.claude/*
+!.claude/skills/
 docs/superpowers/
 *.swp
