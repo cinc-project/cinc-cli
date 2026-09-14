@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // mode is the top-level editing surface: a structural tree walker or the
@@ -533,19 +535,19 @@ func (m Model) View() string {
 		return "Preview — Enter or Ctrl-D to confirm, Esc to keep editing\n\n" + m.preview
 	}
 	if m.mode == modeRaw {
-		return m.header("cinc edit (raw) — Ctrl-D validate & preview · Tab structural · Esc abort") + m.ContentView()
+		return m.header(progname.Get()+" edit (raw) — Ctrl-D validate & preview · Tab structural · Esc abort") + m.ContentView()
 	}
 	if m.state == stBlockEdit {
-		return m.header("cinc edit (block) — Ctrl-D apply · Esc cancel") + m.ContentView()
+		return m.header(progname.Get()+" edit (block) — Ctrl-D apply · Esc cancel") + m.ContentView()
 	}
 	if m.state == stInlineEdit {
 		label := "value"
 		if m.editKey {
 			label = "key"
 		}
-		return m.header("cinc edit ("+label+") — Enter apply · Esc cancel") + m.ContentView()
+		return m.header(progname.Get()+" edit ("+label+") — Enter apply · Esc cancel") + m.ContentView()
 	}
-	return m.header("cinc edit — ↑/↓ move · Enter edit · a add · d delete · Tab raw · Ctrl-D save · Esc abort") + m.ContentView()
+	return m.header(progname.Get()+" edit — ↑/↓ move · Enter edit · a add · d delete · Tab raw · Ctrl-D save · Esc abort") + m.ContentView()
 }
 
 // ContentView renders just the editor body for the current state, without

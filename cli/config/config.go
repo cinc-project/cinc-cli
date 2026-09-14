@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -211,6 +212,40 @@ var managedKeys = []string{
 	"secret_file",
 }
 
+// UpdateProfile applies mutate to the profile named name in the credentials
+// file at path and writes the result back.
+//
+// This is the entry point callers should reach for when they are changing an
+// existing profile. WriteProfile replaces every key cinc manages, so a caller
+// that assembles a Profile from only the values it collected clears the ones
+// it did not: `config create` never prompts for secret_file,
+// supermarket_client_name or supermarket_key, so writing a Profile built from
+// its answers alone silently deletes them. UpdateProfile starts from what is
+// already on disk, so an unmentioned key keeps its value by construction
+// rather than by every caller remembering to carry it.
+//
+// A profile that does not exist yet starts empty, so this also serves
+// create-or-update callers. Keys cinc does not model are preserved by
+// WriteProfile regardless.
+func UpdateProfile(path, name string, mutate func(*Profile) error) error {
+	if name == "" {
+		return fmt.Errorf("config: profile name is required")
+	}
+	existing := Profile{}
+	if cfg, err := Load(path); err == nil {
+		if p, ok := cfg.Profiles[name]; ok {
+			existing = p
+		}
+	} else if !os.IsNotExist(errors.Unwrap(err)) && !os.IsNotExist(err) {
+		// A malformed file is reported rather than silently overwritten.
+		return err
+	}
+	if err := mutate(&existing); err != nil {
+		return err
+	}
+	return WriteProfile(path, name, existing)
+}
+
 // WriteProfile creates or updates one profile in the credentials file at path.
 // Other profiles are left untouched, and within the profile being written only
 // the keys cinc manages are rewritten; anything else the file holds is carried
@@ -238,9 +273,9 @@ func WriteProfile(path, name string, p Profile) error {
 	if profile == nil {
 		profile = map[string]any{}
 	}
-	// Write the cinc-canonical server URL key and retire the chef-prefixed one
-	// on this profile. Reads still accept chef_server_url (cinc wins when both
-	// appear), so knife-shared files keep loading unchanged.
+	// Write the cinc-canonical server URL key. Reads still accept
+	// chef_server_url (cinc wins when both appear), so knife-shared files
+	// keep loading unchanged.
 	managed := map[string]string{
 		"cinc_server_url":         profileServerURL(p),
 		"chef_server_url":         "",
@@ -252,7 +287,24 @@ func WriteProfile(path, name string, p Profile) error {
 		"ssl_verify_mode":         p.SSLVerifyMode,
 		"secret_file":             p.SecretFile,
 	}
+	// A profile that already carries chef_server_url is shared with chef
+	// tools that read only that key, and chef-config knows nothing of
+	// cinc_server_url. Retiring it would leave knife on its built-in
+	// default server URL, so keep it pointing wherever cinc_server_url
+	// points. Mirror on presence, not on value: when the rewrite has no
+	// server URL to offer (a Supermarket-only profile, or a URL that did
+	// not parse) the key is left exactly as it was rather than emptied,
+	// which would delete it below. A profile without it stays
+	// cinc-canonical only.
+	_, shared := profile["chef_server_url"]
+
 	for _, key := range managedKeys {
+		if key == "chef_server_url" && shared {
+			if url := managed["cinc_server_url"]; url != "" {
+				profile[key] = url
+			}
+			continue
+		}
 		if value := managed[key]; value != "" {
 			profile[key] = value
 		} else {

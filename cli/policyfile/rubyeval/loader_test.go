@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,7 +99,7 @@ func TestMaterializeRejectsBadChecksum(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "release")
 	fetch := func(url string) ([]byte, error) { return []byte("not the real ruby.wasm"), nil }
 
-	err := materializeWith(dir, fetch, rubyWasmSHA256)
+	err := materializeFrom(dir, fetch, rubyWasmURL, rubyWasmSHA256)
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("expected checksum mismatch error, got %v", err)
 	}
@@ -120,7 +121,7 @@ func TestMaterializeExtractsVerifiedArchive(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "release")
 	fetch := func(url string) ([]byte, error) { return archive, nil }
-	if err := materializeWith(dir, fetch, wantSHA); err != nil {
+	if err := materializeFrom(dir, fetch, rubyWasmURL, wantSHA); err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
 
@@ -186,5 +187,259 @@ func TestExtractTarGzDoesNotFollowSymlinkOutOfDest(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "evil")); err == nil {
 		t.Fatal("archive entry escaped dest through a pre-existing symlink")
+	}
+}
+
+// seededRelease writes a fake extracted release under dir and returns the
+// SHA-256 of its wasm module, so seed tests need no network and no real blob.
+func seededRelease(t *testing.T, dir, module string) string {
+	t.Helper()
+	wasm := filepath.Join(dir, rubyWasmTreeBinary)
+	if err := os.MkdirAll(filepath.Dir(wasm), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wasm, []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, rubyWasmTreeUsr, "local", "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(module))
+	return hex.EncodeToString(sum[:])
+}
+
+func neverFetch(t *testing.T) fetcher {
+	t.Helper()
+	return func(url string) ([]byte, error) {
+		t.Errorf("unexpected download of %s: a usable seed should never fetch", url)
+		return nil, ErrRubyWasmUnavailable
+	}
+}
+
+func TestEnsureRuntimeSeedPaths(t *testing.T) {
+	const good = "\x00asm packaged"
+	goodSHA := func(t *testing.T, dir string) string { return seededRelease(t, dir, good) }
+
+	cases := []struct {
+		name string
+		// setup returns the seeds and the binary SHA to expect.
+		setup       func(t *testing.T, base string) ([]seed, string)
+		wantWasmIn  func(base string) string
+		wantErr     string
+		wantFetched bool
+	}{
+		{
+			name: "explicit override is used without downloading",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				dir := filepath.Join(base, "override")
+				return []seed{{dir: dir, required: true}}, goodSHA(t, dir)
+			},
+			wantWasmIn: func(base string) string { return filepath.Join(base, "override") },
+		},
+		{
+			name: "packaged default is used without downloading",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				dir := filepath.Join(base, "packaged")
+				return []seed{{dir: dir}}, goodSHA(t, dir)
+			},
+			wantWasmIn: func(base string) string { return filepath.Join(base, "packaged") },
+		},
+		{
+			name: "an absent packaged default yields to the next source",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				dir := filepath.Join(base, "packaged")
+				return []seed{{dir: filepath.Join(base, "absent")}, {dir: dir}}, goodSHA(t, dir)
+			},
+			wantWasmIn: func(base string) string { return filepath.Join(base, "packaged") },
+		},
+		{
+			name: "a packaged default from another release is skipped, not executed",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				stale := filepath.Join(base, "packaged")
+				seededRelease(t, stale, "\x00asm from an older release")
+				fresh := filepath.Join(base, "fresh")
+				return []seed{{dir: stale}, {dir: fresh}}, goodSHA(t, fresh)
+			},
+			wantWasmIn: func(base string) string { return filepath.Join(base, "fresh") },
+		},
+		{
+			name: "an explicit override that is not a release is reported",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				dir := filepath.Join(base, "typo")
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				return []seed{{dir: dir, required: true}}, rubyWasmBinarySHA256
+			},
+			wantErr: "is not a complete release",
+		},
+		{
+			name: "an explicit override from another release is reported",
+			setup: func(t *testing.T, base string) ([]seed, string) {
+				dir := filepath.Join(base, "stale")
+				seededRelease(t, dir, "\x00asm from an older release")
+				return []seed{{dir: dir, required: true}}, rubyWasmBinarySHA256
+			},
+			wantErr: "does not match the pinned release",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			seeds, binarySHA := tc.setup(t, base)
+			cache := filepath.Join(base, "cache")
+			src := runtimeSource{seeds: seeds, cacheDir: cache, binarySHA: binarySHA}
+
+			rt, err := ensureRuntimeFrom(src, neverFetch(t))
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want one containing %q", err, tc.wantErr)
+				}
+				// A broken install is a runtime problem, not a Policyfile one.
+				if !IsUnavailable(err) {
+					t.Errorf("seed error should wrap ErrRubyWasmUnavailable, got %v", err)
+				}
+				// And a configured-but-wrong directory is not a network
+				// problem, so the user is not told to get online.
+				if !IsMisconfigured(err) {
+					t.Errorf("seed error should wrap ErrRubyWasmMisconfigured, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ensureRuntimeFrom: %v", err)
+			}
+			if want := filepath.Join(tc.wantWasmIn(base), rubyWasmTreeBinary); rt.wasmPath != want {
+				t.Errorf("wasmPath = %s, want %s", rt.wasmPath, want)
+			}
+			if dirExists(cache) {
+				t.Error("a seeded runtime must not populate the per-user cache")
+			}
+		})
+	}
+}
+
+// A packaged runtime has to work where there is no home directory, which
+// is most of what a packaged runtime is for.
+func TestEnsureRuntimeUsesSeedWhenTheCacheDirIsUnavailable(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "packaged")
+	binarySHA := seededRelease(t, dir, "\x00asm packaged")
+
+	src := runtimeSource{
+		seeds:     []seed{{dir: dir}},
+		cacheErr:  errors.New("neither $XDG_CACHE_HOME nor $HOME are defined"),
+		binarySHA: binarySHA,
+	}
+	if _, err := ensureRuntimeFrom(src, neverFetch(t)); err != nil {
+		t.Fatalf("a seeded runtime should not need a cache directory: %v", err)
+	}
+}
+
+func TestEnsureRuntimeReportsCacheDirFailureWhenNoSeedApplies(t *testing.T) {
+	src := runtimeSource{cacheErr: errors.New("neither $XDG_CACHE_HOME nor $HOME are defined")}
+	_, err := ensureRuntimeFrom(src, neverFetch(t))
+	if err == nil || !strings.Contains(err.Error(), "$HOME") {
+		t.Fatalf("error = %v, want the cache-directory failure", err)
+	}
+	if !IsUnavailable(err) {
+		t.Errorf("should wrap ErrRubyWasmUnavailable, got %v", err)
+	}
+	if IsMisconfigured(err) {
+		t.Error("a missing cache directory is not a configured-runtime problem")
+	}
+}
+
+func TestEnsureRuntimeDownloadsFromOverriddenURL(t *testing.T) {
+	module := "\x00asm mirrored"
+	archive := makeTarGz(t, map[string]string{
+		rubyWasmTreeBinary:                  module,
+		rubyWasmTreeUsr + "/local/lib/x.rb": "lib",
+	})
+	archiveSum := sha256.Sum256(archive)
+	moduleSum := sha256.Sum256([]byte(module))
+
+	var fetched string
+	fetch := func(url string) ([]byte, error) {
+		fetched = url
+		return archive, nil
+	}
+	src := runtimeSource{
+		cacheDir:   filepath.Join(t.TempDir(), "cache"),
+		url:        "https://mirror.example.test/ruby.wasm.tar.gz",
+		archiveSHA: hex.EncodeToString(archiveSum[:]),
+		binarySHA:  hex.EncodeToString(moduleSum[:]),
+	}
+	if _, err := ensureRuntimeFrom(src, fetch); err != nil {
+		t.Fatalf("ensureRuntimeFrom: %v", err)
+	}
+	if fetched != src.url {
+		t.Errorf("fetched %q, want the overridden URL %q", fetched, src.url)
+	}
+}
+
+// Drift between the archive pin and the module pin must be reported, not
+// turned into a cache that misses on every run and re-downloads forever.
+func TestEnsureRuntimeReportsModuleMismatchAfterDownload(t *testing.T) {
+	archive := makeTarGz(t, map[string]string{
+		rubyWasmTreeBinary:                  "\x00asm downloaded",
+		rubyWasmTreeUsr + "/local/lib/x.rb": "lib",
+	})
+	archiveSum := sha256.Sum256(archive)
+
+	src := runtimeSource{
+		cacheDir:   filepath.Join(t.TempDir(), "cache"),
+		url:        rubyWasmURL,
+		archiveSHA: hex.EncodeToString(archiveSum[:]),
+		binarySHA:  rubyWasmBinarySHA256, // deliberately not the module above
+	}
+	_, err := ensureRuntimeFrom(src, func(string) ([]byte, error) { return archive, nil })
+	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("error = %v, want a checksum mismatch", err)
+	}
+	if !IsUnavailable(err) {
+		t.Errorf("should wrap ErrRubyWasmUnavailable, got %v", err)
+	}
+}
+
+func TestDefaultRuntimeSourceHonorsEnvironment(t *testing.T) {
+	t.Setenv(envRuntimeDir, "/srv/ruby-wasm")
+	t.Setenv(envRuntimeURL, "https://mirror.example.test/ruby.wasm.tar.gz")
+	prev := packagedRuntimeDir
+	packagedRuntimeDir = "/opt/cinc/share/ruby-wasm"
+	t.Cleanup(func() { packagedRuntimeDir = prev })
+
+	src := defaultRuntimeSource()
+	want := []seed{{dir: "/srv/ruby-wasm", required: true}, {dir: "/opt/cinc/share/ruby-wasm"}}
+	if len(src.seeds) != len(want) {
+		t.Fatalf("seeds = %+v, want %+v", src.seeds, want)
+	}
+	for i := range want {
+		if src.seeds[i] != want[i] {
+			t.Errorf("seeds[%d] = %+v, want %+v", i, src.seeds[i], want[i])
+		}
+	}
+	if src.url != "https://mirror.example.test/ruby.wasm.tar.gz" {
+		t.Errorf("url = %q, want the env override", src.url)
+	}
+	if src.archiveSHA != rubyWasmSHA256 || src.binarySHA != rubyWasmBinarySHA256 {
+		t.Error("overrides must never relax the pinned checksums")
+	}
+}
+
+func TestDefaultRuntimeSourceWithoutOverrides(t *testing.T) {
+	t.Setenv(envRuntimeDir, "")
+	t.Setenv(envRuntimeURL, "")
+	prev := packagedRuntimeDir
+	packagedRuntimeDir = ""
+	t.Cleanup(func() { packagedRuntimeDir = prev })
+
+	src := defaultRuntimeSource()
+	if len(src.seeds) != 0 {
+		t.Errorf("seeds = %+v, want none", src.seeds)
+	}
+	if src.url != rubyWasmURL {
+		t.Errorf("url = %q, want the pinned release URL", src.url)
 	}
 }

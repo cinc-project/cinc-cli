@@ -60,6 +60,12 @@ const (
 // CI still passes.
 var ErrRubyWasmUnavailable = errors.New("policyfile: ruby.wasm runtime is unavailable")
 
+// ErrRubyWasmMisconfigured marks the subset of ErrRubyWasmUnavailable
+// caused by a runtime directory that was deliberately configured but
+// cannot be used. Callers use it to avoid telling the user to get network
+// access when the fix is to correct the directory.
+var ErrRubyWasmMisconfigured = errors.New("configured ruby.wasm runtime is unusable")
+
 // runtimeFiles points at the on-disk pieces of an extracted ruby.wasm release.
 type runtimeFiles struct {
 	// wasmPath is the CRuby wasm module.
@@ -100,49 +106,175 @@ func cacheDir() (string, error) {
 	return filepath.Join(root, "cinc-cli", "ruby-wasm", rubyWasmVersion), nil
 }
 
-// ensureRuntime returns the on-disk wasm + stdlib for the pinned release,
-// downloading, verifying, and extracting it once per machine. fetch defaults to
-// httpGetBytes; tests may pass their own.
-func ensureRuntime(fetch fetcher) (runtimeFiles, error) {
-	if fetch == nil {
-		fetch = httpGetBytes
+// packagedRuntimeDir optionally names a directory holding the pinned
+// release already extracted, for distributions that ship the runtime inside
+// their package so an installed cinc never downloads it. It is set at build
+// time:
+//
+//	go build -ldflags "-X github.com/cinc-project/cinc-cli/cli/policyfile/rubyeval.packagedRuntimeDir=/opt/cinc/share/ruby-wasm"
+//
+// The directory holds the release as the archive extracts it, so it
+// contains the top-level release directory (the same layout as the cache
+// directory). It is only ever read, and its module is checksum-verified
+// before it runs.
+//
+// Because a build-time default cannot know whether the payload shipped, an
+// unusable packaged directory falls through to the cache and the download
+// rather than failing: a package that omits or is mid-upgrade on the
+// payload still works, just without the offline shortcut.
+var packagedRuntimeDir string
+
+// Environment overrides, for operators rather than packagers:
+//
+//   - CINC_RUBY_WASM_DIR names an already-extracted release, same layout as
+//     packagedRuntimeDir. Unlike the packaged directory this is an explicit
+//     instruction, so if it cannot be used that is reported rather than
+//     quietly replaced by a download.
+//   - CINC_RUBY_WASM_URL replaces the download URL, so an air-gapped site
+//     can serve the pinned archive from a mirror. The checksum is still
+//     enforced, so the mirror has to serve the exact pinned release.
+const (
+	envRuntimeDir = "CINC_RUBY_WASM_DIR"
+	envRuntimeURL = "CINC_RUBY_WASM_URL"
+)
+
+// seed is a pre-extracted release to use instead of downloading.
+type seed struct {
+	dir string
+	// required says an unusable directory is an error rather than a
+	// fall-through. It is set for an operator's explicit override and
+	// clear for the build-time packaged default.
+	required bool
+}
+
+// runtimeSource says where ensureRuntime looks for the pinned release: the
+// seeds in order, then the per-user cache, which is populated from url on a
+// miss. cacheErr defers a cache-directory failure so a usable seed is still
+// reachable on a machine with no home directory.
+type runtimeSource struct {
+	seeds      []seed
+	cacheDir   string
+	cacheErr   error
+	url        string
+	archiveSHA string
+	binarySHA  string
+}
+
+// defaultRuntimeSource builds the source from the pinned constants, the
+// build-time packaged directory, and the environment overrides.
+func defaultRuntimeSource() runtimeSource {
+	src := runtimeSource{
+		url:        rubyWasmURL,
+		archiveSHA: rubyWasmSHA256,
+		binarySHA:  rubyWasmBinarySHA256,
 	}
-	dir, err := cacheDir()
-	if err != nil {
-		return runtimeFiles{}, err
+	if dir := os.Getenv(envRuntimeDir); dir != "" {
+		src.seeds = append(src.seeds, seed{dir: dir, required: true})
 	}
-	rt := runtimeFiles{
+	if packagedRuntimeDir != "" {
+		src.seeds = append(src.seeds, seed{dir: packagedRuntimeDir})
+	}
+	if url := os.Getenv(envRuntimeURL); url != "" {
+		src.url = url
+	}
+	// Resolved, not returned: a seeded runtime never needs the cache, and
+	// the environments a packaged runtime exists for (systemd units,
+	// containers, cron) are exactly the ones with no HOME.
+	src.cacheDir, src.cacheErr = cacheDir()
+	return src
+}
+
+// filesIn returns the runtime file locations for an extracted release
+// rooted at dir.
+func filesIn(dir string) runtimeFiles {
+	return runtimeFiles{
 		wasmPath: filepath.Join(dir, rubyWasmTreeBinary),
 		usrDir:   filepath.Join(dir, rubyWasmTreeUsr),
 	}
+}
+
+// ensureRuntime returns the on-disk wasm + stdlib for the pinned release,
+// downloading, verifying, and extracting it once per machine unless a
+// seeded copy is available. fetch defaults to httpGetBytes; tests may pass
+// their own.
+func ensureRuntime(fetch fetcher) (runtimeFiles, error) {
+	return ensureRuntimeFrom(defaultRuntimeSource(), fetch)
+}
+
+// seedError reports why a seed directory could not be used. Callers treat
+// it as a runtime-acquisition failure, so it wraps ErrRubyWasmUnavailable
+// like every other failure in this file: a broken install is not the
+// user's Policyfile being wrong.
+func seedError(dir, reason string) error {
+	return fmt.Errorf("%w: %w: the ruby.wasm runtime at %s %s; it needs the extracted %s release, which contains %s and %s",
+		ErrRubyWasmUnavailable, ErrRubyWasmMisconfigured, dir, reason, rubyWasmVersion, rubyWasmTreeBinary, rubyWasmTreeUsr)
+}
+
+// ensureRuntimeFrom is ensureRuntime with an injectable source, so the seed
+// and cache paths are testable without the real multi-megabyte blob.
+func ensureRuntimeFrom(src runtimeSource, fetch fetcher) (runtimeFiles, error) {
+	if fetch == nil {
+		fetch = httpGetBytes
+	}
+	for _, s := range src.seeds {
+		rt := filesIn(s.dir)
+		haveWasm, haveUsr := fileExists(rt.wasmPath), dirExists(rt.usrDir)
+		if !haveWasm || !haveUsr {
+			if s.required {
+				// An operator named this directory, so a layout that
+				// cannot be used is reported instead of being replaced
+				// by the download they were trying to avoid.
+				return runtimeFiles{}, seedError(s.dir, "is not a complete release")
+			}
+			continue
+		}
+		if err := verifyFileSHA256(rt.wasmPath, src.binarySHA); err != nil {
+			if s.required {
+				return runtimeFiles{}, seedError(s.dir, "does not match the pinned release")
+			}
+			// A packaged payload from a different release is skipped, not
+			// executed, so a binary upgraded ahead of its payload still
+			// works by falling back to the cache or a download.
+			continue
+		}
+		return rt, nil
+	}
+
+	if src.cacheErr != nil {
+		return runtimeFiles{}, fmt.Errorf("%w: %v", ErrRubyWasmUnavailable, src.cacheErr)
+	}
+	dir := src.cacheDir
+	rt := filesIn(dir)
 	if fileExists(rt.wasmPath) && dirExists(rt.usrDir) {
 		// Cache hit — but re-verify the cached module hasn't been tampered with
 		// since extraction before we hand it to the wasm runtime. On mismatch,
 		// fall through and re-download/re-extract rather than execute it.
-		if err := verifyFileSHA256(rt.wasmPath, rubyWasmBinarySHA256); err == nil {
+		if err := verifyFileSHA256(rt.wasmPath, src.binarySHA); err == nil {
 			return rt, nil
 		}
 	}
-	if err := materialize(dir, fetch); err != nil {
+	if err := materializeFrom(dir, fetch, src.url, src.archiveSHA); err != nil {
 		return runtimeFiles{}, err
 	}
 	if !fileExists(rt.wasmPath) || !dirExists(rt.usrDir) {
 		return runtimeFiles{}, fmt.Errorf("policyfile: extracted ruby.wasm release missing expected files under %s", dir)
 	}
+	// Verify what we just extracted, so a drift between the archive and
+	// module pins is a reported error rather than an invisible cache miss
+	// that re-downloads on every run forever.
+	if err := verifyFileSHA256(rt.wasmPath, src.binarySHA); err != nil {
+		return runtimeFiles{}, fmt.Errorf("%w: %v", ErrRubyWasmUnavailable, err)
+	}
 	return rt, nil
 }
 
-// materialize downloads the pinned archive via fetch, verifies its SHA-256
-// against rubyWasmSHA256, and extracts it into dir atomically.
-func materialize(dir string, fetch fetcher) error {
-	return materializeWith(dir, fetch, rubyWasmSHA256)
-}
-
-// materializeWith is materialize with an injectable expected checksum, so the
-// verified-extract path is testable without the real multi-megabyte blob. A
-// checksum mismatch is rejected before anything is written into dir.
-func materializeWith(dir string, fetch fetcher, wantSHA string) error {
-	archive, err := fetch(rubyWasmURL)
+// materializeFrom downloads the archive at url via fetch, verifies it
+// against wantSHA, and extracts it into dir atomically. The URL and
+// checksum are injectable so the mirror override and the verified-extract
+// path are testable without the real multi-megabyte blob. A checksum
+// mismatch is rejected before anything is written into dir.
+func materializeFrom(dir string, fetch fetcher, url, wantSHA string) error {
+	archive, err := fetch(url)
 	if err != nil {
 		return err
 	}

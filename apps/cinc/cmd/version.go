@@ -5,6 +5,8 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // Build metadata. These are overridden at build time via -ldflags; the
@@ -40,8 +42,8 @@ func newVersionInfo() versionInfo {
 // String renders the version details as human-readable output.
 func (v versionInfo) String() string {
 	return fmt.Sprintf(
-		"cinc %s\n  commit:    %s\n  built:     %s\n  go:        %s\n  platform:  %s\n",
-		v.Version, v.Commit, v.BuildDate, v.GoVersion, v.Platform,
+		"%s %s\n  commit:    %s\n  built:     %s\n  go:        %s\n  platform:  %s\n",
+		progname.Get(), v.Version, v.Commit, v.BuildDate, v.GoVersion, v.Platform,
 	)
 }
 
@@ -49,7 +51,7 @@ func (v versionInfo) String() string {
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print cinc version information",
+		Short: "Print version information",
 		Example: `Print the cinc version, commit, and build date.
 cinc version`,
 		Args: cobra.NoArgs,

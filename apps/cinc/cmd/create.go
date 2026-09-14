@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/supermarket"
 )
 
@@ -86,16 +86,30 @@ cinc config create`,
 			if err != nil {
 				return err
 			}
-			profile, err := config.NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite)
-			if err != nil {
-				return err
-			}
 			if replaceFile {
 				if err := os.Remove(cfgPath); err != nil && !os.IsNotExist(err) {
 					return fmt.Errorf("cinc: remove old credentials: %w", err)
 				}
 			}
-			if err := config.WriteProfile(cfgPath, profileName, profile); err != nil {
+			// UpdateProfile starts from whatever is already on disk, so
+			// keys this command never asks about (secret_file and the
+			// supermarket identity overrides) survive an update without
+			// being threaded through the prompts.
+			err = config.UpdateProfile(cfgPath, profileName, func(p *config.Profile) error {
+				updated, err := config.NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite)
+				if err != nil {
+					return err
+				}
+				p.ServerURL = updated.ServerURL
+				p.Org = updated.Org
+				p.RawServerURL = updated.RawServerURL
+				p.SupermarketSite = updated.SupermarketSite
+				p.ClientName = updated.ClientName
+				p.KeyPath = updated.KeyPath
+				p.SSLVerifyMode = updated.SSLVerifyMode
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
@@ -391,7 +405,9 @@ func splitChefServerURL(raw string) (host, org string) {
 // left to read. The prompts that have no sensible default re-ask until they
 // get an answer, so without this the flow would spin forever against a
 // closed stdin (`cinc config create < /dev/null`, or a CI run).
-var errStdinExhausted = errors.New("we ran out of input while waiting for an answer. `cinc config create` needs an interactive terminal; to configure without prompts, pass --client-name, --client-key, and --server-url")
+func errStdinExhausted() error {
+	return fmt.Errorf("we ran out of input while waiting for an answer. `%s config create` needs an interactive terminal; to configure without prompts, pass --client-name, --client-key, and --server-url", progname.Get())
+}
 
 // promptNoDefault asks for an answer that has no default. An empty line is a
 // valid (if usually rejected) answer, so it is reported as one; only a reader
@@ -403,7 +419,7 @@ func promptNoDefault(reader *bufio.Reader, out io.Writer, label string) (string,
 		return "", err
 	}
 	if err == io.EOF && answer == "" {
-		return "", errStdinExhausted
+		return "", errStdinExhausted()
 	}
 	return strings.TrimSpace(answer), nil
 }

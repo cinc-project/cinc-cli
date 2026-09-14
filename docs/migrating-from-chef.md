@@ -82,10 +82,12 @@ environment, the `cinc_`/`CINC_` form wins. That means your existing
 Chef keys keep working untouched, and you can override individual
 settings with the cinc form without rewriting the whole file.
 
-When `cinc` **writes** a credentials file (through migration or `cinc
-config create`), it emits the cinc-canonical `cinc_server_url`. It still
-**reads** `chef_server_url` happily, so a file you share with knife (or
-keep pointing `--config` at) keeps working both ways.
+When `cinc` **writes** a credentials file, it emits the cinc-canonical
+`cinc_server_url`. Migration produces a fresh file, so a migrated profile
+carries the cinc key alone. Updating a profile that already has
+`chef_server_url` keeps that key as well, pointing at the same server, so
+a file you share with knife (or keep pointing `--config` at) keeps working
+for both tools. It still **reads** `chef_server_url` happily either way.
 
 | Chef-prefixed | Cinc-prefixed | Where |
 | --- | --- | --- |

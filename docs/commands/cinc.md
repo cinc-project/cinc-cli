@@ -32,5 +32,5 @@ cinc [flags]
 * [cinc search](cinc_search.md)	 - Search the Cinc Server
 * [cinc supermarket](cinc_supermarket.md)	 - Manage cookbooks on Chef Supermarket
 * [cinc user](cinc_user.md)	 - Manage users on the Cinc Server
-* [cinc version](cinc_version.md)	 - Print cinc version information
+* [cinc version](cinc_version.md)	 - Print version information
 

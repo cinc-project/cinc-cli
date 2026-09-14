@@ -616,3 +616,107 @@ func TestConfigureNonInteractiveSkipsActionPrompt(t *testing.T) {
 		}
 	}
 }
+
+// seedSharedProfile writes a credentials file holding the three keys
+// `config create` never prompts for, plus one key cinc does not model.
+func seedSharedProfile(t *testing.T, dir string) (cfgPath, keyPath string) {
+	t.Helper()
+	cfgPath = filepath.Join(dir, "credentials")
+	keyPath = filepath.Join(dir, "tim.pem")
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seed := "[default]\n" +
+		"cinc_server_url = \"https://cinc.example.com/organizations/acme\"\n" +
+		"client_name = \"tim\"\n" +
+		"client_key = \"" + keyPath + "\"\n" +
+		"secret_file = \"/keys/databag_secret\"\n" +
+		"supermarket_client_name = \"tim-public\"\n" +
+		"supermarket_key = \"/keys/supermarket.pem\"\n" +
+		"node_name = \"tim\"\n"
+	if err := os.WriteFile(cfgPath, []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cfgPath, keyPath
+}
+
+func assertUnpromptedKeysSurvive(t *testing.T, cfgPath string) {
+	t.Helper()
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p := cfg.Profiles["default"]
+	for name, val := range map[string]string{
+		"secret_file":             p.SecretFile,
+		"supermarket_client_name": p.SupermarketClientName,
+		"supermarket_key":         p.SupermarketKey,
+	} {
+		if val == "" {
+			t.Errorf("%s was wiped by the update", name)
+		}
+	}
+}
+
+// The flag-driven path never runs the prompts, so a fix that only
+// populates values inside the interactive branch does not reach it.
+func TestConfigureNonInteractiveUpdateKeepsUnpromptedKeys(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfgPath, keyPath := seedSharedProfile(t, dir)
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{
+		"config", "create",
+		"--config", cfgPath,
+		"--server-url", "https://new.example.com/organizations/acme",
+		"--client-name", "tim",
+		"--client-key", keyPath,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("config create: %v", err)
+	}
+
+	assertUnpromptedKeysSurvive(t, cfgPath)
+	cfg, _ := config.Load(cfgPath)
+	if got := cfg.Profiles["default"].ServerURL; got != "https://new.example.com" {
+		t.Errorf("server URL not updated: %q", got)
+	}
+}
+
+func TestConfigureInteractiveUpdateKeepsUnpromptedKeys(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfgPath, _ := seedSharedProfile(t, dir)
+
+	// Accept the config path, choose "2) Update an existing profile",
+	// pick profile 1, then accept every prompted default.
+	root := newRootCmd()
+	root.SetIn(strings.NewReader(cfgPath + "\n2\n1\n\n\n\n\n\n\n\n"))
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"config", "create", "--config", cfgPath})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("config create: %v", err)
+	}
+
+	assertUnpromptedKeysSurvive(t, cfgPath)
+}
+
+// The first-run flow shares promptConfigure with `config create` and
+// writes through the same machinery, so it needs the same guarantee.
+func TestFirstRunConfigureKeepsUnpromptedKeys(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	cfgPath, _ := seedSharedProfile(t, dir)
+	swapTTY(t, true)
+
+	stderr := new(bytes.Buffer)
+	c := fakeCmd("", "", cfgPath+"\n2\n1\n\n\n\n\n\n\n\n", stderr)
+	if err := realRunFirstRunConfigure(c, cfgPath); err != nil {
+		t.Fatalf("first-run configure: %v", err)
+	}
+
+	assertUnpromptedKeysSurvive(t, cfgPath)
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/setup"
 	"github.com/cinc-project/cinc-cli/cli/supermarket"
 )
@@ -304,7 +305,7 @@ func offerFirstRun(cmd *cobra.Command, cincPath string) (succeeded, declined boo
 	fmt.Fprint(out, "Would you like to run the interactive setup? (Y/n) ")
 	switch strings.ToLower(readPromptLine(cmd.InOrStdin())) {
 	case "n", "no":
-		fmt.Fprintln(out, "No problem — run `cinc config create` whenever you're ready to set up a profile.")
+		fmt.Fprintf(out, "No problem — run `%s config create` whenever you're ready to set up a profile.\n", progname.Get())
 		fmt.Fprintln(out)
 		return false, true, nil
 	}
@@ -346,7 +347,7 @@ func runMigrationPrompt(cmd *cobra.Command, chefPath, cincPath string, out io.Wr
 	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "n", "no":
-		fmt.Fprintln(out, "No problem — run `cinc config create` whenever you're ready to set up a profile.")
+		fmt.Fprintf(out, "No problem — run `%s config create` whenever you're ready to set up a profile.\n", progname.Get())
 		fmt.Fprintln(out)
 		return false, true, nil
 	}
@@ -388,17 +389,34 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 	if answers.ClientKey == "" {
 		answers.ClientKey = defaultClientKey(answers.ClientName)
 	}
-	profile, err := config.NewProfile(
-		answers.ChefServerURL,
-		answers.ClientName,
-		answers.ClientKey,
-		answers.SSLVerifyMode,
-		answers.SupermarketSite,
-	)
-	if err != nil {
-		return err
+	if answers.ReplaceFile {
+		if err := os.Remove(answers.ConfigPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("cinc: remove old credentials: %w", err)
+		}
 	}
-	if err := config.WriteProfile(answers.ConfigPath, answers.ProfileName, profile); err != nil {
+	// Same reasoning as `config create`: the prompts do not cover every
+	// key, so update what is on disk rather than replacing it.
+	err = config.UpdateProfile(answers.ConfigPath, answers.ProfileName, func(p *config.Profile) error {
+		updated, err := config.NewProfile(
+			answers.ChefServerURL,
+			answers.ClientName,
+			answers.ClientKey,
+			answers.SSLVerifyMode,
+			answers.SupermarketSite,
+		)
+		if err != nil {
+			return err
+		}
+		p.ServerURL = updated.ServerURL
+		p.Org = updated.Org
+		p.RawServerURL = updated.RawServerURL
+		p.SupermarketSite = updated.SupermarketSite
+		p.ClientName = updated.ClientName
+		p.KeyPath = updated.KeyPath
+		p.SSLVerifyMode = updated.SSLVerifyMode
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()
@@ -410,5 +428,5 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 }
 
 func missingCredentialsError(cincPath string) error {
-	return fmt.Errorf("no credentials yet at %s — run `cinc config create` to set one up", cincPath)
+	return fmt.Errorf("no credentials yet at %s — run `%s config create` to set one up", cincPath, progname.Get())
 }

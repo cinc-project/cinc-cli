@@ -528,6 +528,12 @@ func stderrSuffix(s string) string {
 
 // IsUnavailable reports whether err indicates the ruby.wasm runtime could not
 // be obtained (so callers can skip rather than fail).
+// IsMisconfigured reports whether err is a configured-runtime problem
+// rather than a missing download.
+func IsMisconfigured(err error) bool {
+	return errors.Is(err, ErrRubyWasmMisconfigured)
+}
+
 func IsUnavailable(err error) bool {
 	return errors.Is(err, ErrRubyWasmUnavailable)
 }
