@@ -14,6 +14,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	sm "github.com/cinc-project/cinc-supermarket-api"
 	"github.com/mattn/go-isatty"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // Options configures Run.
@@ -42,7 +44,7 @@ func Run(ctx context.Context, opts Options) error {
 		opts.Stderr = os.Stderr
 	}
 	if !stdoutIsTTY(opts.Stdout) {
-		return errors.New("cinc supermarket explore needs an interactive terminal — run it from a normal shell session")
+		return fmt.Errorf("%s supermarket explore needs an interactive terminal — run it from a normal shell session", progname.Get())
 	}
 	if opts.Site == "" {
 		opts.Site = sm.DefaultBaseURL

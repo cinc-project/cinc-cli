@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newRootCmd builds the root `cinc` command and registers its
@@ -60,7 +64,10 @@ func newRootCmd() *cobra.Command {
 // "you're ready to go" message instead of having their original
 // server-touching command run on the brand-new profile.
 func Execute() error {
+	name := programNameFromArgv(os.Args[0])
+	progname.Set(name)
 	root := newRootCmd()
+	applyProgramName(root, name)
 	err := root.Execute()
 	if errors.Is(err, errFirstRunCompleted) {
 		return nil
@@ -71,6 +78,63 @@ func Execute() error {
 		fmt.Fprintln(root.ErrOrStderr(), "Error:", err)
 	}
 	return err
+}
+
+// safeProgramName is the shape a program name has to have before it is
+// echoed into help text and, via cobra, into generated shell-completion
+// scripts. argv[0] is caller-controlled (a symlink name, `exec -a`), and
+// cobra interpolates the root name into completion scripts unquoted, so an
+// unvalidated name is a command-injection vector for anyone who sources
+// them. Anything outside this shape falls back to the canonical name.
+var safeProgramName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// programNameFromArgv returns the name the binary was invoked under, so a
+// packager can install it as something other than `cinc` (the name is
+// taken by other tools in some distributions) and the help text, the
+// completion scripts and the "run `<name> ...`" hints all follow along.
+// Falls back to the canonical name when argv[0] is unusable or unsafe.
+func programNameFromArgv(argv0 string) string {
+	name := filepath.Base(argv0)
+	// Windows resolves executables case-insensitively, so CINC.EXE and
+	// cinc.exe are both ordinary invocations.
+	if ext := filepath.Ext(name); strings.EqualFold(ext, ".exe") {
+		name = strings.TrimSuffix(name, ext)
+	}
+	if !safeProgramName.MatchString(name) {
+		return progname.Default
+	}
+	return name
+}
+
+// applyProgramName renames the whole command tree. Cobra derives usage
+// lines, "help for <name>" and completion registration from the root Use,
+// but it prints Short/Long/Example verbatim, and those carry ~100 authored
+// `cinc <verb>` command lines. Rewriting them here keeps a renamed binary
+// from printing its own usage line directly above an example for a command
+// the user does not have.
+//
+// Only Execute applies it: tests and the doc generator build the tree
+// through newRootCmd/NewRootCmd and keep the canonical name, so generated
+// docs are unaffected.
+func applyProgramName(root *cobra.Command, name string) {
+	if name == progname.Default {
+		return
+	}
+	root.Use = name
+	rewriteCommandText(root, name)
+}
+
+// rewriteCommandText replaces the canonical program name with name in every
+// command's authored help text, depth-first over the whole tree.
+func rewriteCommandText(cmd *cobra.Command, name string) {
+	old := progname.Default + " "
+	replacement := name + " "
+	cmd.Short = strings.ReplaceAll(cmd.Short, old, replacement)
+	cmd.Long = strings.ReplaceAll(cmd.Long, old, replacement)
+	cmd.Example = strings.ReplaceAll(cmd.Example, old, replacement)
+	for _, child := range cmd.Commands() {
+		rewriteCommandText(child, name)
+	}
 }
 
 // NewRootCmd returns a fresh root command tree. It exists so that

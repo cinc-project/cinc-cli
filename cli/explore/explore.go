@@ -2,7 +2,6 @@ package explore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // Options configures Run.
@@ -49,10 +49,10 @@ func Run(ctx context.Context, opts Options) error {
 		opts.NewClient = client.New
 	}
 	if !stdoutIsTTY(opts.Stdout) {
-		return errors.New("cinc explore needs an interactive terminal — run it from a normal shell session")
+		return fmt.Errorf("%s explore needs an interactive terminal — run it from a normal shell session", progname.Get())
 	}
 	if len(opts.Profiles) == 0 {
-		return errors.New("we couldn't find any profiles to explore. Run `cinc config create` to set one up")
+		return fmt.Errorf("we couldn't find any profiles to explore. Run `%s config create` to set one up", progname.Get())
 	}
 
 	s, err := resolveStartup(opts)

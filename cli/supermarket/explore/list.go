@@ -9,6 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	sm "github.com/cinc-project/cinc-supermarket-api"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 const (
@@ -406,7 +408,7 @@ func renderHeader(m model, width int) string {
 	if site == "" {
 		site = sm.DefaultBaseURL
 	}
-	title := m.styles.Title.Render("cinc supermarket explore")
+	title := m.styles.Title.Render(progname.Get() + " supermarket explore")
 	subtitle := m.styles.Subtitle.Render(" · " + site)
 
 	sorts := renderSortBar(m)

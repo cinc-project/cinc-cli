@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // ----- shared chrome ---------------------------------------------------
@@ -178,7 +180,7 @@ func (m model) viewProfiles() string {
 	for i, name := range m.profileNames {
 		b.WriteString(m.renderChoice(name, i == m.profileCursor) + "\n")
 	}
-	return m.frame("cinc explore", b.String(), []string{
+	return m.frame(progname.Get()+" explore", b.String(), []string{
 		m.hint("↑/↓", "move"), m.hint("↵", "select"), m.hint("q", "quit"),
 	})
 }
@@ -199,7 +201,7 @@ func (m model) viewKinds() string {
 		hints = append(hints, m.hint("esc", "profiles"))
 	}
 	hints = append(hints, m.hint("q", "quit"))
-	return m.frame("cinc explore", b.String(), hints)
+	return m.frame(progname.Get()+" explore", b.String(), hints)
 }
 
 // selectedMarker is the cursor glyph drawn against the highlighted row.

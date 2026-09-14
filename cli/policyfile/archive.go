@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	cinc "github.com/cinc-project/cinc-api"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // BundleLockName is the Policyfile lock file Export writes at the root of a
@@ -149,7 +151,7 @@ func bundleRoot(dir string) (string, error) {
 			return filepath.Join(dir, e.Name()), nil
 		}
 	}
-	return "", fmt.Errorf("policyfile: the archive doesn't contain a %s — is it a `cinc policy export` bundle?", BundleLockName)
+	return "", fmt.Errorf("policyfile: the archive doesn't contain a %s — is it a `%s policy export` bundle?", BundleLockName, progname.Get())
 }
 
 func fileExists(p string) bool {

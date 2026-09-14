@@ -1,6 +1,6 @@
 ## cinc version
 
-Print cinc version information
+Print version information
 
 ```
 cinc version [flags]
