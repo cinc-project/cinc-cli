@@ -86,16 +86,30 @@ cinc config create`,
 			if err != nil {
 				return err
 			}
-			profile, err := config.NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite)
-			if err != nil {
-				return err
-			}
 			if replaceFile {
 				if err := os.Remove(cfgPath); err != nil && !os.IsNotExist(err) {
 					return fmt.Errorf("cinc: remove old credentials: %w", err)
 				}
 			}
-			if err := config.WriteProfile(cfgPath, profileName, profile); err != nil {
+			// UpdateProfile starts from whatever is already on disk, so
+			// keys this command never asks about (secret_file and the
+			// supermarket identity overrides) survive an update without
+			// being threaded through the prompts.
+			err = config.UpdateProfile(cfgPath, profileName, func(p *config.Profile) error {
+				updated, err := config.NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite)
+				if err != nil {
+					return err
+				}
+				p.ServerURL = updated.ServerURL
+				p.Org = updated.Org
+				p.RawServerURL = updated.RawServerURL
+				p.SupermarketSite = updated.SupermarketSite
+				p.ClientName = updated.ClientName
+				p.KeyPath = updated.KeyPath
+				p.SSLVerifyMode = updated.SSLVerifyMode
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()

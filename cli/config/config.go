@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -209,6 +210,40 @@ var managedKeys = []string{
 	"supermarket_key",
 	"ssl_verify_mode",
 	"secret_file",
+}
+
+// UpdateProfile applies mutate to the profile named name in the credentials
+// file at path and writes the result back.
+//
+// This is the entry point callers should reach for when they are changing an
+// existing profile. WriteProfile replaces every key cinc manages, so a caller
+// that assembles a Profile from only the values it collected clears the ones
+// it did not: `config create` never prompts for secret_file,
+// supermarket_client_name or supermarket_key, so writing a Profile built from
+// its answers alone silently deletes them. UpdateProfile starts from what is
+// already on disk, so an unmentioned key keeps its value by construction
+// rather than by every caller remembering to carry it.
+//
+// A profile that does not exist yet starts empty, so this also serves
+// create-or-update callers. Keys cinc does not model are preserved by
+// WriteProfile regardless.
+func UpdateProfile(path, name string, mutate func(*Profile) error) error {
+	if name == "" {
+		return fmt.Errorf("config: profile name is required")
+	}
+	existing := Profile{}
+	if cfg, err := Load(path); err == nil {
+		if p, ok := cfg.Profiles[name]; ok {
+			existing = p
+		}
+	} else if !os.IsNotExist(errors.Unwrap(err)) && !os.IsNotExist(err) {
+		// A malformed file is reported rather than silently overwritten.
+		return err
+	}
+	if err := mutate(&existing); err != nil {
+		return err
+	}
+	return WriteProfile(path, name, existing)
 }
 
 // WriteProfile creates or updates one profile in the credentials file at path.

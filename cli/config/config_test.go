@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -703,4 +704,107 @@ func hasValidationIssue(issues []ValidationIssue, profile, field string) bool {
 		}
 	}
 	return false
+}
+
+func TestUpdateProfileKeepsKeysTheMutatorDoesNotTouch(t *testing.T) {
+	path := writeConfig(t, `
+[default]
+cinc_server_url         = "https://old.example.com/organizations/acme"
+client_name             = "tim"
+client_key              = "/keys/tim.pem"
+secret_file             = "/keys/databag_secret"
+supermarket_client_name = "tim-public"
+supermarket_key         = "/keys/supermarket.pem"
+node_name               = "tim"
+`)
+
+	// A caller that only knows about the connection fields, which is
+	// every caller `config create` has.
+	err := UpdateProfile(path, "default", func(p *Profile) error {
+		p.ServerURL = "https://new.example.com"
+		p.Org = "acme"
+		p.ClientName = "tim"
+		p.KeyPath = "/keys/rotated.pem"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := cfg.Profiles["default"]
+	if got.KeyPath != "/keys/rotated.pem" {
+		t.Errorf("client_key not updated: %q", got.KeyPath)
+	}
+	if got.ServerURL != "https://new.example.com" {
+		t.Errorf("server URL not updated: %q", got.ServerURL)
+	}
+	for name, val := range map[string]string{
+		"secret_file":             got.SecretFile,
+		"supermarket_client_name": got.SupermarketClientName,
+		"supermarket_key":         got.SupermarketKey,
+	} {
+		if val == "" {
+			t.Errorf("%s was wiped by an update that never mentioned it", name)
+		}
+	}
+	// Keys cinc does not model still ride along via WriteProfile.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `node_name = "tim"`) {
+		t.Errorf("unmodelled key dropped\nfile:\n%s", raw)
+	}
+}
+
+func TestUpdateProfileCreatesAMissingProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".cinc", "credentials")
+
+	err := UpdateProfile(path, "default", func(p *Profile) error {
+		p.ServerURL = "https://cinc.example.com"
+		p.Org = "acme"
+		p.ClientName = "tim"
+		p.KeyPath = "/keys/tim.pem"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Profiles["default"].Org; got != "acme" {
+		t.Errorf("org = %q, want acme", got)
+	}
+}
+
+func TestUpdateProfilePropagatesMutatorError(t *testing.T) {
+	path := writeConfig(t, `
+[default]
+cinc_server_url = "https://cinc.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+`)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantErr := errors.New("boom")
+	if err := UpdateProfile(path, "default", func(*Profile) error { return wantErr }); !errors.Is(err, wantErr) {
+		t.Fatalf("UpdateProfile error = %v, want %v", err, wantErr)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("file rewritten despite a mutator error\nbefore:\n%s\nafter:\n%s", before, after)
+	}
 }

@@ -389,17 +389,34 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 	if answers.ClientKey == "" {
 		answers.ClientKey = defaultClientKey(answers.ClientName)
 	}
-	profile, err := config.NewProfile(
-		answers.ChefServerURL,
-		answers.ClientName,
-		answers.ClientKey,
-		answers.SSLVerifyMode,
-		answers.SupermarketSite,
-	)
-	if err != nil {
-		return err
+	if answers.ReplaceFile {
+		if err := os.Remove(answers.ConfigPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("cinc: remove old credentials: %w", err)
+		}
 	}
-	if err := config.WriteProfile(answers.ConfigPath, answers.ProfileName, profile); err != nil {
+	// Same reasoning as `config create`: the prompts do not cover every
+	// key, so update what is on disk rather than replacing it.
+	err = config.UpdateProfile(answers.ConfigPath, answers.ProfileName, func(p *config.Profile) error {
+		updated, err := config.NewProfile(
+			answers.ChefServerURL,
+			answers.ClientName,
+			answers.ClientKey,
+			answers.SSLVerifyMode,
+			answers.SupermarketSite,
+		)
+		if err != nil {
+			return err
+		}
+		p.ServerURL = updated.ServerURL
+		p.Org = updated.Org
+		p.RawServerURL = updated.RawServerURL
+		p.SupermarketSite = updated.SupermarketSite
+		p.ClientName = updated.ClientName
+		p.KeyPath = updated.KeyPath
+		p.SSLVerifyMode = updated.SSLVerifyMode
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()
