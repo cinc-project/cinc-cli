@@ -182,6 +182,53 @@ wins, the same cinc-over-chef rule that applies to the config keys.
 | `CINC_SECRET_FILE` | Default encrypted data bag secret path | `CHEF_SECRET_FILE` |
 | `CHEF_SECRET_FILE` | Default encrypted data bag secret path (chef-compat) | — |
 | `NO_COLOR` | Disables bold/colored terminal styling | — |
+| `CINC_RUBY_WASM_DIR` | Directory holding an already-extracted Policyfile runtime (see below) | — |
+| `CINC_RUBY_WASM_URL` | Mirror to download the pinned Policyfile runtime from | — |
+
+### The Policyfile evaluation runtime
+
+`cinc policy install` evaluates your `Policyfile.rb` with CRuby compiled
+to WebAssembly. That runtime is not built into the binary: the first
+time it is needed, cinc downloads the pinned `ruby.wasm` release from
+GitHub, verifies its SHA-256, and caches the extracted tree under your
+OS cache directory (for example `~/.cache/cinc-cli/ruby-wasm/<version>`
+on Linux). Every later run reuses the cache, re-checking the module's
+checksum each time.
+
+That first download is around 25 MB, so two overrides exist for machines
+that cannot reach GitHub:
+
+- `CINC_RUBY_WASM_URL` points the download at a mirror. The checksum is
+  still enforced, so the mirror has to serve the exact pinned release.
+- `CINC_RUBY_WASM_DIR` points at a directory that already holds the
+  extracted release. cinc reads from it and never writes to it. Because
+  setting it is an explicit instruction, a directory that does not hold
+  the pinned release is reported as an error rather than quietly
+  replaced by the download you were trying to avoid.
+
+Both the directory here and the packaged one below hold the release as
+the archive extracts it, so the path you name is the one **containing**
+the top-level release directory, not the release directory itself:
+
+```
+/srv/ruby-wasm/                                  <- name this path
+  ruby-3.4-wasm32-unknown-wasip1-full/
+    usr/local/bin/ruby
+```
+
+Packagers can bake the same thing in at build time so an installed cinc
+never downloads anything, by extracting the pinned release into a
+directory inside the package and naming it with
+`-ldflags "-X github.com/cinc-project/cinc-cli/cli/policyfile/rubyeval.packagedRuntimeDir=/path/to/dir"`.
+That one is a default rather than an instruction, so if it is missing or
+holds a different release cinc falls back to the cache and the download
+instead of failing. This means a binary upgraded ahead of its runtime
+payload keeps working. `CINC_RUBY_WASM_DIR` is tried first when both are
+set.
+
+Whichever source the module comes from, its compiled form is cached per
+user under the OS cache directory after the first run. That is a
+compilation cache, not a copy of the release.
 
 ## Global flags
 

@@ -58,6 +58,9 @@ cinc policy install path/to/Policyfile.rb --format json`,
 
 			eng := rubyeval.NewEngine()
 			eval, raw, err := eng.EvaluateFileWithRaw(cmd.Context(), pfPath)
+			if rubyeval.IsMisconfigured(err) {
+				return fmt.Errorf("cinc needs the embedded Ruby engine (ruby.wasm) to evaluate a Policyfile, and the one it was pointed at can't be used: %w", err)
+			}
 			if rubyeval.IsUnavailable(err) {
 				return fmt.Errorf("cinc needs the embedded Ruby engine (ruby.wasm) to evaluate a Policyfile, but we couldn't download it: %w.\nOnce you have network access the first run will cache it and later runs work offline", err)
 			}
