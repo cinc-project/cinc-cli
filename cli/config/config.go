@@ -273,9 +273,9 @@ func WriteProfile(path, name string, p Profile) error {
 	if profile == nil {
 		profile = map[string]any{}
 	}
-	// Write the cinc-canonical server URL key and retire the chef-prefixed one
-	// on this profile. Reads still accept chef_server_url (cinc wins when both
-	// appear), so knife-shared files keep loading unchanged.
+	// Write the cinc-canonical server URL key. Reads still accept
+	// chef_server_url (cinc wins when both appear), so knife-shared files
+	// keep loading unchanged.
 	managed := map[string]string{
 		"cinc_server_url":         profileServerURL(p),
 		"chef_server_url":         "",
@@ -287,7 +287,24 @@ func WriteProfile(path, name string, p Profile) error {
 		"ssl_verify_mode":         p.SSLVerifyMode,
 		"secret_file":             p.SecretFile,
 	}
+	// A profile that already carries chef_server_url is shared with chef
+	// tools that read only that key, and chef-config knows nothing of
+	// cinc_server_url. Retiring it would leave knife on its built-in
+	// default server URL, so keep it pointing wherever cinc_server_url
+	// points. Mirror on presence, not on value: when the rewrite has no
+	// server URL to offer (a Supermarket-only profile, or a URL that did
+	// not parse) the key is left exactly as it was rather than emptied,
+	// which would delete it below. A profile without it stays
+	// cinc-canonical only.
+	_, shared := profile["chef_server_url"]
+
 	for _, key := range managedKeys {
+		if key == "chef_server_url" && shared {
+			if url := managed["cinc_server_url"]; url != "" {
+				profile[key] = url
+			}
+			continue
+		}
 		if value := managed[key]; value != "" {
 			profile[key] = value
 		} else {

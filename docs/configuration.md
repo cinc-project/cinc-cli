@@ -60,8 +60,10 @@ optional.
 > `cinc_server_url` is. When both appear in the same profile, the
 > cinc-prefixed value wins. When `cinc` writes a profile (via `cinc
 > config create` or first-run migration), it emits the cinc-canonical
-> `cinc_server_url`, but it keeps reading `chef_server_url`, so existing
-> and knife-shared files load unchanged. See
+> `cinc_server_url`. A profile that already carries `chef_server_url`
+> keeps it too, updated to the same value, because knife reads only that
+> key: dropping it would leave knife on its built-in default server URL.
+> A profile that never had it stays cinc-canonical only. See
 > [Migrating from Chef](migrating-from-chef.md#chef--and-cinc-prefixed-keys)
 > for the full duality story.
 

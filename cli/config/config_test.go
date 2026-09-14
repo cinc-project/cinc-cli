@@ -808,3 +808,94 @@ client_key      = "/keys/tim.pem"
 		t.Errorf("file rewritten despite a mutator error\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
+
+func TestWriteProfileKeepsChefServerURLCurrentOnSharedProfiles(t *testing.T) {
+	path := writeConfig(t, `
+[default]
+chef_server_url = "https://old.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+node_name       = "tim"
+`)
+
+	if err := WriteProfile(path, "default", Profile{
+		ServerURL:  "https://new.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "/keys/tim.pem",
+	}); err != nil {
+		t.Fatalf("WriteProfile: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	want := "https://new.example.com/organizations/acme"
+	// cinc reads cinc_server_url; knife on the same file reads
+	// chef_server_url and has no notion of the cinc key. Both must point
+	// at the new server.
+	for _, line := range []string{
+		`cinc_server_url = "` + want + `"`,
+		`chef_server_url = "` + want + `"`,
+	} {
+		if !strings.Contains(body, line) {
+			t.Errorf("missing %s\nfile:\n%s", line, body)
+		}
+	}
+	if strings.Contains(body, "old.example.com") {
+		t.Errorf("stale server URL left behind\nfile:\n%s", body)
+	}
+}
+
+func TestWriteProfileDoesNotAddChefServerURLToFreshProfiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".cinc", "credentials")
+
+	if err := WriteProfile(path, "default", Profile{
+		ServerURL:  "https://cinc.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "/keys/tim.pem",
+	}); err != nil {
+		t.Fatalf("WriteProfile: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "chef_server_url") {
+		t.Errorf("a profile that never had chef_server_url should stay cinc-canonical\nfile:\n%s", raw)
+	}
+}
+
+// The mirror copies presence, not value: a rewrite with no server URL to
+// offer must leave the shared key alone rather than empty it, which the
+// managed-key loop would turn into a delete.
+func TestWriteProfileKeepsChefServerURLWhenTheRewriteHasNoServerURL(t *testing.T) {
+	path := writeConfig(t, `
+[default]
+chef_server_url = "https://chef.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+node_name       = "tim"
+`)
+
+	// A Supermarket-only rewrite of the same profile: no server URL.
+	if err := WriteProfile(path, "default", Profile{
+		SupermarketSite: "https://supermarket.example.test",
+		ClientName:      "tim",
+		KeyPath:         "/keys/tim.pem",
+	}); err != nil {
+		t.Fatalf("WriteProfile: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `chef_server_url = "https://chef.example.com/organizations/acme"`) {
+		t.Errorf("knife's server URL was dropped by a rewrite that had none to offer\nfile:\n%s", raw)
+	}
+}
