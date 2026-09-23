@@ -51,6 +51,7 @@ optional.
 | `client_name` | Client/user name requests are signed as | Yes | — | (same key) | `--client-name` |
 | `client_key` | Path to the RSA private key (PEM) used to sign requests | Yes | — | (same key) | `--client-key` |
 | `ssl_verify_mode` | TLS verification: `:verify_peer` or `:verify_none` | No | `:verify_peer` | (same key) | `--ssl-verify-mode` |
+| `trusted_certs_dir` | Directory of extra CA certificates (`*.crt`, `*.pem`) to trust | No | `~/.cinc/trusted_certs`, then `~/.chef/trusted_certs`, when present | (same key) | — |
 | `secret_file` | Path to the default encrypted data bag secret | No | — | (same key) | `--secret-file`, `$CINC_SECRET_FILE` / `$CHEF_SECRET_FILE` |
 | `supermarket_site` | Supermarket instance the `cinc supermarket` commands target | No | `https://supermarket.chef.io` | (same key) | `--supermarket-site` |
 | `supermarket_client_name` | Username used to sign Supermarket uploads | No | falls back to `client_name` | none (cinc-only) | — |
@@ -106,6 +107,45 @@ values are accepted:
 
 Any other value is rejected by `cinc config validate`. The leading
 colon matches knife's Ruby-symbol spelling.
+
+### `trusted_certs_dir`
+
+Points `cinc` at a directory of extra CA certificates to trust when it
+talks to the server. Use it when your server's certificate comes from an
+internal or self-signed CA: instead of turning verification off with
+`ssl_verify_mode = ":verify_none"`, drop the CA certificate into the
+directory and keep full verification.
+
+```toml
+[default]
+client_name       = "tim"
+client_key        = "/keys/tim.pem"
+cinc_server_url   = "https://cinc.internal.example.com/organizations/acme"
+trusted_certs_dir = "~/.cinc/trusted_certs"
+```
+
+Every `*.crt` and `*.pem` file in the directory is read, and the
+certificates it holds are trusted in addition to your system's
+certificates (the system store is never replaced). Other files and
+subdirectories are ignored. A leading `~` is expanded to your home
+directory; any other relative path is relative to the directory you run
+`cinc` from.
+
+When the key is unset, `cinc` looks for `~/.cinc/trusted_certs` and uses
+it if it exists. For chef compatibility it falls back to
+`~/.chef/trusted_certs`, which is where `knife ssl fetch` saves
+certificates, so an existing knife setup works as is. If neither
+directory exists, only the system certificates are trusted.
+
+A `trusted_certs_dir` you set explicitly must exist: if it doesn't,
+every server command stops and tells you so. A certificate file that
+holds nothing `cinc` can parse is skipped without complaint on normal
+commands; `cinc config validate` lists those files so you can clean them
+up.
+
+The key name matches knife's `trusted_certs_dir`, so the same
+credentials file serves both tools. It only affects connections to the
+Cinc Server, not the Supermarket commands.
 
 ### `secret_file` and encrypted data bags
 
@@ -284,7 +324,7 @@ required. `config create` writes TOML only; `cinc` never emits Ruby
 `config.rb`/`client.rb` files.
 
 > `config create` does **not** have flags for `secret_file`,
-> `supermarket_client_name`, or `supermarket_key`. Add those by editing
+> `trusted_certs_dir`, `supermarket_client_name`, or `supermarket_key`. Add those by editing
 > the credentials file directly; it's plain TOML. Note also that
 > rewriting a profile through `config create` does not preserve comments
 > or the original key ordering in the file.
@@ -301,6 +341,9 @@ that:
   `chef_server_url`, or `supermarket_site`),
 - any server URL includes the `/organizations/<org>` segment,
 - `ssl_verify_mode`, when set, is `:verify_peer` or `:verify_none`,
+- the trusted certificates directory, when set or found at a default
+  location, exists and every `*.crt`/`*.pem` file in it holds a
+  certificate (unparseable files are a warning, not a failure),
 - `supermarket_site`, when set, is a valid URL,
 - and each configured server actually answers (reporting its TLS
   posture as its own check).

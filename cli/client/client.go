@@ -41,6 +41,15 @@ func New(p config.Profile) (*cinc.Client, error) {
 	}
 
 	var cincOpts []cinc.Option
+	trusted, err := TrustedCertsFor(p)
+	if err != nil {
+		return nil, err
+	}
+	if trusted != nil && len(trusted.Loaded) > 0 {
+		// Only swap in our own HTTP client when there is something extra to
+		// trust; otherwise cinc-api keeps its default client untouched.
+		cincOpts = append(cincOpts, cinc.WithHTTPClient(trustedHTTPClient(trusted.Pool)))
+	}
 	if p.SSLVerifyMode == ":verify_none" {
 		cincOpts = append(cincOpts, cinc.WithSkipTLSVerify(true))
 		fmt.Fprintf(tlsWarnWriter,

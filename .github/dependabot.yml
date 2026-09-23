@@ -12,6 +12,16 @@ updates:
         patterns:
           - "*"
 
+  # The integration suite's module, which pins cinc-server-ng.
+  - package-ecosystem: gomod
+    directory: "/integration"
+    schedule:
+      interval: weekly
+    groups:
+      integration-dependencies:
+        patterns:
+          - "*"
+
   # GitHub Actions used by the workflows in .github/workflows.
   - package-ecosystem: github-actions
     directory: "/"
