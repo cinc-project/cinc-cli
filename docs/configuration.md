@@ -160,10 +160,13 @@ the first source that's set, in this order:
 3. `$CINC_SECRET_FILE`, then `$CHEF_SECRET_FILE` (cinc wins).
 4. the profile's `secret_file` key.
 
-`--secret` and `--secret-file` can't be combined. The file's bytes are
-used exactly as written, never trimmed, because Chef treats the whole
-file as the key, so an existing `encrypted_data_bag_secret` works
-unchanged. The on-disk key name matches knife's `knife[:secret_file]`.
+`--secret` and `--secret-file` can't be combined. A secret file is read
+the way Chef reads it: leading and trailing whitespace (such as the
+newline most editors add) is stripped, and whatever is inside is kept,
+so an existing `encrypted_data_bag_secret` works unchanged and items
+stay readable by knife and chef-client. A file that's empty once
+stripped is refused. A `--secret` literal is used exactly as given. The
+on-disk key name matches knife's `knife[:secret_file]`.
 
 ### `supermarket_site` and the upload identity
 

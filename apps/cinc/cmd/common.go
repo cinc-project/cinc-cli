@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -85,10 +86,13 @@ func resolveFormat(cmd *cobra.Command) (printer.Format, error) {
 //  3. $CINC_SECRET_FILE, then $CHEF_SECRET_FILE (cinc wins),
 //  4. the resolved profile's secret_file key.
 //
-// The bytes are returned untouched — the cinc-api codec derives the AES
-// key itself, and a secret file is never trimmed because Chef treats the
-// whole file as the secret. --secret and --secret-file are mutually
-// exclusive.
+// The cinc-api codec derives the AES key from these bytes itself. A
+// literal is used exactly as given, as knife uses its --secret. A file's
+// contents are stripped of leading and trailing whitespace, as Chef's
+// EncryptedDataBagItem.load_secret strips them, so a secret file ending in
+// a newline works the same for cinc, knife and chef-client; a file that is
+// empty once stripped is refused, as Chef refuses it. --secret and
+// --secret-file are mutually exclusive.
 func resolveSecret(cmd *cobra.Command, profile config.Profile) ([]byte, error) {
 	literal, _ := cmd.Flags().GetString("secret")
 	file, _ := cmd.Flags().GetString("secret-file")
@@ -113,14 +117,19 @@ func resolveSecret(cmd *cobra.Command, profile config.Profile) ([]byte, error) {
 	return nil, errors.New("we need an encrypted data bag secret but couldn't find one. Pass --secret-file <path> (or --secret <literal>), set $CINC_SECRET_FILE, or add a secret_file key to your credentials profile.")
 }
 
-// readSecretFile reads a secret file's full contents as the raw secret
-// bytes, wrapping a read error in a conversational message.
+// readSecretFile reads a secret file the way Chef does: its contents with
+// leading and trailing whitespace stripped. A read error, or a file with
+// nothing left once stripped, becomes a conversational message.
 func readSecretFile(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("can't read the data bag secret at %s: %w", path, err)
 	}
-	return data, nil
+	secret := bytes.TrimSpace(data)
+	if len(secret) == 0 {
+		return nil, fmt.Errorf("the data bag secret file at %s is empty. Put the shared secret in it, or point --secret-file at the right file.", path)
+	}
+	return secret, nil
 }
 
 // resolveClient builds a server client from the --config and --profile
