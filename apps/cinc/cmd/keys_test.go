@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -334,6 +335,88 @@ func TestKeyEditCommandReadsFromFile(t *testing.T) {
 	// An empty name in the file is backfilled from the path arg.
 	if gotPut.Name != "default" {
 		t.Errorf("PUT body name = %q, want default (backfilled from path)", gotPut.Name)
+	}
+}
+
+// keyRegenerateServer answers a key PUT the way erchef does for
+// {"create_key": true}: with the key and the newly generated private key.
+func keyRegenerateServer(t *testing.T, path, privKey string, gotPut *map[string]any) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected method %q on %s", r.Method, r.URL.Path)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(gotPut); err != nil {
+			t.Errorf("decode PUT body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"name": "rotation", "public_key": "PUB", "expiration_date": "infinity", "private_key": privKey,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestKeyEditPrintsRegeneratedPrivateKey covers an edit that asks the server
+// to regenerate the key (create_key). The response carries the only copy of
+// the new private key, so it must reach the user rather than be dropped.
+func TestKeyEditPrintsRegeneratedPrivateKey(t *testing.T) {
+	const privKey = "-----BEGIN RSA PRIVATE KEY-----\nNEW\n-----END RSA PRIVATE KEY-----\n"
+	var gotPut map[string]any
+	srv := keyRegenerateServer(t, "/organizations/acme/clients/worker-01/keys/rotation", privKey, &gotPut)
+
+	file := filepath.Join(t.TempDir(), "key.json")
+	if err := os.WriteFile(file, []byte(`{"create_key": true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := newRootCmd()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"client", "key", "edit", "worker-01", "rotation", "--file", file, "--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc client key edit: %v", err)
+	}
+	if gotPut["create_key"] != true {
+		t.Errorf("PUT body = %v, want create_key true", gotPut)
+	}
+	if got := buf.String(); got != privKey {
+		t.Errorf("stdout = %q, want the regenerated private key", got)
+	}
+}
+
+// TestKeyEditWritesRegeneratedPrivateKeyToFile checks --key-file on edit.
+func TestKeyEditWritesRegeneratedPrivateKeyToFile(t *testing.T) {
+	const privKey = "-----BEGIN RSA PRIVATE KEY-----\nNEW\n-----END RSA PRIVATE KEY-----\n"
+	var gotPut map[string]any
+	srv := keyRegenerateServer(t, "/users/alice/keys/rotation", privKey, &gotPut)
+
+	file := filepath.Join(t.TempDir(), "key.json")
+	if err := os.WriteFile(file, []byte(`{"create_key": true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "rotation.pem")
+	root := newRootCmd()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"user", "key", "edit", "alice", "rotation", "--file", file, "--key-file", keyPath,
+		"--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc user key edit --key-file: %v", err)
+	}
+	got, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != privKey {
+		t.Errorf("key file = %q, want the regenerated private key", got)
+	}
+	want := fmt.Sprintf("Updated key %q on user %q (key written to %s)\n", "rotation", "alice", keyPath)
+	if out := buf.String(); out != want {
+		t.Errorf("stdout = %q, want %q", out, want)
 	}
 }
 
