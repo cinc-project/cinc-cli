@@ -9,8 +9,14 @@ permissions:
   contents: write
 
 jobs:
+  integration:
+    # A release publishes nothing until the integration suite passes at the
+    # tagged commit.
+    uses: ./.github/workflows/integration.yml
+
   binaries:
     name: Build release binaries
+    needs: integration
     runs-on: ubuntu-latest
     steps:
       - name: Check out code

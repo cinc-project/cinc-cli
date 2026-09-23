@@ -1,0 +1,39 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # binaries.yml calls this before publishing a release, so every release is
+  # tested at its exact commit.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Integration (cinc-server-ng)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: integration/go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            integration/go.sum
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.13.0
+
+      - name: Run the integration suite against cinc-server-ng
+        # The shared suite drives the real cinc binary against an in-process
+        # cinc-server-ng. The cinc-server-erlang target compiles here and
+        # skips; it runs by hand through integration/run-cinc-server-erlang.sh.
+        working-directory: integration
+        run: gotestsum --format testname -- -race -count=1 ./...
