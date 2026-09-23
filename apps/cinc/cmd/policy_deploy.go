@@ -235,6 +235,11 @@ func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *
 		if err != nil {
 			return nil, fmt.Errorf("cinc: load cookbook %q from %s: %w", name, dir, err)
 		}
+		// Upload under the name the lock records. The directory is often a
+		// cache entry (<name>-<version>-<source>), and cinc-api falls back to
+		// it when metadata.rb names the cookbook with a non-literal.
+		cb.Name = name
+		cb.Metadata.Name = name
 		cookbooks[name] = cb
 	}
 	return cookbooks, nil

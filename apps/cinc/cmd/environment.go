@@ -147,7 +147,7 @@ cinc environment create prod`,
 			if description != "" {
 				env.Description = description
 			}
-			if _, _, err := c.Environments.Create(cmd.Context(), &env); err != nil {
+			if _, err := c.Environments.Create(cmd.Context(), &env); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created environment %q\n", env.Name)

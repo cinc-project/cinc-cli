@@ -171,6 +171,53 @@ func TestSearchPaginationSinglePage(t *testing.T) {
 	}
 }
 
+// TestSearchStartWithoutRowsReturnsEveryRemainingMatch covers --start on its
+// own: --rows defaults to 0 ("return all matches"), so an offset must still
+// page through the rest of the result set rather than stop after the first
+// page the server hands back.
+func TestSearchStartWithoutRowsReturnsEveryRemainingMatch(t *testing.T) {
+	rows := []any{
+		map[string]any{"name": "a"}, map[string]any{"name": "b"}, map[string]any{"name": "c"},
+		map[string]any{"name": "d"}, map[string]any{"name": "e"},
+	}
+	// The server answers at most two rows per page, whatever was asked for.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, r *http.Request) {
+		start, _ := strconv.Atoi(r.URL.Query().Get("start"))
+		page := rows[min(start, len(rows)):]
+		page = page[:min(2, len(page))]
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"total": len(rows), "start": start, "rows": page})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	out, err := runSearchCmd(t, srv.URL, "node", "*:*", "--start", "1", "--format", "json")
+	if err != nil {
+		t.Fatalf("cinc search --start: %v\n%s", err, out)
+	}
+	var got struct {
+		Total int `json:"total"`
+		Start int `json:"start"`
+		Rows  []struct {
+			Name string `json:"name"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("json output not valid: %v\n%s", err, out)
+	}
+	var names []string
+	for _, r := range got.Rows {
+		names = append(names, r.Name)
+	}
+	if strings.Join(names, ",") != "b,c,d,e" {
+		t.Errorf("--start 1 rows = %v, want b,c,d,e", names)
+	}
+	if got.Total != 5 || got.Start != 1 {
+		t.Errorf("total/start = %d/%d, want 5/1", got.Total, got.Start)
+	}
+}
+
 func TestSearchEmptyResults(t *testing.T) {
 	srv := searchServer(t, "node", 0, []any{}, nil)
 

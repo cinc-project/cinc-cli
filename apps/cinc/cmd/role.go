@@ -66,7 +66,7 @@ cinc role create webserver`,
 			if description != "" {
 				role.Description = description
 			}
-			if _, _, err := c.Roles.Create(cmd.Context(), &role); err != nil {
+			if _, err := c.Roles.Create(cmd.Context(), &role); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created role %q\n", role.Name)

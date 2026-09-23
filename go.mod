@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/cinc-project/cinc-api v0.13.0
+	github.com/cinc-project/cinc-api v0.14.1
 	github.com/cinc-project/cinc-supermarket-api v0.6.0
 	github.com/creack/pty v1.1.24
 	github.com/goruby/goruby v0.0.0-20210827060341-983436007185

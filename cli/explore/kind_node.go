@@ -29,7 +29,7 @@ func newNodeKind() Kind {
 		createFn: func(ctx context.Context, c *cinc.Client, n *cinc.Node) (CreateResult, error) {
 			// The create endpoint returns only a URI, not the object, so
 			// report the name from the document the user submitted.
-			if _, _, err := c.Nodes.Create(ctx, n); err != nil {
+			if _, err := c.Nodes.Create(ctx, n); err != nil {
 				return CreateResult{}, err
 			}
 			return CreateResult{Name: n.Name}, nil

@@ -245,12 +245,18 @@ func TestClientCreateCommandWithPublicKeyFile(t *testing.T) {
 		t.Fatalf("cinc client create --public-key: %v", err)
 	}
 
-	var sent cinc.APIClient
+	// The public key goes at the top level of the POST body and no
+	// create_key is sent; otherwise a real Chef Server generates its own
+	// pair and ignores the key the user supplied.
+	var sent map[string]any
 	if err := json.Unmarshal(gotBody, &sent); err != nil {
 		t.Fatalf("unmarshal request body: %v", err)
 	}
-	if sent.ChefKey.PublicKey != string(pubPEM) {
-		t.Errorf("server saw public_key %q, want %q", sent.ChefKey.PublicKey, pubPEM)
+	if sent["public_key"] != string(pubPEM) {
+		t.Errorf("server saw public_key %v, want %q (body %s)", sent["public_key"], pubPEM, gotBody)
+	}
+	if v, ok := sent["create_key"]; ok && v != false {
+		t.Errorf("create_key = %v, want absent or false when a public key is supplied", v)
 	}
 	if got := buf.String(); got != "Created client \"worker-03\"\n" {
 		t.Errorf("stdout = %q", got)

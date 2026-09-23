@@ -371,7 +371,7 @@ func TestEnsureCookbookChefServer(t *testing.T) {
 	mux.HandleFunc("/organizations/acme/cookbooks/srvcb/1.0.0", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"cookbook_name":"srvcb","name":"srvcb-1.0.0","version":"1.0.0",
-			"root_files":[{"name":"metadata.rb","path":"metadata.rb","specificity":"default","checksum":"x","url":"%s/f/metadata.rb"}]}`, base)
+			"root_files":[{"name":"metadata.rb","path":"metadata.rb","specificity":"default","checksum":"2741e1e8a2bce93f8b8369b1ba45a693","url":"%s/f/metadata.rb"}]}`, base)
 	})
 	mux.HandleFunc("/f/metadata.rb", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("name 'srvcb'\nversion '1.0.0'\n"))

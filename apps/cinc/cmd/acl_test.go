@@ -264,9 +264,10 @@ func TestRoleACLRoutesToRolesPath(t *testing.T) {
 }
 
 func TestOrgACLRoutesToOrgEndpoint(t *testing.T) {
-	// The org's own ACL lives at /organizations/acme/_acl with no
-	// object-type segment, and takes no name argument.
-	a := newACLServer(t, "/organizations/acme")
+	// The org's own ACL lives at erchef's
+	// /organizations/acme/organizations/_acl route, and takes no name
+	// argument.
+	a := newACLServer(t, "/organizations/acme/organizations")
 	cfg := writeACLConfig(t, a.srv.URL)
 
 	out, _, err := runRoot(t, "org", "acl", "show", "--config", cfg, "--format", "json")

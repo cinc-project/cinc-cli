@@ -12,7 +12,8 @@ import (
 )
 
 // cookbookDownloadServer serves a single nginx cookbook version manifest plus
-// the two files it references. The manifest's file URLs point back at this
+// the two files it references. The checksums are the real MD5s of the file
+// bodies, since cinc-api verifies every download. The manifest's file URLs point back at this
 // same server, mirroring how the real server hands out bookshelf URLs.
 // requestedVersions records, in order, the version segments the manifest was
 // fetched under, so tests can assert "_latest" resolution (the command fetches
@@ -26,8 +27,8 @@ func cookbookDownloadServer(t *testing.T, requestedVersions *[]string) *httptest
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{
 			"cookbook_name":"nginx","name":"nginx-1.2.0","version":"1.2.0",
-			"recipes":[{"name":"default.rb","path":"recipes/default.rb","specificity":"default","checksum":"abc","url":"%s/files/recipes/default.rb"}],
-			"root_files":[{"name":"metadata.rb","path":"metadata.rb","specificity":"default","checksum":"def","url":"%s/files/metadata.rb"}]
+			"recipes":[{"name":"default.rb","path":"recipes/default.rb","specificity":"default","checksum":"c2a96135902fd58f8bcc6cc89c8ab3e1","url":"%s/files/recipes/default.rb"}],
+			"root_files":[{"name":"metadata.rb","path":"metadata.rb","specificity":"default","checksum":"63c0c54f160051c1c367ed722ccb8421","url":"%s/files/metadata.rb"}]
 		}`, base, base)
 	}
 	mux.HandleFunc("/organizations/acme/cookbooks/nginx/_latest", func(w http.ResponseWriter, r *http.Request) {

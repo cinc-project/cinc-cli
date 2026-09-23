@@ -96,26 +96,25 @@ func partialProjection(attrs []string) map[string][]string {
 	return p
 }
 
-// runSearch fetches results. With an explicit --rows or --start it returns that
-// single page (reporting the server's total); otherwise it pages through every
-// match so the default output is never silently truncated.
+// runSearch fetches results. With an explicit --rows it returns that single
+// page (reporting the server's total); otherwise it pages through every match
+// from --start on, so the default output is never silently truncated.
 func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap, start int, opts []cinc.SearchOption) (searchResult, error) {
-	if rowsCap > 0 || start > 0 {
-		pageOpts := append([]cinc.SearchOption{cinc.WithStart(start)}, opts...)
-		if rowsCap > 0 {
-			pageOpts = append(pageOpts, cinc.WithRows(rowsCap))
-		}
+	if rowsCap > 0 {
+		pageOpts := append([]cinc.SearchOption{cinc.WithStart(start), cinc.WithRows(rowsCap)}, opts...)
 		res, _, err := c.Search.Query(ctx, index, query, pageOpts...)
 		if err != nil {
 			return searchResult{}, err
 		}
 		return searchResult{Total: res.Total, Start: res.Start, Rows: res.Rows}, nil
 	}
-	all, err := c.Search.SearchAll(ctx, index, query, opts...)
+	all, err := c.Search.SearchAll(ctx, index, query, append([]cinc.SearchOption{cinc.WithStart(start)}, opts...)...)
 	if err != nil {
 		return searchResult{}, err
 	}
-	return searchResult{Total: len(all), Rows: all}, nil
+	// Every match from start on was fetched, so start plus what came back is
+	// the whole result set.
+	return searchResult{Total: start + len(all), Start: start, Rows: all}, nil
 }
 
 // objectMap normalizes a search row into the map to read fields from. Partial
