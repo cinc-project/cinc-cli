@@ -41,10 +41,12 @@ Say yes and `cinc` reads every profile from your Chef file and writes
 the equivalent `~/.cinc/credentials`. It carries over **every** key in
 each profile (`client_name`, `client_key`, `ssl_verify_mode`,
 `trusted_certs_dir`, `supermarket_site`, `secret_file`, and the `supermarket_client_name` /
-`supermarket_key` overrides), so nothing gets dropped. As part of the
-copy it **modernizes** a legacy `chef_server_url` into the
-cinc-canonical `cinc_server_url`; everything else keeps its name. Your
-`~/.chef/credentials` is left untouched.
+`supermarket_key` overrides), so nothing gets dropped. Keys `cinc` has
+no use for, such as knife's `node_name`, `validation_key` or a `knife`
+table, are copied as they are, so the new file still holds everything
+the old one did. As part of the copy it **modernizes** a legacy
+`chef_server_url` into the cinc-canonical `cinc_server_url`; everything
+else keeps its name. Your `~/.chef/credentials` is left untouched.
 
 A couple of things to be precise about:
 

@@ -34,9 +34,10 @@ type chefRawProfile struct {
 // MigrateChef reads chefPath and writes the equivalent credentials
 // file to cincPath. Each profile is built via config.NewProfile (which
 // validates client name, key path, and either a Chef server URL or a
-// Supermarket site) and then persisted via config.WriteProfile, so the
-// resulting file is byte-identical to what `cinc config create` would
-// produce for the same inputs. Returns the number of profiles
+// Supermarket site) and then persisted via config.WriteProfileWithExtras,
+// so the keys cinc manages come out exactly as `cinc config create` would
+// write them, chef_server_url renamed to cinc_server_url. Every other key
+// in the profile is copied verbatim. Returns the number of profiles
 // migrated.
 //
 // Migration is all-or-nothing: every profile is resolved and validated
@@ -47,6 +48,14 @@ type chefRawProfile struct {
 func MigrateChef(chefPath, cincPath string) (int, error) {
 	var raw map[string]chefRawProfile
 	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
+		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
+	}
+	// Decode again without a schema, so the keys chefRawProfile does not model
+	// (knife's node_name, validation_key, a knife table, ...) are copied across
+	// verbatim instead of silently dropped. The first decode succeeded, so
+	// this one cannot fail on syntax.
+	var everything map[string]map[string]any
+	if _, err := toml.DecodeFile(chefPath, &everything); err != nil {
 		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
 	}
 
@@ -80,7 +89,7 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 
 	// Everything validated, so the writes below can only fail on I/O.
 	for i, name := range names {
-		if err := config.WriteProfile(cincPath, name, resolved[i]); err != nil {
+		if err := config.WriteProfileWithExtras(cincPath, name, resolved[i], everything[name]); err != nil {
 			return 0, err
 		}
 	}

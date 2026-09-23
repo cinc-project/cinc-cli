@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 func writeChefCredentials(t *testing.T, content string) string {
@@ -218,4 +220,60 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(body)
+}
+
+// TestMigrateChefKeepsKeysCincDoesNotModel covers a knife credentials file:
+// it holds knife-only settings (node_name, the validator, a nested knife
+// table) that cinc never reads. docs/migrating-from-chef.md promises every
+// key carries over, so they are copied verbatim rather than dropped.
+func TestMigrateChefKeepsKeysCincDoesNotModel(t *testing.T) {
+	chefPath := writeChefCredentials(t, `
+[default]
+chef_server_url        = "https://chef.example.com/organizations/acme"
+client_name            = "tim"
+client_key             = "/keys/tim.pem"
+node_name              = "tim-workstation"
+validation_client_name = "acme-validator"
+validation_key         = "/keys/acme-validator.pem"
+knife                  = { ssh_user = "ubuntu", ssh_port = 2222 }
+
+[staging]
+chef_server_url = "https://staging.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/keys/staging.pem"
+cookbook_path   = ["/src/cookbooks", "/src/site-cookbooks"]
+`)
+	cincPath := filepath.Join(t.TempDir(), ".cinc", "credentials")
+
+	if _, err := MigrateChef(chefPath, cincPath); err != nil {
+		t.Fatalf("MigrateChef: %v", err)
+	}
+	var got map[string]map[string]any
+	if _, err := toml.DecodeFile(cincPath, &got); err != nil {
+		t.Fatalf("decode migrated file: %v", err)
+	}
+	def := got["default"]
+	for key, want := range map[string]any{
+		"node_name":              "tim-workstation",
+		"validation_client_name": "acme-validator",
+		"validation_key":         "/keys/acme-validator.pem",
+	} {
+		if def[key] != want {
+			t.Errorf("default.%s = %v, want %v (file: %v)", key, def[key], want, def)
+		}
+	}
+	knife, _ := def["knife"].(map[string]any)
+	if knife["ssh_user"] != "ubuntu" || knife["ssh_port"] != int64(2222) {
+		t.Errorf("default.knife = %v, want ssh_user ubuntu and ssh_port 2222", def["knife"])
+	}
+	if paths, _ := got["staging"]["cookbook_path"].([]any); len(paths) != 2 {
+		t.Errorf("staging.cookbook_path = %v, want both paths", got["staging"]["cookbook_path"])
+	}
+	// The one key that is renamed, not copied.
+	if _, ok := def["chef_server_url"]; ok {
+		t.Errorf("chef_server_url should become cinc_server_url, got %v", def)
+	}
+	if def["cinc_server_url"] != "https://chef.example.com/organizations/acme" {
+		t.Errorf("default.cinc_server_url = %v", def["cinc_server_url"])
+	}
 }

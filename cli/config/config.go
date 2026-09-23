@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -262,6 +263,16 @@ func UpdateProfile(path, name string, mutate func(*Profile) error) error {
 // across verbatim. Comments and original key ordering are not retained, because
 // the file is re-encoded as TOML.
 func WriteProfile(path, name string, p Profile) error {
+	return WriteProfileWithExtras(path, name, p, nil)
+}
+
+// WriteProfileWithExtras is WriteProfile for a profile that also carries keys
+// cinc does not model, copied from somewhere other than the file being
+// written: first-run migration moves a knife profile's node_name,
+// validation_key and the like across this way. Each extra key is written
+// verbatim, replacing any value the file already has for it. A key cinc
+// manages is ignored in extra, because p is the source of truth for those.
+func WriteProfileWithExtras(path, name string, p Profile, extra map[string]any) error {
 	if name == "" {
 		return fmt.Errorf("config: profile name is required")
 	}
@@ -282,6 +293,11 @@ func WriteProfile(path, name string, p Profile) error {
 	profile := raw[name]
 	if profile == nil {
 		profile = map[string]any{}
+	}
+	for key, value := range extra {
+		if !slices.Contains(managedKeys, key) {
+			profile[key] = value
+		}
 	}
 	// Write the cinc-canonical server URL key. Reads still accept
 	// chef_server_url (cinc wins when both appear), so knife-shared files
