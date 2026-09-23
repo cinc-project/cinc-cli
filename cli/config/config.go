@@ -43,6 +43,14 @@ type Profile struct {
 	// same key serves cinc and chef users.
 	SecretFile string
 
+	// TrustedCertsDir is the trusted_certs_dir key exactly as written in
+	// the credentials file: a directory of extra CA certificates to trust
+	// on top of the system pool. The key name matches knife's, so the same
+	// file serves cinc and chef users. It is kept unexpanded here so a
+	// rewrite of the profile never bakes an absolute home path into the
+	// file; ResolveTrustedCertsDir expands it and applies the defaults.
+	TrustedCertsDir string
+
 	// RawServerURL is the server URL exactly as written in the config, before
 	// it is split into ServerURL + Org. It is preserved even when the URL is
 	// malformed (ServerURL/Org are then empty) so validation can report the
@@ -64,6 +72,7 @@ type rawProfile struct {
 	SupermarketKey        string `toml:"supermarket_key,omitempty"`
 	SSLVerifyMode         string `toml:"ssl_verify_mode,omitempty"`
 	SecretFile            string `toml:"secret_file,omitempty"`
+	TrustedCertsDir       string `toml:"trusted_certs_dir,omitempty"`
 }
 
 // serverURL returns the configured server URL, preferring the
@@ -210,6 +219,7 @@ var managedKeys = []string{
 	"supermarket_key",
 	"ssl_verify_mode",
 	"secret_file",
+	"trusted_certs_dir",
 }
 
 // UpdateProfile applies mutate to the profile named name in the credentials
@@ -286,6 +296,7 @@ func WriteProfile(path, name string, p Profile) error {
 		"supermarket_key":         p.SupermarketKey,
 		"ssl_verify_mode":         p.SSLVerifyMode,
 		"secret_file":             p.SecretFile,
+		"trusted_certs_dir":       p.TrustedCertsDir,
 	}
 	// A profile that already carries chef_server_url is shared with chef
 	// tools that read only that key, and chef-config knows nothing of
@@ -380,6 +391,7 @@ func resolveProfile(rp rawProfile) (Profile, error) {
 		SupermarketKey:        rp.SupermarketKey,
 		SSLVerifyMode:         rp.SSLVerifyMode,
 		SecretFile:            rp.SecretFile,
+		TrustedCertsDir:       rp.TrustedCertsDir,
 	}
 	if raw := rp.serverURL(); raw != "" {
 		// Preserve the raw URL even when it doesn't parse, so validation can

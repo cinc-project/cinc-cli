@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -156,6 +157,30 @@ var profileChecks = []profileCheck{
 		},
 	},
 	{
+		// Runs when trusted_certs_dir is set, or when a default directory
+		// (~/.cinc/trusted_certs, then ~/.chef/trusted_certs) exists. Normal
+		// commands silently ignore a certificate file they can't parse; this
+		// is where the user finds out about it.
+		name: "Trusted certificates load",
+		applies: func(p config.Profile) bool {
+			dir, explicit, err := p.ResolveTrustedCertsDir()
+			return err != nil || explicit || dir != ""
+		},
+		run: func(_ context.Context, p config.Profile) checkOutcome {
+			tc, err := cliclient.TrustedCertsFor(p)
+			if err != nil {
+				return fail(err.Error())
+			}
+			if len(tc.Skipped) > 0 {
+				return warn(fmt.Sprintf("we skipped %s in %s because %s no certificate we could read: %s",
+					countNoun(len(tc.Skipped), "file", "files"), tc.Dir,
+					cond(len(tc.Skipped) == 1, "it holds", "they hold"),
+					strings.Join(tc.Skipped, ", ")))
+			}
+			return passNote(fmt.Sprintf("trusting %s from %s", countNoun(len(tc.Loaded), "certificate file", "certificate files"), tc.Dir))
+		},
+	},
+	{
 		name:    "Client key file is readable",
 		applies: func(p config.Profile) bool { return p.KeyPath != "" },
 		run: func(_ context.Context, p config.Profile) checkOutcome {
@@ -283,6 +308,12 @@ func allPassed(checks []checkResult) bool {
 		}
 	}
 	return true
+}
+
+// countNoun renders n with the singular or plural noun, e.g. "1 file" or
+// "3 files".
+func countNoun(n int, singular, pluralNoun string) string {
+	return fmt.Sprintf("%d %s", n, cond(n == 1, singular, pluralNoun))
 }
 
 func cond(b bool, yes, no string) string {

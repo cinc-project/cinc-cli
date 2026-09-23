@@ -129,6 +129,25 @@ supermarket_key         = "/keys/supermarket.pem"
 	}
 }
 
+func TestMigrateChefCarriesTrustedCertsDir(t *testing.T) {
+	chefPath := writeChefCredentials(t, `
+[default]
+chef_server_url   = "https://chef.example.com/organizations/acme"
+client_name       = "tim"
+client_key        = "/keys/tim.pem"
+trusted_certs_dir = "~/.chef/trusted_certs"
+`)
+	cincPath := filepath.Join(t.TempDir(), ".cinc", "credentials")
+
+	if _, err := MigrateChef(chefPath, cincPath); err != nil {
+		t.Fatalf("MigrateChef: %v", err)
+	}
+	// Carried verbatim: the ~ stays unexpanded.
+	if body := readFile(t, cincPath); !strings.Contains(body, `trusted_certs_dir = "~/.chef/trusted_certs"`) {
+		t.Errorf("migrated file should carry trusted_certs_dir, got:\n%s", body)
+	}
+}
+
 func TestMigrateChefReturnsErrorOnUnparseableFile(t *testing.T) {
 	chefPath := writeChefCredentials(t, "this is not = valid = toml [[")
 	cincPath := filepath.Join(t.TempDir(), "credentials")
