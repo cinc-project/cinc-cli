@@ -32,7 +32,7 @@ var defaultTrustedCertsDirs = []string{
 // only.
 func (p Profile) ResolveTrustedCertsDir() (dir string, explicit bool, err error) {
 	if p.TrustedCertsDir != "" {
-		dir, err := expandHomeDir(p.TrustedCertsDir)
+		dir, err := ExpandHome(p.TrustedCertsDir)
 		if err != nil {
 			return "", true, err
 		}
@@ -52,8 +52,12 @@ func (p Profile) ResolveTrustedCertsDir() (dir string, explicit bool, err error)
 	return "", false, nil
 }
 
-// expandHomeDir expands a leading "~" or "~/" to the user's home directory.
-func expandHomeDir(path string) (string, error) {
+// ExpandHome expands a leading "~" or "~/" to the user's home directory and
+// returns any other path unchanged. Every path the credentials file holds
+// (client_key, supermarket_key, secret_file, trusted_certs_dir) goes through
+// it when it is read, never when the file is written, so a rewritten profile
+// keeps the portable ~ form rather than an absolute home path.
+func ExpandHome(path string) (string, error) {
 	if path != "~" && !strings.HasPrefix(path, "~/") {
 		return path, nil
 	}

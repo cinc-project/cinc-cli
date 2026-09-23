@@ -184,7 +184,11 @@ var profileChecks = []profileCheck{
 		name:    "Client key file is readable",
 		applies: func(p config.Profile) bool { return p.KeyPath != "" },
 		run: func(_ context.Context, p config.Profile) checkOutcome {
-			if _, err := cinc.LoadKeyFile(p.KeyPath); err != nil {
+			keyPath, err := config.ExpandHome(p.KeyPath)
+			if err != nil {
+				return fail(err.Error())
+			}
+			if _, err := cinc.LoadKeyFile(keyPath); err != nil {
 				return fail(err.Error())
 			}
 			return pass()

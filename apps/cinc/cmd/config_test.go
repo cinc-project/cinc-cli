@@ -435,3 +435,35 @@ func configValidateServer(t *testing.T, status int) *httptest.Server {
 	t.Cleanup(srv.Close)
 	return srv
 }
+
+// TestConfigValidateExpandsTildeInClientKey checks the key-readable check
+// reads a client_key written as ~/... from the home directory, as the real
+// client does.
+func TestConfigValidateExpandsTildeInClientKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	srv := configValidateServer(t, http.StatusOK)
+	key, err := os.ReadFile(writeTestKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "tim.pem"), key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[default]
+client_name = "tim"
+client_key = "~/tim.pem"
+cinc_server_url = "%s/organizations/acme"
+`, srv.URL))
+
+	out, _, err := runRoot(t, "config", "validate", cfgPath)
+	if err != nil {
+		t.Fatalf("cinc config validate: %v\n%s", err, out)
+	}
+	for _, want := range []string{"✓ Client key file is readable", "✓ Server is reachable"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout = %q, want %q", out, want)
+		}
+	}
+}

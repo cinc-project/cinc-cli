@@ -16,6 +16,10 @@ Point at a different file per command with the global `--config` flag:
 cinc node list --config /path/to/credentials
 ```
 
+A leading `~` in `--config` is expanded to your home directory, so
+`--config=~/.chef/credentials` works even though no shell expands a `~`
+after `=`.
+
 The file holds one or more **profiles**. A profile is a named bundle of
 everything needed to talk to one server (or one Supermarket): a server
 URL, a client identity, a signing key, and a handful of optional
@@ -44,6 +48,11 @@ per command. See [Selecting a profile](#selecting-a-profile) below.
 All keys are strings. Only `client_name`, `client_key`, and a server
 endpoint are needed for a normal server profile; everything else is
 optional.
+
+Every key that holds a path (`client_key`, `trusted_certs_dir`,
+`secret_file`, `supermarket_key`) may start with `~`, which is expanded
+to your home directory when `cinc` reads it. When `cinc` rewrites the
+file it keeps the `~` as you wrote it.
 
 | Key | Meaning | Required? | Default | Chef-compat equivalent | Related flag / env |
 | --- | --- | --- | --- | --- | --- |

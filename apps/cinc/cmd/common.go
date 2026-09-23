@@ -112,7 +112,11 @@ func resolveSecret(cmd *cobra.Command, profile config.Profile) ([]byte, error) {
 		return readSecretFile(env)
 	}
 	if profile.SecretFile != "" {
-		return readSecretFile(profile.SecretFile)
+		path, err := config.ExpandHome(profile.SecretFile)
+		if err != nil {
+			return nil, err
+		}
+		return readSecretFile(path)
 	}
 	return nil, errors.New("we need an encrypted data bag secret but couldn't find one. Pass --secret-file <path> (or --secret <literal>), set $CINC_SECRET_FILE, or add a secret_file key to your credentials profile.")
 }
@@ -151,11 +155,17 @@ func resolveClient(cmd *cobra.Command) (*cinc.Client, error) {
 // and the credentials file where client_key is configured. Other
 // errors pass through unchanged.
 func friendlyKeyFileError(cmd *cobra.Command, p config.Profile, err error) error {
+	// Name the path we actually tried, which for a ~/ key is not the one
+	// written in the file.
+	keyPath := p.KeyPath
+	if expanded, expandErr := config.ExpandHome(keyPath); expandErr == nil {
+		keyPath = expanded
+	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fmt.Errorf("can't find your client key at %s — it's set as client_key in %s. Create the key file, or update client_key to point at the right path.", p.KeyPath, resolveConfigPath(cmd))
+		return fmt.Errorf("can't find your client key at %s — it's set as client_key in %s. Create the key file, or update client_key to point at the right path.", keyPath, resolveConfigPath(cmd))
 	case errors.Is(err, fs.ErrPermission):
-		return fmt.Errorf("can't read your client key at %s — it's set as client_key in %s. Check the file's permissions; cinc needs to read it to sign requests.", p.KeyPath, resolveConfigPath(cmd))
+		return fmt.Errorf("can't read your client key at %s — it's set as client_key in %s. Check the file's permissions; cinc needs to read it to sign requests.", keyPath, resolveConfigPath(cmd))
 	}
 	return err
 }
@@ -165,6 +175,9 @@ func friendlyKeyFileError(cmd *cobra.Command, p config.Profile, err error) error
 // name the same path the loader used.
 func resolveConfigPath(cmd *cobra.Command) string {
 	if p, _ := cmd.Flags().GetString("config"); p != "" {
+		if expanded, err := config.ExpandHome(p); err == nil {
+			return expanded
+		}
 		return p
 	}
 	if p, err := config.DefaultPath(); err == nil {
@@ -255,6 +268,13 @@ func loadCredentials(cmd *cobra.Command) (*config.Config, error) {
 	usingDefault := cfgPath == ""
 	if usingDefault {
 		p, err := config.DefaultPath()
+		if err != nil {
+			return nil, err
+		}
+		cfgPath = p
+	} else {
+		// A shell leaves --config=~/... and a quoted "~/..." alone.
+		p, err := config.ExpandHome(cfgPath)
 		if err != nil {
 			return nil, err
 		}

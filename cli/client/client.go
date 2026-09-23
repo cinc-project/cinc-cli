@@ -35,7 +35,11 @@ func New(p config.Profile) (*cinc.Client, error) {
 		return nil, err
 	}
 
-	key, err := cinc.LoadKeyFile(p.KeyPath)
+	keyPath, err := config.ExpandHome(p.KeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("client: %w", err)
+	}
+	key, err := cinc.LoadKeyFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("client: %w", err)
 	}

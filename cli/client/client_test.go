@@ -139,3 +139,30 @@ func TestNewDoesNotWarnWhenTLSVerified(t *testing.T) {
 		t.Errorf("did not expect a warning with verification on, got %q", buf.String())
 	}
 }
+
+// TestNewExpandsTildeInClientKey covers a hand-written (or knife-written)
+// profile whose client_key starts with ~/. docs/configuration.md promises the
+// ~ is expanded to the home directory.
+func TestNewExpandsTildeInClientKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	key, err := os.ReadFile(writeKeyFile(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "keys"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "keys", "tim.pem"), key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := config.Profile{
+		ServerURL:  "https://chef.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "~/keys/tim.pem",
+	}
+	if _, err := New(p); err != nil {
+		t.Fatalf("New with client_key under ~: %v", err)
+	}
+}

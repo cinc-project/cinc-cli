@@ -77,6 +77,10 @@ func New(profile config.Profile, site string) (*Client, error) {
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return nil, fmt.Errorf("supermarket: invalid site URL %q", site)
 	}
+	keyPath, err = config.ExpandHome(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("supermarket: load key: %w", err)
+	}
 	key, err := sm.LoadKeyFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("supermarket: load key: %w", err)
