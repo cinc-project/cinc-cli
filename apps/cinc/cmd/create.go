@@ -201,12 +201,18 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 		return configureDefaults{}, err
 	}
 	if serverHost != "" {
+		// The answer may be a whole URL rather than a bare host: keep its
+		// scheme and port, and offer its organization as the default.
+		base, urlOrg := serverBaseURL(serverHost)
+		if urlOrg != "" && serverHost != defaultHost {
+			defaultOrg = urlOrg
+		}
 		serverOrg, err := promptWithDefault(reader, out, "Chef server organization", defaultOrg)
 		if err != nil {
 			return configureDefaults{}, err
 		}
 		if serverOrg != "" {
-			defaults.ChefServerURL = fmt.Sprintf("https://%s/organizations/%s", serverHost, serverOrg)
+			defaults.ChefServerURL = base + "/organizations/" + serverOrg
 		} else {
 			defaults.ChefServerURL = ""
 		}
@@ -383,9 +389,12 @@ func sortedProfileNames(cfg *config.Config) []string {
 	return names
 }
 
-// splitChefServerURL returns the bare host and organization name from a
-// full server URL of the form https://host/organizations/<org>. It
-// returns empty strings when the URL is empty or doesn't parse.
+// splitChefServerURL returns the host and organization name from a full
+// server URL of the form https://host/organizations/<org>, as the host
+// prompt offers them. An https URL gives the bare host; any other scheme
+// is kept (http://host:port), because serverBaseURL would otherwise turn
+// the answer back into https. It returns empty strings when the URL is
+// empty or doesn't parse.
 func splitChefServerURL(raw string) (host, org string) {
 	if raw == "" {
 		return "", ""
@@ -394,11 +403,35 @@ func splitChefServerURL(raw string) (host, org string) {
 	if err != nil {
 		return "", ""
 	}
+	host = u.Host
+	if u.Scheme != "" && u.Scheme != "https" {
+		host = u.Scheme + "://" + u.Host
+	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) == 2 && parts[0] == "organizations" {
-		return u.Host, parts[1]
+		return host, parts[1]
 	}
-	return u.Host, ""
+	return host, ""
+}
+
+// serverBaseURL turns the host prompt's answer into the server's base URL
+// (scheme://host[:port], no trailing slash). A bare host, with or without a
+// port, means https. An answer with a scheme is a URL the user pasted: its
+// scheme and port are kept, and an /organizations/<org> path is split off
+// and returned as org.
+func serverBaseURL(answer string) (base, org string) {
+	if !strings.Contains(answer, "://") {
+		return "https://" + strings.TrimRight(answer, "/"), ""
+	}
+	u, err := url.Parse(answer)
+	if err != nil || u.Host == "" {
+		return strings.TrimRight(answer, "/"), ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 2 && parts[0] == "organizations" {
+		org = parts[1]
+	}
+	return u.Scheme + "://" + u.Host, org
 }
 
 // errStdinExhausted is returned by promptNoDefault when there is no input

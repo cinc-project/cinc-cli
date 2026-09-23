@@ -720,3 +720,85 @@ func TestFirstRunConfigureKeepsUnpromptedKeys(t *testing.T) {
 
 	assertUnpromptedKeysSurvive(t, cfgPath)
 }
+
+// TestConfigureInteractiveAcceptsServerURLAtHostPrompt pastes the server's
+// URL, not just its host, at the host prompt. That is the natural answer,
+// and the only one that can describe a plain-HTTP server or one on another
+// port: the prompt used to glue "https://" in front of whatever it got,
+// producing "https://http://...".
+func TestConfigureInteractiveAcceptsServerURLAtHostPrompt(t *testing.T) {
+	for _, tc := range []struct {
+		name, host, org     string
+		wantServer, wantOrg string
+	}{
+		{"bare host", "cinc.example.test", "acme", "https://cinc.example.test", "acme"},
+		{"host and port", "cinc.example.test:8443", "acme", "https://cinc.example.test:8443", "acme"},
+		{"http URL with port", "http://127.0.0.1:8889", "acme", "http://127.0.0.1:8889", "acme"},
+		{"https URL with trailing slash", "https://cinc.example.test/", "acme", "https://cinc.example.test", "acme"},
+		// A full org URL offers its org as the default, so Enter keeps it.
+		{"full org URL", "https://cinc.example.test/organizations/from-url", "", "https://cinc.example.test", "from-url"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			cfgPath := filepath.Join(home, "credentials")
+			root := newRootCmd()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			// location, profile, supermarket, client name, key, host, org,
+			// ssl. A private Supermarket keeps the profile out of the
+			// public-Supermarket rename, which is not what this tests.
+			root.SetIn(strings.NewReader(strings.Join([]string{
+				cfgPath, "lab", "https://supermarket.example.test", "tim", "/keys/tim.pem", tc.host, tc.org, "",
+			}, "\n") + "\n"))
+			root.SetArgs([]string{"config", "create"})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("cinc config create: %v\n%s", err, out.String())
+			}
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := cfg.Profiles["lab"]
+			if p.ServerURL != tc.wantServer || p.Org != tc.wantOrg {
+				t.Errorf("profile server = %q org = %q, want %q and %q", p.ServerURL, p.Org, tc.wantServer, tc.wantOrg)
+			}
+		})
+	}
+}
+
+// TestConfigureInteractiveUpdateKeepsServerScheme updates a profile on a
+// plain-HTTP server with a port and accepts every default. The host prompt
+// used to offer only the host, then rebuild the URL as https, so pressing
+// Enter broke a working profile.
+func TestConfigureInteractiveUpdateKeepsServerScheme(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := filepath.Join(home, "credentials")
+	if err := config.WriteProfile(cfgPath, "default", config.Profile{
+		ServerURL: "http://lab.example.test:8889", Org: "acme",
+		ClientName: "tim", KeyPath: "/keys/tim.pem",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	// location, action (2 = update), picker (1 = default), then Enter for
+	// supermarket, client name, key, host, org, ssl.
+	root.SetIn(strings.NewReader("\n2\n1\n\n\n\n\n\n\n"))
+	root.SetArgs([]string{"config", "create", "--config", cfgPath})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc config create: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "[http://lab.example.test:8889]") {
+		t.Errorf("the host prompt should offer the scheme and port it will keep:\n%s", out.String())
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Profiles["default"]; p.ServerURL != "http://lab.example.test:8889" || p.Org != "acme" {
+		t.Errorf("accepting every default changed the server: %+v", p)
+	}
+}
