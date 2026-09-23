@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -211,6 +213,13 @@ var profileChecks = []profileCheck{
 				return fail(err.Error())
 			}
 			if _, _, err := c.Clients.List(ctx); err != nil {
+				// A 403 means the server answered and accepted the
+				// signature; the actor just may not list clients, as a
+				// node's own client may not on erchef. That is reachable.
+				var resp *cinc.ErrorResponse
+				if errors.As(err, &resp) && resp.StatusCode == http.StatusForbidden {
+					return passNote(fmt.Sprintf("the server accepted %s; it isn't allowed to list clients, which is fine for this check", p.ClientName))
+				}
 				return fail(cliclient.Explain(err).Error())
 			}
 			return pass()

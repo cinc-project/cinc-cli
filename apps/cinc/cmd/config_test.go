@@ -491,3 +491,48 @@ cinc_server_url = "http://%s/organizations/acme"
 		t.Errorf("stdout = %q, want %q", out, want)
 	}
 }
+
+// TestConfigValidateReachableForAnActorThatCannotListClients covers a profile
+// that signs as a node's own client. The reachability check lists clients,
+// which erchef refuses a plain client with a 403. A 403 still proves the
+// server answered and accepted the signature, which is all "reachable"
+// means, so the profile is valid.
+func TestConfigValidateReachableForAnActorThatCannotListClients(t *testing.T) {
+	srv := configValidateServer(t, http.StatusForbidden)
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[default]
+client_name = "web01"
+client_key = %q
+cinc_server_url = "%s/organizations/acme"
+`, writeTestKey(t), srv.URL))
+
+	out, _, err := runRoot(t, "config", "validate", cfgPath)
+	if err != nil {
+		t.Fatalf("cinc config validate: %v\n%s", err, out)
+	}
+	for _, want := range []string{"default profile [VALID]", "✓ Server is reachable: ", "web01"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout = %q, want %q", out, want)
+		}
+	}
+}
+
+// TestConfigValidateReportsRejectedSignature keeps a 401 a failure: the
+// server answered, but it does not accept who the profile says it is.
+func TestConfigValidateReportsRejectedSignature(t *testing.T) {
+	srv := configValidateServer(t, http.StatusUnauthorized)
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[default]
+client_name = "tim"
+client_key = %q
+cinc_server_url = "%s/organizations/acme"
+`, writeTestKey(t), srv.URL))
+
+	out, _, err := runRoot(t, "config", "validate", cfgPath)
+	if err == nil {
+		t.Fatalf("a 401 should fail validation:\n%s", out)
+	}
+	if !strings.Contains(out, "✗ Server is reachable") {
+		t.Errorf("stdout = %q, want the reachability check to fail", out)
+	}
+}
