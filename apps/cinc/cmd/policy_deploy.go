@@ -57,11 +57,7 @@ cinc policy push prod Policyfile.lock.json`,
 			if err != nil {
 				return err
 			}
-			rev, _, err := c.Policies.PushRevision(cmd.Context(), lockJSON, group, cookbooks)
-			if err != nil {
-				return err
-			}
-			return emitPushResult(cmd, format, lock.Name, group, rev, len(cookbooks))
+			return pushRevision(cmd, format, c, lock, lockJSON, group, cookbooks)
 		},
 	}
 	return cmd
@@ -175,11 +171,7 @@ cinc policy push-archive prod ./appserver`,
 			if err != nil {
 				return err
 			}
-			rev, _, err := c.Policies.PushRevision(cmd.Context(), lockJSON, group, cookbooks)
-			if err != nil {
-				return err
-			}
-			return emitPushResult(cmd, format, lock.Name, group, rev, len(cookbooks))
+			return pushRevision(cmd, format, c, lock, lockJSON, group, cookbooks)
 		},
 	}
 	return cmd
@@ -245,16 +237,37 @@ func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *
 	return cookbooks, nil
 }
 
-func emitPushResult(cmd *cobra.Command, format printer.Format, policy, group string, rev *cinc.PolicyRevision, uploaded int) error {
+// pushRevision deploys lockJSON to group and reports what it did. PushRevision
+// uploads only the artifacts the server lacks, so the upload count is read
+// from the server first rather than assumed to be every cookbook.
+func pushRevision(cmd *cobra.Command, format printer.Format, c *cinc.Client, lock *cinc.PolicyRevision, lockJSON []byte, group string, cookbooks map[string]*cinc.LocalCookbook) error {
+	uploads, err := policyfile.ArtifactsToUpload(cmd.Context(), c, lock)
+	if err != nil {
+		return err
+	}
+	rev, _, err := c.Policies.PushRevision(cmd.Context(), lockJSON, group, cookbooks)
+	if err != nil {
+		return err
+	}
+	return emitPushResult(cmd, format, lock.Name, group, rev, uploads, len(cookbooks))
+}
+
+func emitPushResult(cmd *cobra.Command, format printer.Format, policy, group string, rev *cinc.PolicyRevision, uploaded, total int) error {
 	if format == printer.FormatJSON {
 		return printer.New(cmd.OutOrStdout(), format).Value(map[string]any{
 			"policy":             policy,
 			"group":              group,
 			"revision_id":        rev.RevisionID,
+			"cookbooks":          total,
 			"cookbooks_uploaded": uploaded,
 		})
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Pushed policy %q (revision %s) to group %q with %d cookbook(s)\n",
-		policy, rev.RevisionID, group, uploaded)
+	if uploaded == total {
+		fmt.Fprintf(cmd.OutOrStdout(), "Pushed policy %q (revision %s) to group %q with %d cookbook(s)\n",
+			policy, rev.RevisionID, group, total)
+		return nil
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Pushed policy %q (revision %s) to group %q with %d cookbook(s) (%d uploaded, %d already on the server)\n",
+		policy, rev.RevisionID, group, total, uploaded, total-uploaded)
 	return nil
 }

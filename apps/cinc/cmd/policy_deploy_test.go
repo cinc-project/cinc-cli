@@ -157,6 +157,56 @@ func TestPolicyPushUploadsUnderLockName(t *testing.T) {
 	}
 }
 
+// TestPolicyPushReportsOnlyWhatItUploaded pushes a lock whose artifact the
+// server already holds (a second push of one lock, to another group). The
+// push uploads nothing, so the summary must not claim it uploaded the
+// cookbook.
+func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
+	const identifier = "0000000000000000000000000000000000000003"
+	var uploadedArtifact bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"base":{"url":"u","versions":[{"identifier":"`+identifier+`","url":"u"}]}}`)
+	})
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts/base/"+identifier, func(w http.ResponseWriter, _ *http.Request) {
+		uploadedArtifact = true
+		w.WriteHeader(http.StatusConflict)
+	})
+	mux.HandleFunc("/organizations/acme/policy_groups/prod/policies/appserver", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"revision_id":"rev123","name":"appserver"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	lockPath := writePolicyLockFixture(t, identifier)
+
+	for _, tc := range []struct {
+		format string
+		want   string
+	}{
+		{"human", "Pushed policy \"appserver\" (revision rev123) to group \"prod\" with 1 cookbook(s) (0 uploaded, 1 already on the server)\n"},
+		{"json", `"cookbooks_uploaded": 0`},
+	} {
+		t.Run(tc.format, func(t *testing.T) {
+			root := newRootCmd()
+			var buf bytes.Buffer
+			root.SetOut(&buf)
+			root.SetArgs([]string{"policy", "push", "prod", lockPath, "--format", tc.format, "--config", writeCreateConfig(t, srv.URL)})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("cinc policy push: %v", err)
+			}
+			if !strings.Contains(buf.String(), tc.want) {
+				t.Errorf("output = %q, want it to contain %q", buf.String(), tc.want)
+			}
+			if tc.format == "json" && !strings.Contains(buf.String(), `"cookbooks": 1`) {
+				t.Errorf("json output = %q, want the lock's cookbook count too", buf.String())
+			}
+		})
+	}
+	if uploadedArtifact {
+		t.Error("the artifact the server already had was uploaded again")
+	}
+}
+
 func TestPolicyPushCommandReportsMissingLock(t *testing.T) {
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
