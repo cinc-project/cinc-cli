@@ -51,6 +51,23 @@ func TestDataBagItemsAreSearchableByBagName(t *testing.T) {
 	}
 }
 
+// TestSearchRowIdentityUnwrapsDataBagItems covers the wrapped form the
+// server returns data bag items in from a full search: the list is keyed by
+// the item's id, so the identity must be that id, not the wrapper's
+// data_bag_item_<bag>_<id> name.
+func TestSearchRowIdentityUnwrapsDataBagItems(t *testing.T) {
+	for raw, want := range map[string]string{
+		`{"name":"data_bag_item_creds_alice","json_class":"Chef::DataBagItem","chef_type":"data_bag_item","data_bag":"creds","raw_data":{"id":"alice","pw":"x"}}`: "alice",
+		`{"id":"bob","pw":"y"}`:   "bob",
+		`{"name":"web01"}`:        "web01",
+		`{"name":"web","id":"x"}`: "web",
+	} {
+		if got := searchRowIdentity([]byte(raw)); got != want {
+			t.Errorf("searchRowIdentity(%s) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestSearchNarrowsListToServerMatches(t *testing.T) {
 	m, _ := openNodes(t, searchMux(t))
 
