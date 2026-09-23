@@ -177,6 +177,10 @@ cinc group member add admins alice worker-01`,
 cinc group member remove admins alice`),
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check --type before anything talks to the server.
+			if _, err := memberSlice(&cinc.Group{}, memberKind(kind)); err != nil {
+				return err
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
@@ -187,14 +191,26 @@ cinc group member remove admins alice`),
 				return err
 			}
 			current.Name = group
-			if err := applyMemberChange(current, memberKind(kind), names, add); err != nil {
+			changed, unchanged, err := applyMemberChange(current, memberKind(kind), names, add)
+			if err != nil {
 				return err
+			}
+			out := cmd.OutOrStdout()
+			if len(changed) == 0 {
+				fmt.Fprintf(out, "No change: %s %s group %q.\n",
+					strings.Join(unchanged, ", "), memberState(add, len(unchanged) > 1, false), group)
+				return nil
 			}
 			if _, _, err := c.Groups.Update(cmd.Context(), current); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s group %q\n",
-				cases(add, "Added", "Removed"), strings.Join(names, ", "), preposition, group)
+			note := ""
+			if len(unchanged) > 0 {
+				note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
+					memberState(add, len(unchanged) > 1, true))
+			}
+			fmt.Fprintf(out, "%s %s %s group %q%s\n",
+				cases(add, "Added", "Removed"), strings.Join(changed, ", "), preposition, group, note)
 			return nil
 		},
 	}
@@ -203,24 +219,51 @@ cinc group member remove admins alice`),
 }
 
 // applyMemberChange adds or removes names from the actor list of the
-// given kind on group, in place.
-func applyMemberChange(group *cinc.Group, kind memberKind, names []string, add bool) error {
+// given kind on group, in place. It reports which names it changed and
+// which were already as asked (already a member for add, not a member for
+// remove), each in argument order.
+func applyMemberChange(group *cinc.Group, kind memberKind, names []string, add bool) (changed, unchanged []string, err error) {
 	target, err := memberSlice(group, kind)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	result := *target
 	for _, name := range names {
-		if add {
-			if !slices.Contains(result, name) {
-				result = append(result, name)
+		if slices.Contains(result, name) == add {
+			if !slices.Contains(unchanged, name) {
+				unchanged = append(unchanged, name)
 			}
 			continue
 		}
-		result = slices.DeleteFunc(result, func(n string) bool { return n == name })
+		if add {
+			result = append(result, name)
+		} else {
+			result = slices.DeleteFunc(result, func(n string) bool { return n == name })
+		}
+		changed = append(changed, name)
 	}
 	*target = result
-	return nil
+	return changed, unchanged, nil
+}
+
+// memberState describes names a member change left as they were: already
+// in the group for add, not in it for remove. past selects the past tense,
+// for a note on a change that did something else.
+func memberState(add, plural, past bool) string {
+	var forms [4]string // singular present, plural present, singular past, plural past
+	if add {
+		forms = [4]string{"is already in", "are already in", "was already in", "were already in"}
+	} else {
+		forms = [4]string{"isn't in", "aren't in", "wasn't in", "weren't in"}
+	}
+	i := 0
+	if plural {
+		i++
+	}
+	if past {
+		i += 2
+	}
+	return forms[i]
 }
 
 // memberSlice returns a pointer to the group actor slice selected by
