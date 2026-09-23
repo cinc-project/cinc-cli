@@ -73,7 +73,6 @@ func run(m *testing.M) int {
 		// Every entry names an upstream cinc-server-ng issue and is removed
 		// once that issue is fixed.
 		Gaps: map[string]string{
-			"nodes/edit-missing":              "PUT on a missing node creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
 			"databags/edit-missing":           "PUT on a missing data bag item creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
 			"databags/invalid-names":          "data bag names and item ids are not validated, erchef answers 400 (https://github.com/cinc-project/cinc-server-ng/issues/167), and a percent-escaped path fails signature verification (https://github.com/cinc-project/cinc-server-ng/issues/168)",
 			"users/edit-missing":              "PUT on a missing user creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
@@ -90,6 +89,8 @@ func run(m *testing.M) int {
 			"orgs/member-remove-forbidden":    "any member may remove another member: https://github.com/cinc-project/cinc-server-ng/issues/179",
 			"orgs/invite-create-forbidden":    "any member may invite a user: https://github.com/cinc-project/cinc-server-ng/issues/179",
 			"orgs/invite-rescind-forbidden":   "any member may rescind an invitation: https://github.com/cinc-project/cinc-server-ng/issues/179",
+			"nodes/edit-missing":              "PUT on a missing node creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+			"cookbooks/invalid-name":          "cookbook version PUT accepts a name erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/181",
 		},
 	}
 	return m.Run()
