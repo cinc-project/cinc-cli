@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -800,5 +801,89 @@ func TestConfigureInteractiveUpdateKeepsServerScheme(t *testing.T) {
 	}
 	if p := cfg.Profiles["default"]; p.ServerURL != "http://lab.example.test:8889" || p.Org != "acme" {
 		t.Errorf("accepting every default changed the server: %+v", p)
+	}
+}
+
+// TestConfigureInteractiveKeepsProfileNameForAServerProfile answers the
+// prompts for a server profile, leaving the Supermarket prompt at its public
+// default as nearly everyone will. The profile has a Cinc Server, so it is
+// not a Supermarket-only profile and must keep the name typed for it; it
+// used to be written as [supermarket], leaving the named profile missing.
+func TestConfigureInteractiveKeepsProfileNameForAServerProfile(t *testing.T) {
+	for _, name := range []string{"lab", "default"} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			cfgPath := filepath.Join(home, "credentials")
+			root := newRootCmd()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			// location, profile, supermarket (Enter: public default),
+			// client name, key, host, org, ssl
+			root.SetIn(strings.NewReader(strings.Join([]string{
+				cfgPath, name, "", "tim", "/keys/tim.pem", "cinc.example.test", "acme", "",
+			}, "\n") + "\n"))
+			root.SetArgs([]string{"config", "create"})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("cinc config create: %v\n%s", err, out.String())
+			}
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, ok := cfg.Profiles[name]
+			if !ok {
+				t.Fatalf("no [%s] profile written; got %v", name, sortedProfileNames(cfg))
+			}
+			if p.ServerURL != "https://cinc.example.test" || p.Org != "acme" {
+				t.Errorf("[%s] = %+v, want the server profile", name, p)
+			}
+			if !strings.Contains(out.String(), fmt.Sprintf("Wrote credentials profile %q", name)) {
+				t.Errorf("output should name the profile it wrote:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// TestConfigureCommandKeepsProfileNameWithPublicSupermarketAndServer passes
+// both a server URL and the public Supermarket as flags: still a server
+// profile, still the default name.
+func TestConfigureCommandKeepsProfileNameWithPublicSupermarketAndServer(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	_, _, err := runRoot(t, "config", "create", "--config", cfgPath,
+		"--server-url", "https://cinc.example.test/organizations/acme",
+		"--supermarket-site", "https://supermarket.chef.io",
+		"--client-name", "tim", "--client-key", "/keys/tim.pem")
+	if err != nil {
+		t.Fatalf("cinc config create: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Profiles["default"]; p.Org != "acme" || p.SupermarketSite != "https://supermarket.chef.io" {
+		t.Errorf("profiles = %v, want [default] with both endpoints", cfg.Profiles)
+	}
+}
+
+// TestConfigureCommandRejectsServerURLWithoutOrg leaves /organizations/<org>
+// off --server-url, the likeliest typo there is. It used to be filed away
+// as supermarket_site, writing a profile no server command could use.
+func TestConfigureCommandRejectsServerURLWithoutOrg(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	_, _, err := runRoot(t, "config", "create", "--config", cfgPath,
+		"--server-url", "https://cinc.example.test",
+		"--client-name", "tim", "--client-key", "/keys/tim.pem")
+	if err == nil {
+		b, _ := os.ReadFile(cfgPath)
+		t.Fatalf("config create accepted a server URL without an org and wrote:\n%s", b)
+	}
+	for _, want := range []string{"https://cinc.example.test", "/organizations/", "--supermarket-site"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
+	}
+	if _, statErr := os.Stat(cfgPath); statErr == nil {
+		t.Errorf("a rejected config create wrote %s", cfgPath)
 	}
 }
