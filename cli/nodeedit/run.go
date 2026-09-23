@@ -5,12 +5,17 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	cinc "github.com/cinc-project/cinc-api"
+
+	"github.com/cinc-project/cinc-cli/cli/jsoneditor"
 )
 
 // Run drives the node-edit form as a standalone full-screen program. It
 // returns the edited node and whether it differs from the input. A cancelled
 // edit returns an error.
 func Run(node *cinc.Node) (*cinc.Node, bool, error) {
+	if !jsoneditor.HaveTerminal() {
+		return nil, false, jsoneditor.ErrNoTerminal
+	}
 	m, err := New(node)
 	if err != nil {
 		return nil, false, err
