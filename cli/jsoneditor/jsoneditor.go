@@ -26,6 +26,9 @@ import (
 // Run drives the editor as a standalone full-screen program and returns
 // the committed JSON. It is used by the `cinc <noun> edit` commands.
 func Run(initial []byte, validate func([]byte) error) ([]byte, error) {
+	if !HaveTerminal() {
+		return nil, ErrNoTerminal
+	}
 	final, err := tea.NewProgram(runner{m: New(initial, validate)}, tea.WithAltScreen()).Run()
 	if err != nil {
 		return nil, fmt.Errorf("cinc: edit failed: %w", err)
