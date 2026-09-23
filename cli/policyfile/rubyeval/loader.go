@@ -245,15 +245,17 @@ func ensureRuntimeFrom(src runtimeSource, fetch fetcher) (runtimeFiles, error) {
 	}
 	dir := src.cacheDir
 	rt := filesIn(dir)
-	if fileExists(rt.wasmPath) && dirExists(rt.usrDir) {
-		// Cache hit — but re-verify the cached module hasn't been tampered with
-		// since extraction before we hand it to the wasm runtime. On mismatch,
-		// fall through and re-download/re-extract rather than execute it.
-		if err := verifyFileSHA256(rt.wasmPath, src.binarySHA); err == nil {
-			return rt, nil
-		}
+	// A usable release is complete and its module matches the pin. Checking
+	// the module on a cache hit means one tampered with since extraction is
+	// re-downloaded rather than executed.
+	usable := func() bool {
+		return fileExists(rt.wasmPath) && dirExists(rt.usrDir) &&
+			verifyFileSHA256(rt.wasmPath, src.binarySHA) == nil
 	}
-	if err := materializeFrom(dir, fetch, src.url, src.archiveSHA); err != nil {
+	if usable() {
+		return rt, nil
+	}
+	if err := materializeFrom(dir, fetch, src.url, src.archiveSHA, usable); err != nil {
 		return runtimeFiles{}, err
 	}
 	if !fileExists(rt.wasmPath) || !dirExists(rt.usrDir) {
@@ -269,11 +271,20 @@ func ensureRuntimeFrom(src runtimeSource, fetch fetcher) (runtimeFiles, error) {
 }
 
 // materializeFrom downloads the archive at url via fetch, verifies it
-// against wantSHA, and extracts it into dir atomically. The URL and
-// checksum are injectable so the mirror override and the verified-extract
-// path are testable without the real multi-megabyte blob. A checksum
-// mismatch is rejected before anything is written into dir.
-func materializeFrom(dir string, fetch fetcher, url, wantSHA string) error {
+// against wantSHA, and extracts it into dir. The URL and checksum are
+// injectable so the mirror override and the verified-extract path are
+// testable without the real multi-megabyte blob. A checksum mismatch is
+// rejected before anything is written into dir.
+//
+// Several processes can download at once (parallel first runs of `cinc
+// policy install`, or parallel tests). The archive is extracted into a
+// private staging directory and each of its top-level entries is renamed
+// into dir, so a finished release appears atomically. usable reports
+// whether dir already holds a good release: when another process got there
+// first, its copy is used and this one discarded. dir itself is never
+// removed, because it also holds the compiled-module cache that other
+// processes may be using.
+func materializeFrom(dir string, fetch fetcher, url, wantSHA string, usable func() bool) error {
 	archive, err := fetch(url)
 	if err != nil {
 		return err
@@ -295,10 +306,47 @@ func materializeFrom(dir string, fetch fetcher, url, wantSHA string) error {
 	if err := extractTarGz(archive, staging); err != nil {
 		return err
 	}
-	// Replace any partial previous attempt, then move staging into place.
-	_ = os.RemoveAll(dir)
-	if err := os.Rename(staging, dir); err != nil {
-		return fmt.Errorf("policyfile: finalize ruby.wasm cache: %w", err)
+	if usable() {
+		return nil // another process finished while this one downloaded
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := moveIntoPlace(filepath.Join(staging, e.Name()), filepath.Join(dir, e.Name()), parent, usable); err != nil {
+			return fmt.Errorf("policyfile: finalize ruby.wasm cache: %w", err)
+		}
+	}
+	return nil
+}
+
+// moveIntoPlace renames src to dst. When dst is already there it is either
+// another process's finished copy (usable reports true, and it is kept) or
+// a broken earlier one, which is moved aside into scratch before src
+// replaces it. It is never deleted in place, since a process may be reading
+// it.
+func moveIntoPlace(src, dst, scratch string, usable func() bool) error {
+	err := os.Rename(src, dst)
+	if err == nil || usable() {
+		return nil
+	}
+	if _, statErr := os.Lstat(dst); statErr != nil {
+		return err // nothing in the way, so the rename failed for another reason
+	}
+	aside, asideErr := os.MkdirTemp(scratch, "ruby-wasm-stale-*")
+	if asideErr != nil {
+		return asideErr
+	}
+	defer os.RemoveAll(aside)
+	if err := os.Rename(dst, filepath.Join(aside, filepath.Base(dst))); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil && !usable() {
+		return err
 	}
 	return nil
 }

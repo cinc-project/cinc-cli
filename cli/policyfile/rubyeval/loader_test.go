@@ -99,7 +99,7 @@ func TestMaterializeRejectsBadChecksum(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "release")
 	fetch := func(url string) ([]byte, error) { return []byte("not the real ruby.wasm"), nil }
 
-	err := materializeFrom(dir, fetch, rubyWasmURL, rubyWasmSHA256)
+	err := materializeFrom(dir, fetch, rubyWasmURL, rubyWasmSHA256, func() bool { return false })
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("expected checksum mismatch error, got %v", err)
 	}
@@ -121,7 +121,7 @@ func TestMaterializeExtractsVerifiedArchive(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "release")
 	fetch := func(url string) ([]byte, error) { return archive, nil }
-	if err := materializeFrom(dir, fetch, rubyWasmURL, wantSHA); err != nil {
+	if err := materializeFrom(dir, fetch, rubyWasmURL, wantSHA, func() bool { return false }); err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
 
