@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sshconfig "github.com/kevinburke/ssh_config"
@@ -47,6 +48,10 @@ type CommandResult struct {
 	Stderr   string `json:"stderr,omitempty"`
 	ExitCode int    `json:"exit_code"`
 	Error    string `json:"error,omitempty"`
+	// Skipped marks a host the command was never attempted on, because
+	// --exit-on-error stopped the run first. It is not a failure: the host
+	// was not asked to do anything, so nothing is known about it.
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // Runner executes a command on a target.
@@ -141,28 +146,34 @@ func applyOpenSSHConfig(host string, opts SSHOptions) (SSHOptions, error) {
 
 // RunMany executes command across targets, limiting concurrency and preserving
 // the input order in the returned results.
+//
+// With exitOnError, the first non-zero exit stops further launches. Commands
+// already running are left to finish, which is what the flag promises, and
+// every host that never ran comes back marked Skipped rather than failed.
 func RunMany(ctx context.Context, runner Runner, targets []Target, command string, opts SSHOptions, concurrency int, exitOnError bool) []CommandResult {
 	if concurrency < 1 {
 		concurrency = 1
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	results := make([]CommandResult, len(targets))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
+	// A plain flag rather than a cancelled context: cancelling would also
+	// abort sessions that had already started, which is not what
+	// "stop launching new SSH sessions" means.
+	var stopLaunching atomic.Bool
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for idx := range jobs {
-				if ctx.Err() != nil {
-					results[idx] = CommandResult{Host: targets[idx].Host, ExitCode: 255, Error: ctx.Err().Error()}
+				if stopLaunching.Load() || ctx.Err() != nil {
+					results[idx] = CommandResult{Host: targets[idx].Host, Skipped: true}
 					continue
 				}
 				result := runner.Run(ctx, targets[idx], command, opts)
 				results[idx] = result
 				if exitOnError && result.ExitCode != 0 {
-					cancel()
+					stopLaunching.Store(true)
 				}
 			}
 		}()

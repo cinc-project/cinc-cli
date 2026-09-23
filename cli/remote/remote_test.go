@@ -1,10 +1,12 @@
 package remote
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -105,6 +107,136 @@ func TestAgentSocketCandidatesPrefersSSHAuthSockOverGuesses(t *testing.T) {
 	got := agentSocketCandidates("")
 	if len(got) == 0 || got[0] != "/tmp/ssh-agent.sock" {
 		t.Fatalf("agent socket candidates = %#v, want SSH_AUTH_SOCK first", got)
+	}
+}
+
+// stubRunner fails the hosts named in fail and records what it was asked to run.
+type stubRunner struct {
+	mu   sync.Mutex
+	ran  []string
+	fail map[string]bool
+}
+
+func (r *stubRunner) Run(_ context.Context, target Target, _ string, _ SSHOptions) CommandResult {
+	r.mu.Lock()
+	r.ran = append(r.ran, target.Host)
+	r.mu.Unlock()
+	if r.fail[target.Host] {
+		return CommandResult{Host: target.Host, ExitCode: 1, Stderr: "boom\n"}
+	}
+	return CommandResult{Host: target.Host, Stdout: "ok\n"}
+}
+
+func testTargets(n int) []Target {
+	targets := make([]Target, n)
+	for i := range targets {
+		targets[i] = Target{Host: fmt.Sprintf("h%02d", i)}
+	}
+	return targets
+}
+
+// TestRunManyExitOnErrorMarksRemainingSkipped pins what --exit-on-error means.
+// The flag says it stops launching new sessions after a failure, so the hosts
+// that were never attempted are skipped, not failed: reporting them as
+// failures tells the operator that twenty machines broke when one command
+// returned non-zero.
+func TestRunManyExitOnErrorMarksRemainingSkipped(t *testing.T) {
+	targets := testTargets(20)
+	runner := &stubRunner{fail: map[string]bool{"h00": true}}
+
+	results := RunMany(context.Background(), runner, targets, "true", SSHOptions{}, 1, true)
+
+	if len(results) != len(targets) {
+		t.Fatalf("results = %d, want %d", len(results), len(targets))
+	}
+	if results[0].ExitCode != 1 {
+		t.Errorf("h00 should have failed, got %+v", results[0])
+	}
+	for i, r := range results[1:] {
+		if !r.Skipped {
+			t.Fatalf("result %d (%s) = %+v, want it marked skipped", i+1, r.Host, r)
+		}
+		if r.ExitCode != 0 {
+			t.Errorf("skipped host %s should not carry a failure exit code, got %d", r.Host, r.ExitCode)
+		}
+		if r.Host == "" {
+			t.Errorf("skipped result %d has no host name", i+1)
+		}
+	}
+	if len(runner.ran) != 1 {
+		t.Errorf("runner attempted %v, want only h00", runner.ran)
+	}
+}
+
+// barrierRunner blocks every command until `n` of them have started, so the
+// test can be sure all of them are genuinely in flight together.
+type barrierRunner struct {
+	mu      sync.Mutex
+	ran     []string
+	fail    map[string]bool
+	arrived chan struct{}
+	release chan struct{}
+}
+
+func (r *barrierRunner) Run(_ context.Context, target Target, _ string, _ SSHOptions) CommandResult {
+	r.mu.Lock()
+	r.ran = append(r.ran, target.Host)
+	r.mu.Unlock()
+	r.arrived <- struct{}{}
+	<-r.release
+	if r.fail[target.Host] {
+		return CommandResult{Host: target.Host, ExitCode: 1, Stderr: "boom\n"}
+	}
+	return CommandResult{Host: target.Host, Stdout: "ok\n"}
+}
+
+// TestRunManyExitOnErrorLetsInFlightWorkFinish covers the other half of the
+// flag's promise. Cancelling a shared context to stop the queue also killed
+// commands that had already started; only new launches should stop.
+func TestRunManyExitOnErrorLetsInFlightWorkFinish(t *testing.T) {
+	const n = 4
+	targets := testTargets(n)
+	runner := &barrierRunner{
+		fail:    map[string]bool{"h00": true},
+		arrived: make(chan struct{}, n),
+		release: make(chan struct{}),
+	}
+
+	done := make(chan []CommandResult, 1)
+	go func() {
+		done <- RunMany(context.Background(), runner, targets, "true", SSHOptions{}, n, true)
+	}()
+
+	// Wait until all four are inside Run, then let them all return at once.
+	for i := 0; i < n; i++ {
+		<-runner.arrived
+	}
+	close(runner.release)
+
+	for _, r := range <-done {
+		if r.Skipped {
+			t.Errorf("host %s was skipped even though it had already started", r.Host)
+		}
+	}
+	if len(runner.ran) != n {
+		t.Errorf("runner attempted %v, want all %d hosts", runner.ran, n)
+	}
+}
+
+// Without --exit-on-error every host is attempted, failures and all.
+func TestRunManyWithoutExitOnErrorRunsEveryHost(t *testing.T) {
+	targets := testTargets(5)
+	runner := &stubRunner{fail: map[string]bool{"h00": true, "h02": true}}
+
+	results := RunMany(context.Background(), runner, targets, "true", SSHOptions{}, 2, false)
+
+	if len(runner.ran) != 5 {
+		t.Errorf("runner attempted %v, want all five hosts", runner.ran)
+	}
+	for _, r := range results {
+		if r.Skipped {
+			t.Errorf("host %s was skipped without --exit-on-error", r.Host)
+		}
 	}
 }
 
