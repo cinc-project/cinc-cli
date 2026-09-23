@@ -67,7 +67,7 @@ func createUser(c *cli) testUser {
 		"--last-name", "User",
 		"--password", u.password,
 		"--key-file", u.keyPath)
-	c.cleanup("user", "delete", u.name)
+	c.cleanupMembership("user", "delete", u.name)
 	return u
 }
 
@@ -140,7 +140,7 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 		"--middle-name", "Q",
 		"--last-name", "Carter",
 		"--password", "s3cret-"+randomHex(t, 4))
-	c.cleanup("user", "delete", name)
+	c.cleanupMembership("user", "delete", name)
 	// With no --key-file the server-generated private key goes to stdout.
 	if !strings.Contains(out, "BEGIN RSA PRIVATE KEY") && !strings.Contains(out, "BEGIN PRIVATE KEY") {
 		t.Errorf("user create did not print the generated private key:\n%s", out)
@@ -184,7 +184,7 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 	wantEqual(t, "first_name after edit", u.FirstName, "Caroline")
 	wantNotFound(t, c.fail("user", "show", "ignored"))
 
-	wantEqual(t, "delete output", c.run("user", "delete", name), fmt.Sprintf("Deleted user %q\n", name))
+	wantEqual(t, "delete output", c.runMembership("user", "delete", name), fmt.Sprintf("Deleted user %q\n", name))
 	wantNotFound(t, c.fail("user", "show", name))
 	if names := listUsers(c); slices.Contains(names, name) {
 		t.Errorf("user list still includes deleted %s", name)
@@ -200,7 +200,7 @@ func testUserCreateKeyFile(t *testing.T, _ Target, c *cli) {
 	out := c.run("user", "create", name,
 		"--email", name+"@example.test", "--display-name", "Key File",
 		"--password", "pw-"+randomHex(t, 6), "--key-file", keyPath)
-	c.cleanup("user", "delete", name)
+	c.cleanupMembership("user", "delete", name)
 	if strings.Contains(out, "PRIVATE KEY") {
 		t.Errorf("user create --key-file should not print the key:\n%s", out)
 	}
@@ -236,7 +236,7 @@ func testUserCreatePublicKey(t *testing.T, _ Target, c *cli) {
 	out := c.run("user", "create", name,
 		"--email", name+"@example.test", "--display-name", "Own Key",
 		"--password", "pw-"+randomHex(t, 6), "--public-key", pubPath)
-	c.cleanup("user", "delete", name)
+	c.cleanupMembership("user", "delete", name)
 	wantEqual(t, "create output", out, fmt.Sprintf("Created user %q\n", name))
 
 	u := testUser{name: name, keyPath: keyPath}
@@ -254,7 +254,7 @@ func testUserAlreadyExists(t *testing.T, _ Target, c *cli) {
 func testUserNotFound(t *testing.T, _ Target, c *cli) {
 	ghost := uniqueName(t, "ghost")
 	wantNotFound(t, c.fail("user", "show", ghost))
-	wantNotFound(t, c.fail("user", "delete", ghost))
+	wantNotFound(t, c.failMembership("user", "delete", ghost))
 	wantNotFound(t, c.fail("user", "password", ghost, "--password", "n3w-s3cret!"))
 }
 
@@ -263,7 +263,7 @@ func testUserNotFound(t *testing.T, _ Target, c *cli) {
 // the body.
 func testUserEditMissing(t *testing.T, _ Target, c *cli) {
 	ghost := uniqueName(t, "ghost")
-	c.cleanup("user", "delete", ghost)
+	c.cleanupMembership("user", "delete", ghost)
 	file := writeJSON(t, cinc.User{DisplayName: "Ghost", Email: ghost + "@example.test"})
 	wantNotFound(t, c.fail("user", "edit", ghost, "--file", file))
 	wantNotFound(t, c.fail("user", "show", ghost))
@@ -330,7 +330,7 @@ func testUserCreateInvalidName(t *testing.T, _ Target, c *cli) {
 			"--email", "bad-"+randomHex(t, 4)+"@example.test", "--display-name", "Bad Name",
 			"--password", "pw-"+randomHex(t, 6))
 		if r.exitCode == 0 {
-			c.cleanup("user", "delete", name)
+			c.cleanupMembership("user", "delete", name)
 			t.Errorf("user create %q succeeded, want a 400: %s", name, r)
 			continue
 		}
@@ -358,7 +358,7 @@ func testUserCreateMissingFields(t *testing.T, _ Target, c *cli) {
 		name := uniqueName(t, "user")
 		r := c.exec(runOpts{}, append([]string{"user", "create", name}, a.flags...)...)
 		if r.exitCode == 0 {
-			c.cleanup("user", "delete", name)
+			c.cleanupMembership("user", "delete", name)
 			t.Errorf("%s: user create succeeded, want a 400: %s", a.what, r)
 			continue
 		}
@@ -374,7 +374,7 @@ func testUserEmailLowercased(t *testing.T, _ Target, c *cli) {
 	c.run("user", "create", name,
 		"--email", "Mixed."+name+"@Example.TEST", "--display-name", "Mixed Case",
 		"--password", "pw-"+randomHex(t, 6))
-	c.cleanup("user", "delete", name)
+	c.cleanupMembership("user", "delete", name)
 	wantEqual(t, "email", showUser(c, name).Email, "mixed."+name+"@example.test")
 }
 
@@ -414,13 +414,13 @@ func testUserNonAdminForbidden(t *testing.T, _ Target, c *cli) {
 	as := actAs(c, actor)
 
 	ghost := uniqueName(t, "user")
-	c.cleanup("user", "delete", ghost)
+	c.cleanupMembership("user", "delete", ghost)
 	wantForbidden(t, c.fail(append([]string{"user", "create", ghost,
 		"--email", ghost + "@example.test", "--display-name", "Nope", "--password", "pw-123456"}, as...)...))
 
 	file := writeJSON(t, cinc.User{DisplayName: "Hijacked", Email: victim.name + "@example.test"})
 	wantForbidden(t, c.fail(append([]string{"user", "edit", victim.name, "--file", file}, as...)...))
-	wantForbidden(t, c.fail(append([]string{"user", "delete", victim.name}, as...)...))
+	wantForbidden(t, c.failMembership(append([]string{"user", "delete", victim.name}, as...)...))
 
 	// user password reads the user first, then writes it; either may be the
 	// request refused, but it must be refused.
@@ -468,7 +468,7 @@ func testUserDeleteMember(t *testing.T, _ Target, c *cli) {
 	if !slices.Contains(orgMembers(c), u.name) {
 		t.Fatalf("%s should be a member before the delete", u.name)
 	}
-	c.run("user", "delete", u.name)
+	c.runMembership("user", "delete", u.name)
 	if members := orgMembers(c); slices.Contains(members, u.name) {
 		t.Errorf("org member list still includes deleted user %s: %v", u.name, members)
 	}
@@ -482,7 +482,7 @@ func testUserDeleteInvited(t *testing.T, _ Target, c *cli) {
 	if _, ok := findInvite(c, u.name); !ok {
 		t.Fatalf("%s should have a pending invitation before the delete", u.name)
 	}
-	c.run("user", "delete", u.name)
+	c.runMembership("user", "delete", u.name)
 	if inv, ok := findInvite(c, u.name); ok {
 		t.Errorf("org invite list still includes deleted user %s: %+v", u.name, inv)
 	}

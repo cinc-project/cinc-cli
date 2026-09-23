@@ -43,7 +43,14 @@ func TestCincServerErlang(t *testing.T) {
 		// erchef is the reference: a failure here is a CLI or cinc-api bug
 		// until shown otherwise. Entries are only for server limitations,
 		// each stating what was observed.
-		Gaps: map[string]string{},
+		Gaps: map[string]string{
+			// The admin is a server-admin, not pivotal. erchef reserves
+			// these to the superuser and answers it 403 (observed).
+			"orgs/lifecycle":      `needs pivotal: POST /organizations answers the server-admin 403 "missing create permission"`,
+			"orgs/create-stdout":  `needs pivotal: POST /organizations answers the server-admin 403 "missing create permission"`,
+			"orgs/already-exists": `needs pivotal: POST /organizations answers the server-admin 403 "missing create permission" before it checks for a conflict`,
+			"orgs/member-add":     "needs pivotal: POST /organizations/O/users (adding a member without an invitation) is superuser_only and answers the server-admin 403",
+		},
 	})
 }
 

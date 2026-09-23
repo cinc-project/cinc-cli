@@ -104,7 +104,7 @@ func joinOrg(c *cli, u testUser) {
 	c.t.Helper()
 	inviteUser(c, u.name)
 	acceptInvite(c, u, c.tgt.Org)
-	c.cleanup("org", "member", "remove", u.name)
+	c.cleanupMembership("org", "member", "remove", u.name)
 }
 
 // acceptInvite accepts u's pending invitation to org, signing as u through
@@ -122,7 +122,10 @@ func acceptInvite(c *cli, u testUser, org string) {
 	if i < 0 {
 		c.t.Fatalf("%s has no invitation to %s: %+v", u.name, org, invites)
 	}
-	if _, err := api.Associations.RespondInvite(ctx, u.name, invites[i].ID, true); err != nil {
+	unlock := lockOrgMembership(c.t)
+	_, err = api.Associations.RespondInvite(ctx, u.name, invites[i].ID, true)
+	unlock()
+	if err != nil {
 		c.t.Fatalf("%s accepting the invitation to %s: %v", u.name, org, err)
 	}
 }
@@ -372,7 +375,7 @@ func testOrgMemberList(t *testing.T, tgt Target, c *cli) {
 	there := createUser(c)
 	inviteUser(c, there.name, "--profile", "other")
 	acceptInvite(c, there, tgt.OtherOrg)
-	c.cleanup("org", "member", "remove", there.name, "--profile", "other")
+	c.cleanupMembership("org", "member", "remove", there.name, "--profile", "other")
 
 	members := orgMembers(c)
 	if !slices.Contains(members, here.name) || slices.Contains(members, there.name) {
@@ -397,8 +400,8 @@ func testOrgMemberAdd(t *testing.T, tgt Target, c *cli) {
 	u := createUser(c)
 	wantNotInOrg(c, u)
 
-	c.cleanup("org", "member", "remove", u.name)
-	wantEqual(t, "add output", c.run("org", "member", "add", u.name),
+	c.cleanupMembership("org", "member", "remove", u.name)
+	wantEqual(t, "add output", c.runMembership("org", "member", "add", u.name),
 		fmt.Sprintf("Added %q to organization %q\n", u.name, tgt.Org))
 	if !slices.Contains(orgMembers(c), u.name) {
 		t.Errorf("org member list does not include %s after add", u.name)
@@ -408,9 +411,9 @@ func testOrgMemberAdd(t *testing.T, tgt Target, c *cli) {
 		t.Errorf("adding %s to %s also added them to %s", u.name, tgt.Org, tgt.OtherOrg)
 	}
 
-	wantFailure(t, c.fail("org", "member", "add", u.name), "already exists", "409", "conflict")
+	wantFailure(t, c.failMembership("org", "member", "add", u.name), "already exists", "409", "conflict")
 
-	wantEqual(t, "remove output", c.run("org", "member", "remove", u.name),
+	wantEqual(t, "remove output", c.runMembership("org", "member", "remove", u.name),
 		fmt.Sprintf("Removed %q from organization %q\n", u.name, tgt.Org))
 	wantNotInOrg(c, u)
 }
@@ -419,7 +422,7 @@ func testOrgMemberAdd(t *testing.T, tgt Target, c *cli) {
 // whoever asks.
 func testOrgMemberAddErrors(t *testing.T, _ Target, c *cli) {
 	ghost := uniqueName(t, "ghost")
-	wantNotFound(t, c.fail("org", "member", "add", ghost))
+	wantNotFound(t, c.failMembership("org", "member", "add", ghost))
 }
 
 // testOrgMemberRemove removes a member who joined by invitation, so it runs
@@ -429,7 +432,7 @@ func testOrgMemberRemove(t *testing.T, tgt Target, c *cli) {
 	joinOrg(c, u)
 	wantSignsInOrg(c, u)
 
-	wantEqual(t, "remove output", c.run("org", "member", "remove", u.name),
+	wantEqual(t, "remove output", c.runMembership("org", "member", "remove", u.name),
 		fmt.Sprintf("Removed %q from organization %q\n", u.name, tgt.Org))
 	if members := orgMembers(c); slices.Contains(members, u.name) {
 		t.Errorf("org member list still includes %s after remove: %v", u.name, members)
@@ -437,9 +440,9 @@ func testOrgMemberRemove(t *testing.T, tgt Target, c *cli) {
 	// Removal deprovisions the user: their key no longer opens the org.
 	wantNotInOrg(c, u)
 
-	wantNotFound(t, c.fail("org", "member", "remove", u.name))
+	wantNotFound(t, c.failMembership("org", "member", "remove", u.name))
 	ghost := uniqueName(t, "ghost")
-	wantNotFound(t, c.fail("org", "member", "remove", ghost))
+	wantNotFound(t, c.failMembership("org", "member", "remove", ghost))
 }
 
 // testOrgMemberRemoveAdmin checks erchef's rule that a member of the org's
@@ -449,17 +452,17 @@ func testOrgMemberRemove(t *testing.T, tgt Target, c *cli) {
 func testOrgMemberRemoveAdmin(t *testing.T, _ Target, c *cli) {
 	u := createUser(c)
 	joinOrg(c, u)
-	c.run("group", "member", "add", "admins", u.name)
-	c.cleanup("group", "member", "remove", "admins", u.name)
+	c.runMembership("group", "member", "add", "admins", u.name)
+	c.cleanupMembership("group", "member", "remove", "admins", u.name)
 
-	r := c.fail("org", "member", "remove", u.name)
+	r := c.failMembership("org", "member", "remove", u.name)
 	wantFailure(t, r, "admins group")
 	if !slices.Contains(orgMembers(c), u.name) {
 		t.Errorf("a refused remove still removed %s", u.name)
 	}
 
-	c.run("group", "member", "remove", "admins", u.name)
-	c.run("org", "member", "remove", u.name)
+	c.runMembership("group", "member", "remove", "admins", u.name)
+	c.runMembership("org", "member", "remove", u.name)
 	if slices.Contains(orgMembers(c), u.name) {
 		t.Errorf("%s is still a member after leaving admins and the org", u.name)
 	}
@@ -471,9 +474,9 @@ func testOrgMemberAddForbidden(t *testing.T, _ Target, c *cli) {
 	member := createUser(c)
 	joinOrg(c, member)
 	outsider := createUser(c)
-	c.cleanup("org", "member", "remove", outsider.name)
+	c.cleanupMembership("org", "member", "remove", outsider.name)
 
-	wantForbidden(t, c.fail(append([]string{"org", "member", "add", outsider.name}, actAs(c, member)...)...))
+	wantForbidden(t, c.failMembership(append([]string{"org", "member", "add", outsider.name}, actAs(c, member)...)...))
 	if slices.Contains(orgMembers(c), outsider.name) {
 		t.Errorf("a refused add made %s a member", outsider.name)
 	}
@@ -488,7 +491,7 @@ func testOrgMemberRemoveForbidden(t *testing.T, _ Target, c *cli) {
 	other := createUser(c)
 	joinOrg(c, other)
 
-	wantForbidden(t, c.fail(append([]string{"org", "member", "remove", other.name}, actAs(c, member)...)...))
+	wantForbidden(t, c.failMembership(append([]string{"org", "member", "remove", other.name}, actAs(c, member)...)...))
 	if !slices.Contains(orgMembers(c), other.name) {
 		t.Errorf("a refused remove took %s out of the org", other.name)
 	}
@@ -575,7 +578,7 @@ func testOrgInviteAccept(t *testing.T, tgt Target, c *cli) {
 	wantNotInOrg(c, u)
 	inviteUser(c, u.name)
 	acceptInvite(c, u, tgt.Org)
-	c.cleanup("org", "member", "remove", u.name)
+	c.cleanupMembership("org", "member", "remove", u.name)
 
 	if _, ok := findInvite(c, u.name); ok {
 		t.Errorf("an accepted invitation is still pending for %s", u.name)
