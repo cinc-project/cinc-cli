@@ -28,6 +28,7 @@ var cookbookFamily = family{cases: []testCase{
 	{"cookbooks/shared-checksum", []string{"cookbook upload", "cookbook delete", "cookbook download"}, testCookbookSharedChecksum},
 	{"cookbooks/download-existing-dir", []string{"cookbook download"}, testCookbookDownloadExistingDir},
 	{"cookbooks/not-found", []string{"cookbook show", "cookbook delete", "cookbook download"}, testCookbookNotFound},
+	{"cookbooks/escaped-name-not-found", []string{"cookbook show", "cookbook delete", "cookbook download"}, testCookbookEscapedNameNotFound},
 	{"cookbooks/bad-metadata", []string{"cookbook upload"}, testCookbookBadMetadata},
 	{"cookbooks/upload-missing-local", []string{"cookbook upload"}, testCookbookUploadMissingLocal},
 	{"cookbooks/forbidden", []string{"cookbook list", "cookbook show", "cookbook upload", "cookbook delete"}, testCookbookForbidden},
@@ -561,6 +562,17 @@ func testCookbookNotFound(t *testing.T, _ Target, c *cli) {
 	wantNotFound(t, c.fail("cookbook", "delete", name, "9.9.9"))
 	wantNotFound(t, c.fail("cookbook", "download", name, "9.9.9", "--dir", dest))
 	wantEqual(t, "surviving version", showCookbook(c, name, "").Version, "1.0.0")
+}
+
+// testCookbookEscapedNameNotFound asks for a cookbook whose name must be
+// percent-encoded in the URL. The request is signed over the path as sent,
+// encoding and all, and the server checks it that way, so the answer is a
+// plain 404, not a signature failure.
+func testCookbookEscapedNameNotFound(t *testing.T, _ Target, c *cli) {
+	ghost := uniqueName(t, "ghost") + " has spaces"
+	wantNotFound(t, c.fail("cookbook", "show", ghost, "1.0.0"))
+	wantNotFound(t, c.fail("cookbook", "delete", ghost, "1.0.0"))
+	wantNotFound(t, c.fail("cookbook", "download", ghost, "--dir", t.TempDir()))
 }
 
 // testCookbookBadMetadata uploads cookbooks whose metadata Chef rejects; each
