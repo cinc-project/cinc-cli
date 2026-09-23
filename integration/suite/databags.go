@@ -240,16 +240,34 @@ func testDatabagSpecialNames(t *testing.T, _ Target, c *cli) {
 func testDatabagInvalidNames(t *testing.T, _ Target, c *cli) {
 	badBag := "t bad " + randomHex(t, 4)
 	c.cleanup("databag", "delete", badBag)
-	c.fail("databag", "create", badBag)
+	databagWantStderr(t, c.fail("databag", "create", badBag), "400")
 	if slices.Contains(databagNames(c), badBag) {
 		t.Errorf("databag create %q created the bag", badBag)
 	}
 
 	bag := databagNew(c)
 	for _, id := range []string{"bad id", "bad/id", "bad!id"} {
-		c.fail("databag", "item", "create", bag, id, "--file", writeJSON(t, map[string]any{"id": id}))
+		databagWantStderr(t, c.fail("databag", "item", "create", bag, id, "--file", writeJSON(t, map[string]any{"id": id})), "400")
 	}
 	wantSlice(t, "items after invalid creates", databagItemIDs(c, bag), []string{})
+
+	// Reading names that need percent-escaping puts the escapes in the
+	// request path. The signature must still verify (a 401 here means the
+	// server and client disagree on the signed path), so the answer is a
+	// plain not-found.
+	for _, args := range [][]string{
+		{"databag", "show", badBag},
+		{"databag", "item", "show", bag, "bad id"},
+		{"databag", "item", "show", bag, "bad!id"},
+		{"databag", "item", "delete", bag, "bad id"},
+	} {
+		r := c.fail(args...)
+		if strings.Contains(r.stderr, "401") {
+			t.Errorf("an escaped path failed signature verification: %s", r)
+			continue
+		}
+		wantNotFound(t, r)
+	}
 }
 
 func testDatabagAlreadyExists(t *testing.T, _ Target, c *cli) {
