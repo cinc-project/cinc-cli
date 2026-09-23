@@ -230,6 +230,28 @@ func TestSearchEmptyResults(t *testing.T) {
 	}
 }
 
+// TestSearchEmptyJSONRowsIsAnArray checks that --format json reports no
+// matches as "rows": [], never null, whether or not --rows pages the result,
+// so a script can iterate the rows without a null check.
+func TestSearchEmptyJSONRowsIsAnArray(t *testing.T) {
+	srv := searchServer(t, "node", 0, []any{}, nil)
+
+	for _, extra := range [][]string{nil, {"--rows", "5"}, {"--start", "2"}} {
+		args := append([]string{"node", "name:nope", "--format", "json"}, extra...)
+		out, err := runSearchCmd(t, srv.URL, args...)
+		if err != nil {
+			t.Fatalf("cinc search %v: %v\n%s", extra, err, out)
+		}
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("json output not valid: %v\n%s", err, out)
+		}
+		if string(got["rows"]) != "[]" {
+			t.Errorf("cinc search %v: rows = %s, want []", extra, got["rows"])
+		}
+	}
+}
+
 func TestSearchRoleColumns(t *testing.T) {
 	rows := []any{
 		map[string]any{"name": "web", "description": "Web tier", "run_list": []string{"recipe[apache]"}},

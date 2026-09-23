@@ -112,6 +112,11 @@ func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap
 	if err != nil {
 		return searchResult{}, err
 	}
+	if all == nil {
+		// SearchAll returns nil for no matches; --format json must still
+		// print "rows": [] so scripts can iterate it.
+		all = []json.RawMessage{}
+	}
 	// Every match from start on was fetched, so start plus what came back is
 	// the whole result set.
 	return searchResult{Total: start + len(all), Start: start, Rows: all}, nil
