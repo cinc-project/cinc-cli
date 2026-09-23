@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,5 +210,60 @@ func TestBareCincSetupPromptIsOnItsOwnLine(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "\nWould you like to run the interactive setup? (Y/n) ") {
 		t.Errorf("expected the setup question on its own line, got:\n%s", stderr)
+	}
+}
+
+// TestUnknownFormatIsRejectedBeforeAnyCommandActs checks --format is
+// validated for every command before it runs, not only by the commands that
+// print structured output. A create that ignores --format yaml has already
+// changed the server by the time anything could complain.
+func TestUnknownFormatIsRejectedBeforeAnyCommandActs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := filepath.Join(t.TempDir(), "credentials")
+	if err := os.WriteFile(cfg, []byte(fmt.Sprintf(`[default]
+cinc_server_url = "%s/organizations/acme"
+client_name = "tim"
+client_key = %q
+`, srv.URL, writeTestKey(t))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	written := filepath.Join(t.TempDir(), "written")
+
+	for _, args := range [][]string{
+		{"node", "create", "web01", "--config", cfg},
+		{"environment", "create", "prod", "--config", cfg},
+		{"config", "create", "--config", written, "--server-url", srv.URL + "/organizations/acme", "--client-name", "tim", "--client-key", "/k.pem"},
+		{"version"},
+	} {
+		_, _, err := runRoot(t, append(args, "--format", "yaml")...)
+		if err == nil {
+			t.Errorf("%v --format yaml succeeded", args)
+			continue
+		}
+		for _, want := range []string{`"yaml"`, "human", "json"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%v: error %q should mention %s", args, err, want)
+			}
+		}
+	}
+	if len(requests) != 0 {
+		t.Errorf("a rejected --format still reached the server: %v", requests)
+	}
+	if _, err := os.Stat(written); err == nil {
+		t.Errorf("config create --format yaml wrote %s", written)
+	}
+
+	// The accepted formats still pass the check.
+	for _, format := range []string{"human", "json"} {
+		if _, _, err := runRoot(t, "version", "--format", format); err != nil {
+			t.Errorf("version --format %s: %v", format, err)
+		}
 	}
 }

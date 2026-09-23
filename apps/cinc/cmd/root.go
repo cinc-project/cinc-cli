@@ -31,6 +31,14 @@ func newRootCmd() *cobra.Command {
 		// help text. Subcommands keep their own behavior — this RunE
 		// only fires for a bare `cinc` invocation.
 		RunE: rootRunE,
+		// --format is a persistent flag, so every command accepts it, but
+		// only the commands that print structured output ever read it.
+		// Check it here, before any command runs, so a typo is refused
+		// before a create has already changed the server.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := resolveFormat(cmd)
+			return err
+		},
 	}
 
 	flags := root.PersistentFlags()

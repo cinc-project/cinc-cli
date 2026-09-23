@@ -74,7 +74,11 @@ func boldEnabled(w io.Writer) bool {
 // resolveFormat reads and validates the --format flag.
 func resolveFormat(cmd *cobra.Command) (printer.Format, error) {
 	name, _ := cmd.Flags().GetString("format")
-	return printer.ParseFormat(name)
+	format, err := printer.ParseFormat(name)
+	if err != nil {
+		return "", fmt.Errorf("we don't know the output format %q. Use --format human or --format json.", name)
+	}
+	return format, nil
 }
 
 // resolveSecret returns the raw bytes of the encrypted data bag secret,
