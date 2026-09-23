@@ -602,3 +602,25 @@ func writeSupermarketTestKey(t *testing.T) string {
 	}
 	return keyPath
 }
+
+// TestNewExpandsTildeInSupermarketKey checks a supermarket_key written as
+// ~/... is read from the home directory.
+func TestNewExpandsTildeInSupermarketKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	key, err := os.ReadFile(writeSupermarketTestKey(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "supermarket.pem"), key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := shareCapturedUserID(t, config.Profile{
+		ClientName:     "tim",
+		KeyPath:        "/keys/does-not-exist.pem",
+		SupermarketKey: "~/supermarket.pem",
+	})
+	if got != "tim" {
+		t.Fatalf("X-Ops-Userid = %q, want tim", got)
+	}
+}

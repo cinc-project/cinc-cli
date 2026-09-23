@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/cinc-project/cinc-cli/cli/config"
 )
 
 // fakeCmd builds a cobra command with the same flags resolveProfile
@@ -349,5 +351,74 @@ func TestResolveProfilePointsAtConfigureWhenStdinNotTTY(t *testing.T) {
 	_, err := resolveProfile(c)
 	if err == nil || !strings.Contains(err.Error(), "cinc config create") {
 		t.Errorf("expected an error mentioning `cinc config create`, got: %v", err)
+	}
+}
+
+// TestResolveProfileExpandsTildeInConfigFlag covers --config=~/..., which no
+// shell expands (the ~ does not start a word), and a quoted --config "~/...".
+func TestResolveProfileExpandsTildeInConfigFlag(t *testing.T) {
+	home := seedDefaultCreds(t)
+	body, err := os.ReadFile(filepath.Join(home, ".cinc", "credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "elsewhere"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := fakeCmd("~/elsewhere", "", "", new(bytes.Buffer))
+	p, err := resolveProfile(c)
+	if err != nil {
+		t.Fatalf("resolveProfile with --config ~/elsewhere: %v", err)
+	}
+	if p.ClientName != "tim" {
+		t.Errorf("unexpected profile: %+v", p)
+	}
+}
+
+// TestResolveClientReportsMissingTildeKeyFile checks the missing-key message
+// for a ~ path names the expanded path it actually tried.
+func TestResolveClientReportsMissingTildeKeyFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := filepath.Join(home, ".cinc", "credentials")
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `[default]
+cinc_server_url = "https://x.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "~/missing.pem"
+`
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := resolveClient(fakeCmd("", "", "", new(bytes.Buffer)))
+	if err == nil {
+		t.Fatal("expected an error when the key file does not exist")
+	}
+	if want := filepath.Join(home, "missing.pem"); !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q should name the expanded path %s", err, want)
+	}
+	if !strings.Contains(err.Error(), "can't find your client key") {
+		t.Errorf("error %q should be the friendly missing-key message", err)
+	}
+}
+
+// TestResolveSecretExpandsTildeInSecretFile checks a profile's secret_file
+// written as ~/... is read from the home directory.
+func TestResolveSecretExpandsTildeInSecretFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CINC_SECRET_FILE", "")
+	t.Setenv("CHEF_SECRET_FILE", "")
+	if err := os.WriteFile(filepath.Join(home, "secret"), []byte("s3cret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveSecret(fakeCmd("", "", "", new(bytes.Buffer)), config.Profile{SecretFile: "~/secret"})
+	if err != nil {
+		t.Fatalf("resolveSecret: %v", err)
+	}
+	if string(got) != "s3cret" {
+		t.Errorf("secret = %q, want the contents of ~/secret", got)
 	}
 }
