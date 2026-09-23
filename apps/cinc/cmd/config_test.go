@@ -467,3 +467,27 @@ cinc_server_url = "%s/organizations/acme"
 		}
 	}
 }
+
+// TestConfigValidateExplainsRefusedConnection checks the reachability
+// failure for a server that isn't listening reads as a sentence naming the
+// address, not Go's dial error chain.
+func TestConfigValidateExplainsRefusedConnection(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	srv.Close()
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[default]
+client_name = "tim"
+client_key = %q
+cinc_server_url = "http://%s/organizations/acme"
+`, writeTestKey(t), addr))
+
+	out, _, err := runRoot(t, "config", "validate", cfgPath)
+	if err == nil {
+		t.Fatalf("validate should fail for a server that isn't listening:\n%s", out)
+	}
+	want := "✗ Server is reachable: we couldn't connect to " + addr
+	if !strings.Contains(out, want) {
+		t.Errorf("stdout = %q, want %q", out, want)
+	}
+}

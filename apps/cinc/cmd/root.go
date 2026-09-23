@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
 	"github.com/cinc-project/cinc-cli/cli/progname"
 )
@@ -83,7 +84,10 @@ func Execute() error {
 	// Some commands (e.g. `config validate`) already print their own detail;
 	// exit non-zero without a second generic "Error: ..." line.
 	if err != nil && !errors.Is(err, errAlreadyReported) {
-		fmt.Fprintln(root.ErrOrStderr(), "Error:", err)
+		// A transport failure the user can fix (an untrusted certificate,
+		// a server that isn't listening) is explained rather than printed
+		// as Go's error chain.
+		fmt.Fprintln(root.ErrOrStderr(), "Error:", client.Explain(err))
 	}
 	return err
 }
