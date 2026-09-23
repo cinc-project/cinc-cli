@@ -92,8 +92,8 @@ cinc config create`,
 				}
 			}
 			// UpdateProfile starts from whatever is already on disk, so
-			// keys this command never asks about (secret_file and the
-			// supermarket identity overrides) survive an update without
+			// keys this command never asks about (secret_file,
+			// trusted_certs_dir and the supermarket identity overrides) survive an update without
 			// being threaded through the prompts.
 			err = config.UpdateProfile(cfgPath, profileName, func(p *config.Profile) error {
 				updated, err := config.NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite)

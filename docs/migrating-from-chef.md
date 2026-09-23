@@ -40,7 +40,7 @@ Want us to migrate it to /home/tim/.cinc/credentials for you? [Y/n]
 Say yes and `cinc` reads every profile from your Chef file and writes
 the equivalent `~/.cinc/credentials`. It carries over **every** key in
 each profile (`client_name`, `client_key`, `ssl_verify_mode`,
-`supermarket_site`, `secret_file`, and the `supermarket_client_name` /
+`trusted_certs_dir`, `supermarket_site`, `secret_file`, and the `supermarket_client_name` /
 `supermarket_key` overrides), so nothing gets dropped. As part of the
 copy it **modernizes** a legacy `chef_server_url` into the
 cinc-canonical `cinc_server_url`; everything else keeps its name. Your
@@ -96,7 +96,7 @@ for both tools. It still **reads** `chef_server_url` happily either way.
 | `CHEF_SECRET_FILE` | `CINC_SECRET_FILE` | env var |
 
 Most credential keys (`client_name`, `client_key`, `ssl_verify_mode`,
-`secret_file`) are spelled the same in both worlds; only the ones above
+`trusted_certs_dir`, `secret_file`) are spelled the same in both worlds; only the ones above
 have a distinct chef/cinc spelling. As with knife, the server URL must
 include the `/organizations/<org>` segment.
 
@@ -141,6 +141,14 @@ per command with `--secret-file`/`--secret`, or via `$CINC_SECRET_FILE`
 `ssl_verify_mode` works the same as in knife: `:verify_peer` (the
 default) verifies the server certificate, `:verify_none` skips it for a
 lab server with a self-signed cert.
+
+`trusted_certs_dir` works the same as in knife too, and it's the better
+answer for a server with an internal or self-signed CA: `cinc` trusts
+the `*.crt` and `*.pem` certificates in that directory on top of your
+system's. When the key is unset it uses `~/.cinc/trusted_certs`, falling
+back to knife's `~/.chef/trusted_certs`, so certificates you already
+saved with `knife ssl fetch` are picked up with no changes. See
+[the configuration reference](configuration.md#trusted_certs_dir).
 
 ## Command mapping
 

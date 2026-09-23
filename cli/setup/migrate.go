@@ -28,6 +28,7 @@ type chefRawProfile struct {
 	SecretFile            string `toml:"secret_file"`
 	SupermarketClientName string `toml:"supermarket_client_name"`
 	SupermarketKey        string `toml:"supermarket_key"`
+	TrustedCertsDir       string `toml:"trusted_certs_dir"`
 }
 
 // MigrateChef reads chefPath and writes the equivalent credentials
@@ -73,6 +74,7 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 		profile.SecretFile = rp.SecretFile
 		profile.SupermarketClientName = rp.SupermarketClientName
 		profile.SupermarketKey = rp.SupermarketKey
+		profile.TrustedCertsDir = rp.TrustedCertsDir
 		resolved = append(resolved, profile)
 	}
 
