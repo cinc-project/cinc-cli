@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 const sampleConfig = `
@@ -897,5 +899,50 @@ node_name       = "tim"
 	}
 	if !strings.Contains(string(raw), `chef_server_url = "https://chef.example.com/organizations/acme"`) {
 		t.Errorf("knife's server URL was dropped by a rewrite that had none to offer\nfile:\n%s", raw)
+	}
+}
+
+// TestWriteProfileWithExtrasWritesUnmanagedKeysOnly checks the extra keys are
+// written verbatim, while a managed key in extra never overrides the Profile.
+func TestWriteProfileWithExtrasWritesUnmanagedKeysOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials")
+	p := Profile{
+		ServerURL:  "https://cinc.example.com",
+		Org:        "acme",
+		ClientName: "tim",
+		KeyPath:    "/keys/tim.pem",
+	}
+	extra := map[string]any{
+		"node_name":       "tim-workstation",
+		"knife":           map[string]any{"ssh_user": "ubuntu"},
+		"client_name":     "not-tim",
+		"chef_server_url": "https://old.example.com/organizations/old",
+	}
+	if err := WriteProfileWithExtras(path, "default", p, extra); err != nil {
+		t.Fatalf("WriteProfileWithExtras: %v", err)
+	}
+	var got map[string]map[string]any
+	if _, err := toml.DecodeFile(path, &got); err != nil {
+		t.Fatal(err)
+	}
+	def := got["default"]
+	if def["node_name"] != "tim-workstation" {
+		t.Errorf("node_name = %v, want it copied", def["node_name"])
+	}
+	if knife, _ := def["knife"].(map[string]any); knife["ssh_user"] != "ubuntu" {
+		t.Errorf("knife = %v, want the nested table copied", def["knife"])
+	}
+	if def["client_name"] != "tim" {
+		t.Errorf("client_name = %v, want the Profile's value, not extra's", def["client_name"])
+	}
+	if _, ok := def["chef_server_url"]; ok {
+		t.Errorf("chef_server_url from extra should be ignored: %v", def)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Profiles["default"]; got.ServerURL != p.ServerURL || got.Org != "acme" {
+		t.Errorf("reloaded profile = %+v", got)
 	}
 }
