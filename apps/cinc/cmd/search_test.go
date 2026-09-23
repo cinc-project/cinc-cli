@@ -171,6 +171,29 @@ func TestSearchPaginationSinglePage(t *testing.T) {
 	}
 }
 
+// TestSearchRejectsNegativePaging checks that a negative --rows or --start is
+// refused before any request: --rows -1 used to read as "every match" and
+// --start -1 went to the server as is.
+func TestSearchRejectsNegativePaging(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("search made a request (%s %s) despite a negative paging flag", r.Method, r.URL)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	for _, args := range [][]string{{"--rows", "-1"}, {"--start", "-1"}, {"--rows", "5", "--start", "-3"}} {
+		out, err := runSearchCmd(t, srv.URL, append([]string{"node", "*:*"}, args...)...)
+		if err == nil {
+			t.Errorf("cinc search %v succeeded, want an error:\n%s", args, out)
+			continue
+		}
+		flag := args[len(args)-2]
+		if !strings.Contains(err.Error(), flag) || !strings.Contains(err.Error(), "can't be negative") {
+			t.Errorf("cinc search %v error = %q, want it to say %s can't be negative", args, err, flag)
+		}
+	}
+}
+
 // TestSearchStartWithoutRowsReturnsEveryRemainingMatch covers --start on its
 // own: --rows defaults to 0 ("return all matches"), so an offset must still
 // page through the rest of the result set rather than stop after the first

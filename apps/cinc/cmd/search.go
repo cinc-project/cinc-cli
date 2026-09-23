@@ -50,6 +50,12 @@ cinc search node 'role:web'`,
 			if err != nil {
 				return err
 			}
+			if rowsCap < 0 {
+				return fmt.Errorf("--rows can't be negative (got %d). Pass a page size, or leave it off to get every match", rowsCap)
+			}
+			if start < 0 {
+				return fmt.Errorf("--start can't be negative (got %d). It's the offset of the first match to return, starting at 0", start)
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
