@@ -321,7 +321,7 @@ func testNodeBootstrap(t *testing.T, _ Target, c *cli) {
 	}
 	script := strings.Join(cmds, "\n")
 	for _, want := range []string{
-		"curl -L 'https://omnitruck.cinc.sh/install.sh'",
+		"curl -fsSL 'https://omnitruck.cinc.sh/install.sh' -o",
 		"node_name '" + name + "'",
 		c.orgURL(c.tgt.Org),
 		"cinc-client -j /etc/cinc/first-boot.json",

@@ -120,7 +120,7 @@ func TestNodeBootstrapAgainstCincZeroAndSSHServer(t *testing.T) {
 	}
 	command := server.lastCommand()
 	for _, want := range []string{
-		"curl -L 'https://omnitruck.cinc.sh/install.sh'",
+		"curl -fsSL 'https://omnitruck.cinc.sh/install.sh' -o",
 		"node_name 'boot01'",
 		"cinc-client -j /etc/cinc/first-boot.json",
 	} {
