@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -104,6 +105,95 @@ func TestOrgListCommandEndToEnd(t *testing.T) {
 	}
 	if !slices.Equal(names, []string{"acme", "mondoo", "zeta"}) {
 		t.Errorf("json list output = %v, want [acme mondoo zeta]", names)
+	}
+}
+
+// memberOrgsServer refuses GET /organizations with a 403, as erchef does for
+// anyone but pivotal, and serves /users/pivotal/organizations (the name
+// writeOrgConfig signs as) with the given orgs. Any other user is a 404.
+func memberOrgsServer(t *testing.T, names ...string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":["missing read permission"]}`))
+	})
+	mux.HandleFunc("/users/{user}/organizations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.PathValue("user") != "pivotal" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":["not found"]}`))
+			return
+		}
+		out := make([]map[string]any, 0, len(names))
+		for _, n := range names {
+			out = append(out, map[string]any{"organization": map[string]any{"name": n, "full_name": n, "guid": "g"}})
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestOrgListFallsBackToMemberOrgs covers a caller who may not list every
+// org (erchef answers 403 to anyone but pivotal): org list shows the orgs
+// the signing user belongs to, says so on stderr, and keeps stdout clean.
+func TestOrgListFallsBackToMemberOrgs(t *testing.T) {
+	srv := memberOrgsServer(t, "zeta", "acme")
+	cfgPath := writeOrgConfig(t, srv.URL)
+
+	for _, format := range []string{"human", "json"} {
+		root := newRootCmd()
+		var out, errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetArgs([]string{"org", "list", "--config", cfgPath, "--format", format})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("cinc org list --format %s: %v", format, err)
+		}
+		switch format {
+		case "human":
+			if got := out.String(); got != "acme\nzeta\n" {
+				t.Errorf("org list output = %q, want the member orgs, sorted", got)
+			}
+		case "json":
+			var names []string
+			if err := json.Unmarshal(out.Bytes(), &names); err != nil {
+				t.Fatalf("json output is not a JSON array: %v\n%s", err, out.String())
+			}
+			if !slices.Equal(names, []string{"acme", "zeta"}) {
+				t.Errorf("json output = %v, want [acme zeta]", names)
+			}
+		}
+		if !strings.Contains(errOut.String(), `"pivotal" belongs to`) {
+			t.Errorf("stderr should explain the fallback, got %q", errOut.String())
+		}
+	}
+}
+
+// TestOrgListForbiddenForClient keeps the server's 403 when the signer is not
+// a user (a client has no /users/NAME/organizations to fall back to).
+func TestOrgListForbiddenForClient(t *testing.T) {
+	srv := memberOrgsServer(t, "acme")
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf(`[default]
+cinc_server_url = "%s/organizations/acme"
+client_name     = "worker-01"
+client_key      = %q
+`, srv.URL, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"org", "list", "--config", cfgPath})
+	err := root.Execute()
+	if err == nil || !errors.Is(err, cinc.ErrForbidden) {
+		t.Fatalf("org list as a client = %v, want the server's 403", err)
 	}
 }
 

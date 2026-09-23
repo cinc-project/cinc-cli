@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -59,7 +60,9 @@ func newOrgListCmd() *cobra.Command {
 		Short: "List organizations on the server",
 		Long: `List every organization on the server.
 
-This hits the server root, so it needs a pivotal (superuser) identity.`,
+Listing every org needs a pivotal (superuser) identity. If the server won't
+let you, you get the organizations your user belongs to instead, with a note
+on stderr saying so.`,
 		Example: `List every organization on the server.
 cinc org list`,
 		Args: cobra.NoArgs,
@@ -73,6 +76,9 @@ cinc org list`,
 				return err
 			}
 			names, err := fetchOrgNames(cmd.Context(), c)
+			if errors.Is(err, cinc.ErrForbidden) {
+				names, err = fetchMemberOrgNames(cmd, c, err)
+			}
 			if err != nil {
 				return err
 			}
@@ -92,6 +98,31 @@ func fetchOrgNames(ctx context.Context, c *cinc.Client) ([]string, error) {
 		names = append(names, name)
 	}
 	slices.Sort(names)
+	return names, nil
+}
+
+// fetchMemberOrgNames is org list's answer when the server refuses to list
+// every org, which erchef does for anyone but pivotal: the sorted names of
+// the orgs the signing user belongs to, from /users/NAME/organizations, with
+// a note on stderr so stdout stays a plain list. When the signer is not a
+// user (a client has no such endpoint), it returns forbidden, the server's
+// original refusal.
+func fetchMemberOrgNames(cmd *cobra.Command, c *cinc.Client, forbidden error) ([]string, error) {
+	profile, err := resolveProfile(cmd)
+	if err != nil || profile.ClientName == "" {
+		return nil, forbidden
+	}
+	orgs, _, err := c.Associations.ListUserOrgs(cmd.Context(), profile.ClientName)
+	if err != nil {
+		return nil, forbidden
+	}
+	names := make([]string, 0, len(orgs))
+	for _, o := range orgs {
+		names = append(names, o.Name)
+	}
+	slices.Sort(names)
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"You can't list every organization on this server, so here are the ones %q belongs to.\n", profile.ClientName)
 	return names, nil
 }
 
