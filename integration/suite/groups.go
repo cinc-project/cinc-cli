@@ -15,6 +15,7 @@ var groupFamily = family{cases: []testCase{
 	{"groups/default-groups", []string{"group list", "group show"}, testGroupDefaultGroups},
 	{"groups/members", []string{"group member add", "group member remove", "group show"}, testGroupMembers},
 	{"groups/member-no-op", []string{"group member add", "group member remove"}, testGroupMemberNoOp},
+	{"groups/member-unknown", []string{"group member add"}, testGroupMemberUnknown},
 	{"groups/member-bad-type", []string{"group member add", "group member remove"}, testGroupMemberBadType},
 	{"groups/edit-replaces", []string{"group edit"}, testGroupEditReplaces},
 	{"groups/edit-no-editor", []string{"group edit"}, testGroupEditNoEditor},
@@ -169,6 +170,21 @@ func testGroupMemberNoOp(t *testing.T, _ Target, c *cli) {
 		t.Errorf("removing a non-member = %q, want a friendly no-op", out)
 	}
 	wantSlice(t, "clients", showGroup(c, group).Clients, []string{a.name})
+}
+
+// testGroupMemberUnknown adds a client that does not exist. erchef resolves
+// each member name when it writes the group and silently drops a name it
+// cannot find, so the CLI has to notice and say so rather than report an
+// addition that never happened.
+func testGroupMemberUnknown(t *testing.T, _ Target, c *cli) {
+	group := createACLGroup(c)
+	real := newACLClient(c)
+	ghost := uniqueName(t, "ghost")
+	r := c.fail("group", "member", "add", group, real.name, ghost, "--type", "client")
+	if !strings.Contains(r.stderr, ghost) {
+		t.Errorf("adding an unknown client should name it: %s", r)
+	}
+	wantSlice(t, "clients", showGroup(c, group).Clients, []string{real.name})
 }
 
 // testGroupMemberBadType checks that an unknown --type is rejected before
