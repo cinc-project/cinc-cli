@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -152,9 +153,10 @@ func newACLShowCmd(scope aclScope) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			acl, err := scope.get(cmd.Context(), c, aclName(scope, cmdArgs))
+			name := aclName(scope, cmdArgs)
+			acl, err := scope.get(cmd.Context(), c, name)
 			if err != nil {
-				return err
+				return explainACLError(err, scope.target(cmd, name), "")
 			}
 			return printer.New(cmd.OutOrStdout(), format).Value(acl)
 		},
@@ -193,20 +195,22 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, cmdArgs []string) error {
 			perms, err := cinc.ExpandPerm(cmdArgs[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("%q isn't a permission we know. Use one of create, read, update, delete, grant, or all", cmdArgs[0])
 			}
 			actors := append(append([]string{}, users...), clients...)
 			if len(actors) == 0 && len(groups) == 0 {
-				return fmt.Errorf("we need at least one member to %s — pass --user, --client, or --group", verb)
+				return fmt.Errorf("we need at least one member to %s: pass --user, --client, or --group", verb)
 			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
 			name := aclName(scope, cmdArgs)
+			target := scope.target(cmd, name)
+			members := strings.Join(append(actors, groups...), ", ")
 			acl, err := scope.get(cmd.Context(), c, name)
 			if err != nil {
-				return err
+				return explainACLError(err, target, "")
 			}
 
 			var changed []string
@@ -225,17 +229,20 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 					continue
 				}
 				if err := scope.set(cmd.Context(), c, name, perm, ace); err != nil {
-					return err
+					return explainACLError(err, target,
+						fmt.Sprintf("%s %s on %s %s %s", verb, perm, target, preposition, members))
 				}
 				changed = append(changed, perm)
 			}
 
 			out := cmd.OutOrStdout()
-			members := strings.Join(append(actors, groups...), ", ")
-			target := scope.target(cmd, name)
 			if len(changed) == 0 {
-				fmt.Fprintf(out, "No changes — %s on %s already matches that for %s.\n",
-					cmdArgs[0], target, members)
+				plural := len(actors)+len(groups) > 1
+				has := cases(plural, "already have", "already has")
+				if !grant {
+					has = cases(plural, "don't have", "doesn't have")
+				}
+				fmt.Fprintf(out, "No change: %s %s %s on %s.\n", members, has, cmdArgs[0], target)
 				return nil
 			}
 			fmt.Fprintf(out, "%s %s on %s %s %s\n",
@@ -247,6 +254,41 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 	cmd.Flags().StringArrayVar(&clients, "client", nil, "client to add or remove (repeatable; targets the actor list)")
 	cmd.Flags().StringArrayVar(&groups, "group", nil, "group to add or remove (repeatable; targets the group list)")
 	return cmd
+}
+
+// aclError is an ACL request failure retold in terms of the object, keeping
+// the server's error underneath for errors.Is.
+type aclError struct {
+	msg string
+	err error
+}
+
+func (e *aclError) Error() string { return e.msg }
+func (e *aclError) Unwrap() error { return e.err }
+
+// explainACLError turns the server's refusal of an ACL read or write into a
+// sentence about target. change describes the attempted write ("grant read
+// on node \"web01\" to ops"), or is "" for a read. Errors it has nothing to
+// add to pass through unchanged.
+func explainACLError(err error, target, change string) error {
+	var resp *cinc.ErrorResponse
+	if !errors.As(err, &resp) {
+		return err
+	}
+	server := strings.Join(resp.Messages, "; ")
+	switch {
+	case resp.StatusCode == 403:
+		return &aclError{err: err, msg: fmt.Sprintf(
+			"you don't have grant permission on %s, and you need it to see or change its ACL. "+
+				"Ask an org admin, or anyone who has grant on it, to do this for you", target)}
+	case resp.StatusCode == 404:
+		return &aclError{err: err, msg: fmt.Sprintf("we couldn't find %s on the server (%s)", target, server)}
+	case resp.StatusCode == 400 && change != "":
+		return &aclError{err: err, msg: fmt.Sprintf(
+			"we couldn't %s: the server said %q. Check that every user, client, and group you named exists in this org",
+			change, server)}
+	}
+	return err
 }
 
 // aclName returns the object name from the positional args, or "" for a
