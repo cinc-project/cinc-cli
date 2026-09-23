@@ -118,7 +118,8 @@ func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap
 }
 
 // objectMap normalizes a search row into the map to read fields from. Partial
-// search wraps the projection under a "data" key; full rows are the object.
+// search wraps the projection under a "data" key; full rows are the object,
+// except that a data bag item comes back wrapped (see unwrapDataBagItem).
 func objectMap(raw json.RawMessage, partial bool) map[string]any {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -129,6 +130,22 @@ func objectMap(raw json.RawMessage, partial bool) map[string]any {
 			return data
 		}
 		return map[string]any{}
+	}
+	return unwrapDataBagItem(m)
+}
+
+// unwrapDataBagItem returns the item inside a wrapped data bag search row.
+// The server returns data bag items from a full search as a
+// Chef::DataBagItem envelope, named "data_bag_item_<bag>_<id>" with the item
+// itself under "raw_data", so reading the row directly would identify it by
+// the envelope's name and list the envelope's keys. Any other row is
+// returned unchanged.
+func unwrapDataBagItem(m map[string]any) map[string]any {
+	if m["chef_type"] != "data_bag_item" && m["json_class"] != "Chef::DataBagItem" {
+		return m
+	}
+	if item, ok := m["raw_data"].(map[string]any); ok {
+		return item
 	}
 	return m
 }

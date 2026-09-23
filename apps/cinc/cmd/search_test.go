@@ -249,3 +249,53 @@ func TestSearchRoleColumns(t *testing.T) {
 		t.Errorf("role footer should be singular:\n%s", out)
 	}
 }
+
+// wrappedItem is a data bag item as erchef returns it from a full search:
+// named data_bag_item_<bag>_<id>, with the item itself under raw_data.
+func wrappedItem(bag string, item map[string]any) map[string]any {
+	return map[string]any{
+		"name":       fmt.Sprintf("data_bag_item_%s_%s", bag, item["id"]),
+		"json_class": "Chef::DataBagItem",
+		"chef_type":  "data_bag_item",
+		"data_bag":   bag,
+		"raw_data":   item,
+	}
+}
+
+func TestSearchDataBagIDOnlyUnwrapsItems(t *testing.T) {
+	rows := []any{
+		wrappedItem("users", map[string]any{"id": "bob", "shell": "bash"}),
+		wrappedItem("users", map[string]any{"id": "alice", "shell": "zsh"}),
+	}
+	srv := searchServer(t, "users", 2, rows, nil)
+
+	out, err := runSearchCmd(t, srv.URL, "users", "*:*", "-i")
+	if err != nil {
+		t.Fatalf("cinc search users -i: %v\n%s", err, out)
+	}
+	if out != "alice\nbob\n" {
+		t.Errorf("id-only output = %q, want the item ids", out)
+	}
+}
+
+func TestSearchDataBagTableShowsItemKeys(t *testing.T) {
+	rows := []any{
+		wrappedItem("users", map[string]any{"id": "alice", "role": "admin", "shell": "zsh"}),
+	}
+	srv := searchServer(t, "users", 1, rows, nil)
+
+	out, err := runSearchCmd(t, srv.URL, "users", "*:*")
+	if err != nil {
+		t.Fatalf("cinc search users: %v\n%s", err, out)
+	}
+	for _, want := range []string{"ID", "KEYS", "alice", "role, shell", "1 result matched"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("data bag table missing %q:\n%s", want, out)
+		}
+	}
+	for _, wrapper := range []string{"data_bag_item_", "raw_data", "json_class"} {
+		if strings.Contains(out, wrapper) {
+			t.Errorf("data bag table shows the search wrapper (%s) rather than the item:\n%s", wrapper, out)
+		}
+	}
+}

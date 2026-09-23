@@ -370,14 +370,26 @@ func searchCmd(ctx context.Context, c *cinc.Client, kind Kind, index, query stri
 }
 
 // searchRowIdentity pulls a search hit's list identity: its name, or its
-// id for objects keyed by id (data bag items).
+// id for objects keyed by id (data bag items). The server returns a data bag
+// item from a full search wrapped as a Chef::DataBagItem, named
+// "data_bag_item_<bag>_<id>" with the item under raw_data; the identity is
+// the wrapped item's id, which is what the item list is keyed by.
 func searchRowIdentity(raw json.RawMessage) string {
 	var o struct {
-		Name string `json:"name"`
-		ID   string `json:"id"`
+		Name      string `json:"name"`
+		ID        string `json:"id"`
+		ChefType  string `json:"chef_type"`
+		JSONClass string `json:"json_class"`
+		RawData   *struct {
+			ID string `json:"id"`
+		} `json:"raw_data"`
 	}
 	if err := json.Unmarshal(raw, &o); err != nil {
 		return ""
+	}
+	wrapped := o.ChefType == "data_bag_item" || o.JSONClass == "Chef::DataBagItem"
+	if wrapped && o.RawData != nil {
+		return o.RawData.ID
 	}
 	if o.Name != "" {
 		return o.Name
