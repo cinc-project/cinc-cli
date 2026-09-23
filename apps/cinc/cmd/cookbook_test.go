@@ -192,6 +192,119 @@ client_key      = %q
 	}
 }
 
+// uploadAnythingServer accepts a complete cookbook upload for org "acme",
+// asking for every file, and records the path of each manifest PUT.
+func uploadAnythingServer(t *testing.T, manifests *[]string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/sandboxes", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Checksums map[string]any `json:"checksums"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		sums := map[string]any{}
+		for sum := range req.Checksums {
+			sums[sum] = map[string]any{"needs_upload": true, "url": "http://" + r.Host + "/upload/" + sum}
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"sandbox_id": "sb1", "checksums": sums})
+	})
+	mux.HandleFunc("/upload/", func(w http.ResponseWriter, _ *http.Request) {})
+	mux.HandleFunc("/organizations/acme/sandboxes/sb1", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	mux.HandleFunc("/organizations/acme/cookbooks/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			*manifests = append(*manifests, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestCookbookUploadUsesMetadataIdentity keeps a cookbook in a directory
+// named differently from its metadata name, with a two-part version. Like
+// knife, the upload goes to the metadata name at the normalized version
+// (Chef reads "1.2" as 1.2.0), and the output reports what was uploaded, not
+// the argument the user typed.
+func TestCookbookUploadUsesMetadataIdentity(t *testing.T) {
+	dir := t.TempDir()
+	cbDir := filepath.Join(dir, "chef-nginx")
+	if err := os.MkdirAll(filepath.Join(cbDir, "recipes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cbDir, "metadata.rb"), []byte("name 'nginx'\nversion '1.2'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cbDir, "recipes", "default.rb"), []byte("package 'nginx'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var manifests []string
+	srv := uploadAnythingServer(t, &manifests)
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf("[default]\ncinc_server_url = \"%s/organizations/acme\"\nclient_name = \"tim\"\nclient_key = %q\n",
+		srv.URL, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, format := range []string{"human", "json"} {
+		manifests = nil
+		root := newRootCmd()
+		var buf bytes.Buffer
+		root.SetOut(&buf)
+		root.SetArgs([]string{"cookbook", "upload", "chef-nginx", "--cookbook-path", dir, "--config", cfgPath, "--format", format})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%s: cinc cookbook upload: %v", format, err)
+		}
+		if want := []string{"/organizations/acme/cookbooks/nginx/1.2.0"}; !slices.Equal(manifests, want) {
+			t.Errorf("%s: manifest PUTs = %v, want %v", format, manifests, want)
+		}
+		want := "Uploaded cookbook \"nginx\" version 1.2.0\n"
+		if format == "json" {
+			want = "[\n  {\n    \"cookbook\": \"nginx\",\n    \"version\": \"1.2.0\",\n    \"uploaded\": true\n  }\n]\n"
+		}
+		if got := buf.String(); got != want {
+			t.Errorf("%s: output = %q, want %q", format, got, want)
+		}
+	}
+}
+
+// TestCookbookUploadRequiresLiteralVersion keeps the guard against a version
+// computed in Ruby, which cinc can't evaluate: uploading it as Chef's default
+// 0.0.0 would silently publish the wrong version.
+func TestCookbookUploadRequiresLiteralVersion(t *testing.T) {
+	dir := t.TempDir()
+	cbDir := filepath.Join(dir, "nginx")
+	if err := os.MkdirAll(cbDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cbDir, "metadata.rb"), []byte("name 'nginx'\nversion IO.read('VERSION').strip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var manifests []string
+	srv := uploadAnythingServer(t, &manifests)
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf("[default]\ncinc_server_url = \"%s/organizations/acme\"\nclient_name = \"tim\"\nclient_key = %q\n",
+		srv.URL, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := newRootCmd()
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"cookbook", "upload", "nginx", "--cookbook-path", dir, "--config", cfgPath})
+	if err := root.Execute(); err == nil {
+		t.Fatal("upload of a cookbook with a computed version succeeded, want an error")
+	}
+	if len(manifests) != 0 {
+		t.Errorf("manifest PUTs = %v, want none", manifests)
+	}
+}
+
 func TestCookbookShowCommandEndToEnd(t *testing.T) {
 	manifest := cinc.Cookbook{
 		CookbookName: "nginx",
