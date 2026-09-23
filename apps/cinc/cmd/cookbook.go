@@ -130,11 +130,15 @@ cinc cookbook upload nginx`,
 				if err != nil {
 					return err
 				}
-				version, err := localcookbook.ReadVersion(dir)
-				if err != nil {
+				// ReadVersion only guards against a version computed in Ruby,
+				// which would otherwise upload as Chef's default 0.0.0. The
+				// name and version uploaded are the ones cinc-api reads from
+				// the metadata, normalized as Chef does ("1.2" is 1.2.0), and
+				// the name is the metadata's, not the directory's.
+				if _, err := localcookbook.ReadVersion(dir); err != nil {
 					return err
 				}
-				cb, err := localcookbook.UploadableFromDir(dir, version)
+				cb, err := localcookbook.UploadableFromDir(dir, "")
 				if err != nil {
 					return err
 				}
@@ -142,7 +146,7 @@ cinc cookbook upload nginx`,
 					return err
 				}
 				results = append(results, cookbookUploadResult{
-					Cookbook: name, Version: version, Uploaded: true,
+					Cookbook: cb.Name, Version: cb.Version, Uploaded: true,
 				})
 			}
 			if format == printer.FormatJSON {
