@@ -6,7 +6,9 @@ List organizations on the server
 
 List every organization on the server.
 
-This hits the server root, so it needs a pivotal (superuser) identity.
+Listing every org needs a pivotal (superuser) identity. If the server won't
+let you, you get the organizations your user belongs to instead, with a note
+on stderr saying so.
 
 ```
 cinc org list [flags]
