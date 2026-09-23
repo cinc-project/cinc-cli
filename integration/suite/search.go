@@ -209,14 +209,12 @@ func testSearchRole(t *testing.T, _ Target, c *cli) {
 	wantLines(t, "search -i", c.run("search", "role", "name:"+name, "-i"), name)
 	table := c.run("search", "role", "name:"+name)
 	wantContains(t, "role table", table, "NAME", "DESCRIPTION", "RUN LIST", name, "searchable role", "recipe[base]", "1 role matched")
-	// The role's run list is searchable too, quoted as a phrase.
-	c.awaitSearch(1, "role", "name:"+name+` AND run_list:"recipe[base]"`)
 }
 
-// testSearchEscapedQuery uses the backslash-escaped form of a run list entry
-// that knife's documentation (and every Chef user's muscle memory) uses.
-// Lucene escapes the brackets, so erchef reads recipe\[base\] as the term
-// recipe[base].
+// testSearchEscapedQuery searches a run list the way knife's documentation
+// does, with the brackets backslash-escaped: erchef reads recipe\[base\] as
+// the term recipe[base]. (erchef answers 400 to the quoted form
+// run_list:"recipe[base]", so escaping is the one form that works.)
 func testSearchEscapedQuery(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "role")
 	createRole(c, name)

@@ -63,22 +63,6 @@ func addClientActor(c *cli, profile string) string {
 	return name
 }
 
-// isForbidden reports whether a failed run is the server refusing the
-// actor: a 403.
-func isForbidden(r result) bool {
-	low := strings.ToLower(r.stderr)
-	return strings.Contains(r.stderr, "403") || strings.Contains(low, "forbidden") ||
-		strings.Contains(low, "permission")
-}
-
-// wantForbidden fails the case unless r is a 403 refusal.
-func wantForbidden(t *testing.T, r result) {
-	t.Helper()
-	if r.exitCode == 0 || !isForbidden(r) {
-		t.Fatalf("want a 403 forbidden error: %s", r)
-	}
-}
-
 // wantConflict fails the case unless r is the CLI's already-exists error.
 func wantConflict(t *testing.T, r result) {
 	t.Helper()

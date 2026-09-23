@@ -174,11 +174,13 @@ func testEnvironmentDefault(t *testing.T, _ Target, c *cli) {
 
 // testEnvironmentDefaultReadOnly checks that erchef's refusal (405) to change
 // or delete _default reaches the user with the server's reason, and that
-// _default survives.
+// _default survives. erchef gives the same reason for both ("The '_default'
+// environment cannot be modified."); cinc-server-ng says "cannot be deleted"
+// for a delete, so only the common part is checked.
 func testEnvironmentDefaultReadOnly(t *testing.T, _ Target, c *cli) {
 	file := writeJSON(t, cinc.Environment{Description: "hijacked"})
-	wantStderr(t, c.fail("environment", "edit", "_default", "--file", file), "405", "cannot be modified")
-	wantStderr(t, c.fail("environment", "delete", "_default"), "405", "cannot be deleted")
+	wantStderr(t, c.fail("environment", "edit", "_default", "--file", file), "405", "'_default' environment cannot be modified")
+	wantStderr(t, c.fail("environment", "delete", "_default"), "405", "'_default' environment cannot be")
 	wantEqual(t, "description", showEnvironment(c, "_default").Description, "The default Chef environment")
 }
 
