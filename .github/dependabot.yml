@@ -22,6 +22,12 @@ updates:
         patterns:
           - "*"
 
+  # Providers of the cinc-server-erlang Terraform stack.
+  - package-ecosystem: terraform
+    directory: "/integration/terraform"
+    schedule:
+      interval: weekly
+
   # GitHub Actions used by the workflows in .github/workflows.
   - package-ecosystem: github-actions
     directory: "/"
