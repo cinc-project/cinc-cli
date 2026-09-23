@@ -65,7 +65,9 @@ cinc databag show passwords`,
 //
 //   - One arg: POST an empty bag to /data. A 409 from the server is
 //     surfaced so the user knows the bag was already there.
-//   - Two args: ensure the bag exists (a 409 is silent — the user
+//   - Two args: read the item first (from --file or the editor), so bad
+//     input fails before anything changes on the server. Then ensure the
+//     bag exists (a 409 is silent — the user
 //     asked for an item too, so the bag's prior existence is fine),
 //     then create the named item. When no --file is supplied the
 //     built-in JSON editor opens with `{"id": "<item>"}` as the
@@ -81,12 +83,24 @@ Create a data bag and add an item in one step (opens your editor).
 cinc databag create passwords mysql`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 && inputFile != "" {
+				return fmt.Errorf("--file sets the new item's JSON, so it needs an item name too: run `cinc databag create %s <item> --file %s`.", args[0], inputFile)
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
 			bag := args[0]
+
+			// Read (or edit) the item before creating anything, so a bad
+			// file or an abandoned edit leaves no empty bag behind.
+			var item cinc.DataBagItem
+			if len(args) == 2 {
+				if item, err = loadOrEditNewItem(args[1], inputFile); err != nil {
+					return err
+				}
+			}
 
 			bagErr := bagCreateOrPropagate(cmd, c, bag)
 			if len(args) == 1 {
@@ -107,10 +121,6 @@ cinc databag create passwords mysql`,
 			}
 
 			id := args[1]
-			item, err := loadOrEditNewItem(id, inputFile)
-			if err != nil {
-				return err
-			}
 			item["id"] = id
 			if _, _, err := c.DataBags.Items(bag).Create(cmd.Context(), item); err != nil {
 				return err
