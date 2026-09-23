@@ -200,6 +200,7 @@ func groupMemberServer(t *testing.T, name string, users []string, gotUsers *[]st
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*gotUsers = body.Actors.Users
+			users = body.Actors.Users // a later GET sees the change, as on a real server
 			_ = json.NewEncoder(w).Encode(cinc.Group{GroupName: name, Name: name, Users: body.Actors.Users})
 		default:
 			t.Errorf("unexpected method %q", r.Method)

@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // groupMemberConfig writes a credentials file pointed at srv for org "acme".
@@ -127,5 +131,68 @@ func TestGroupMemberRemoveReportsOnlyRemovedMembers(t *testing.T) {
 	}
 	if want := "Removed bob from group \"admins\" (carol wasn't in it)\n"; out != want {
 		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+// erchefLikeGroupServer serves one group the way erchef does: a PUT
+// answers 200 and echoes the body, but members whose names are in unknown
+// are dropped, so the next GET does not list them.
+func erchefLikeGroupServer(t *testing.T, name string, clients []string, unknown ...string) *httptest.Server {
+	t.Helper()
+	current := cinc.Group{Name: name, GroupName: name, Clients: clients}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/groups/"+name, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(current)
+		case http.MethodPut:
+			var body struct {
+				Actors struct {
+					Clients []string `json:"clients"`
+				} `json:"actors"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			current.Clients = slices.DeleteFunc(slices.Clone(body.Actors.Clients),
+				func(n string) bool { return slices.Contains(unknown, n) })
+			_ = json.NewEncoder(w).Encode(body)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// erchef drops a member it cannot resolve without an error, so the CLI
+// checks the group afterwards and names what didn't land.
+func TestGroupMemberAddUnknownNameFails(t *testing.T) {
+	srv := erchefLikeGroupServer(t, "devs", nil, "ghost")
+	cfg := groupMemberConfig(t, srv)
+
+	out, err := runGroupMember(t, cfg, "add", "devs", "worker-01", "ghost", "--type", "client")
+	if err == nil {
+		t.Fatalf("adding an unknown client succeeded: %q", out)
+	}
+	if want := `we couldn't add ghost to group "devs": there's no client named ghost in this org`; err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+	if want := "Added worker-01 to group \"devs\"\n"; out != want {
+		t.Errorf("output = %q, want %q (the member that did land)", out, want)
+	}
+}
+
+func TestGroupMemberAddOnlyUnknownNamesSaysNothingWasAdded(t *testing.T) {
+	srv := erchefLikeGroupServer(t, "devs", nil, "ghost", "phantom")
+	cfg := groupMemberConfig(t, srv)
+
+	out, err := runGroupMember(t, cfg, "add", "devs", "ghost", "phantom", "--type", "client")
+	if err == nil {
+		t.Fatal("adding unknown clients succeeded")
+	}
+	if want := `we couldn't add ghost, phantom to group "devs": there are no clients named ghost, phantom in this org`; err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing, since nothing was added", out)
 	}
 }

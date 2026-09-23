@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"slices"
@@ -162,10 +163,7 @@ const (
 // `group member remove` depending on add. Both fetch the group, mutate
 // the actor list selected by --type, and PUT the result back.
 func newGroupMemberChangeCmd(add bool) *cobra.Command {
-	verb, preposition := "remove", "from"
-	if add {
-		verb, preposition = "add", "to"
-	}
+	verb := cases(add, "add", "remove")
 	var kind string
 	cmd := &cobra.Command{
 		Use:   verb + " <group> <name>...",
@@ -204,18 +202,61 @@ cinc group member remove admins alice`),
 			if _, _, err := c.Groups.Update(cmd.Context(), current); err != nil {
 				return err
 			}
-			note := ""
-			if len(unchanged) > 0 {
-				note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
-					memberState(add, len(unchanged) > 1, true))
+			var missing []string
+			if add {
+				// erchef drops a member name it cannot resolve and still
+				// answers 200, so read the group back to see what landed.
+				if changed, missing, err = checkMembersLanded(cmd.Context(), c, group, memberKind(kind), changed); err != nil {
+					return err
+				}
 			}
-			fmt.Fprintf(out, "%s %s %s group %q%s\n",
-				cases(add, "Added", "Removed"), strings.Join(changed, ", "), preposition, group, note)
+			if len(changed) > 0 {
+				printMemberChange(out, add, changed, unchanged, group)
+			}
+			if len(missing) > 0 {
+				plural := len(missing) > 1
+				names := strings.Join(missing, ", ")
+				return fmt.Errorf("we couldn't add %s to group %q: there%s %s%s named %s in this org",
+					names, group, cases(plural, " are no", "'s no"), kind, cases(plural, "s", ""), names)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&kind, "type", string(memberUser), "actor type to change: user, client, or group")
 	return cmd
+}
+
+// checkMembersLanded reads group back and splits added into the names it
+// now lists and the ones it doesn't.
+func checkMembersLanded(ctx context.Context, c *cinc.Client, group string, kind memberKind, added []string) (landed, missing []string, err error) {
+	after, _, err := c.Groups.Get(ctx, group)
+	if err != nil {
+		return nil, nil, err
+	}
+	members, err := memberSlice(after, kind)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range added {
+		if slices.Contains(*members, name) {
+			landed = append(landed, name)
+		} else {
+			missing = append(missing, name)
+		}
+	}
+	return landed, missing, nil
+}
+
+// printMemberChange reports a member change that did something, noting the
+// names that were already as asked.
+func printMemberChange(out io.Writer, add bool, changed, unchanged []string, group string) {
+	note := ""
+	if len(unchanged) > 0 {
+		note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
+			memberState(add, len(unchanged) > 1, true))
+	}
+	fmt.Fprintf(out, "%s %s %s group %q%s\n",
+		cases(add, "Added", "Removed"), strings.Join(changed, ", "), cases(add, "to", "from"), group, note)
 }
 
 // applyMemberChange adds or removes names from the actor list of the
