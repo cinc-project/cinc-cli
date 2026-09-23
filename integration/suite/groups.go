@@ -217,10 +217,12 @@ func testGroupEditReplaces(t *testing.T, tgt Target, c *cli) {
 // group alone.
 func testGroupEditNoEditor(t *testing.T, _ Target, c *cli) {
 	group := createACLGroup(c)
-	r := c.fail("group", "edit", group)
-	if !strings.Contains(r.stderr, "--file") {
-		t.Errorf("edit without a terminal should suggest --file: %s", r)
+	c.run("group", "member", "add", group, c.tgt.Admin)
+	r := execWithoutTerminal(c, "group", "edit", group)
+	if r.exitCode == 0 || !strings.Contains(r.stderr, "--file") {
+		t.Errorf("edit without a terminal should fail and suggest --file: %s", r)
 	}
+	wantSlice(t, "users", showGroup(c, group).Users, []string{c.tgt.Admin})
 }
 
 func testGroupNotFound(t *testing.T, _ Target, c *cli) {
