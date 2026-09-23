@@ -588,6 +588,9 @@ func TestNodeBootstrapCreatesClientAndRunsRemoteCommand(t *testing.T) {
 	if !strings.Contains(clientBody, `"public_key":"-----BEGIN PUBLIC KEY-----`) {
 		t.Fatalf("client create body missing generated public key: %s", clientBody)
 	}
+	if strings.Contains(clientBody, `"create_key":true`) {
+		t.Fatalf("client create body asks the server for a key, so the node's generated key would not match: %s", clientBody)
+	}
 	if len(runner.calls) != 1 {
 		t.Fatalf("runner calls = %+v", runner.calls)
 	}

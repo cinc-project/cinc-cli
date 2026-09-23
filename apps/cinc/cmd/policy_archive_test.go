@@ -18,6 +18,11 @@ import (
 func pushArchiveServer(t *testing.T, identifier string, uploadedArtifact, associated *bool, associateBody *[]byte) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
+	// PushRevision lists the server's artifacts first and uploads only the
+	// identifiers it lacks; an empty listing means every cookbook is sent.
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
 	mux.HandleFunc("/organizations/acme/sandboxes", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"sandbox_id":"sb","checksums":{}}`)

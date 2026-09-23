@@ -59,7 +59,7 @@ func TestCookbookKindSummary(t *testing.T) {
 func TestCookbookVersionSummaryFields(t *testing.T) {
 	cb := &cinc.Cookbook{
 		Version:          "1.2.0",
-		AllFilesManifest: []cinc.CookbookFileRef{{Name: "recipes/default.rb"}, {Name: "metadata.rb"}},
+		AllFilesManifest: []cinc.CookbookFileRef{{Name: "recipes/default.rb", Path: "recipes/default.rb"}, {Name: "root_files/metadata.rb", Path: "metadata.rb"}},
 		Metadata: cinc.CookbookMetadata{
 			Description:     "Installs and configures nginx",
 			Maintainer:      "Sous Chefs",
@@ -136,7 +136,7 @@ func TestCookbookVersionsKindSummary(t *testing.T) {
 	mux := http.NewServeMux()
 	jsonHandler(mux, "/organizations/acme/cookbooks/nginx/1.2.0",
 		`{"cookbook_name":"nginx","name":"nginx-1.2.0","version":"1.2.0",
-		  "all_files":[{"name":"recipes/default.rb"},{"name":"metadata.rb"}],
+		  "all_files":[{"name":"recipes/default.rb","path":"recipes/default.rb"},{"name":"root_files/metadata.rb","path":"metadata.rb"}],
 		  "metadata":{"description":"Installs and configures nginx","maintainer":"Sous Chefs","license":"Apache-2.0"}}`)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

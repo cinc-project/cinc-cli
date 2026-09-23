@@ -26,7 +26,7 @@ func newEnvironmentKind() Kind {
 		createFn: func(ctx context.Context, c *cinc.Client, e *cinc.Environment) (CreateResult, error) {
 			// The create endpoint returns only a URI, so report the name
 			// from the submitted document.
-			if _, _, err := c.Environments.Create(ctx, e); err != nil {
+			if _, err := c.Environments.Create(ctx, e); err != nil {
 				return CreateResult{}, err
 			}
 			return CreateResult{Name: e.Name}, nil

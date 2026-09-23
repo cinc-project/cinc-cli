@@ -73,8 +73,11 @@ func LoadBundleCookbooks(dir string, lock *cinc.PolicyRevision) (map[string]*cin
 			return nil, fmt.Errorf("policyfile: load cookbook %q from %s: %w", name, cbDir, err)
 		}
 		// The on-disk directory is "<name>-<identifier>"; the upload name is
-		// the bare cookbook name the lock records.
+		// the bare cookbook name the lock records. The manifest's metadata
+		// must agree with it, and cinc-api falls back to the directory name
+		// there when metadata.rb names the cookbook with a non-literal.
 		cb.Name = name
+		cb.Metadata.Name = name
 		cookbooks[name] = cb
 	}
 	return cookbooks, nil

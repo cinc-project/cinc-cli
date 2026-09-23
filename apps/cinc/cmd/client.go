@@ -187,7 +187,7 @@ cinc client create worker-01 --public-key worker-01.pub`,
 				if err != nil {
 					return fmt.Errorf("cinc: read public key: %w", err)
 				}
-				req.ChefKey.PublicKey = string(pem)
+				req.PublicKey = string(pem)
 			}
 			created, _, err := c.Clients.Create(cmd.Context(), req)
 			if err != nil {

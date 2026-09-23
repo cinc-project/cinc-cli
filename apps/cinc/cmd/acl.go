@@ -53,9 +53,9 @@ func newACLCmd(noun, objectType string) *cobra.Command {
 }
 
 // newOrgACLCmd builds the `cinc org acl` subgroup. It manages the ACL of the
-// organization object itself — served at /organizations/<org>/_acl with no
-// object-type segment — so its verbs take no <name>. The org is whichever one
-// the current profile points at.
+// organization object itself, which erchef serves at
+// /organizations/<org>/organizations/_acl, so its verbs take no <name>. The
+// org is whichever one the current profile points at.
 func newOrgACLCmd() *cobra.Command {
 	return newACLGroup(aclScope{
 		noun:      "org",

@@ -105,7 +105,7 @@ cinc node create web01 --file web01.json`,
 				node.PolicyName = policyName
 				node.PolicyGroup = policyGroup
 			}
-			if _, _, err := c.Nodes.Create(cmd.Context(), &node); err != nil {
+			if _, err := c.Nodes.Create(cmd.Context(), &node); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created node %q\n", node.Name)
@@ -311,7 +311,7 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 					return fmt.Errorf("bootstrap: generate client key: %w", err)
 				}
 				req := &cinc.APIClient{Name: flags.nodeName}
-				req.ChefKey.PublicKey = publicKey
+				req.PublicKey = publicKey
 				if _, _, err := c.Clients.Create(cmd.Context(), req); err != nil {
 					return err
 				}

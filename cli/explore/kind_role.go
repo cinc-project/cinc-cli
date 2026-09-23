@@ -25,7 +25,7 @@ func newRoleKind() Kind {
 		createFn: func(ctx context.Context, c *cinc.Client, r *cinc.Role) (CreateResult, error) {
 			// The create endpoint returns only a URI, so report the name
 			// from the submitted document.
-			if _, _, err := c.Roles.Create(ctx, r); err != nil {
+			if _, err := c.Roles.Create(ctx, r); err != nil {
 				return CreateResult{}, err
 			}
 			return CreateResult{Name: r.Name}, nil

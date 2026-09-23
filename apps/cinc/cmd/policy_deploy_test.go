@@ -53,6 +53,11 @@ func TestPolicyPushCommandEndToEnd(t *testing.T) {
 	var uploadedArtifact, associated bool
 	var associateBody []byte
 	mux := http.NewServeMux()
+	// PushRevision lists the server's artifacts first and uploads only the
+	// identifiers it lacks; an empty listing means every cookbook is sent.
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
 	mux.HandleFunc("/organizations/acme/sandboxes", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"sandbox_id":"sb","checksums":{}}`)
@@ -93,6 +98,62 @@ func TestPolicyPushCommandEndToEnd(t *testing.T) {
 	}
 	if out := buf.String(); !strings.Contains(out, "Pushed policy \"appserver\"") || !strings.Contains(out, "group \"prod\"") {
 		t.Errorf("output = %q", out)
+	}
+}
+
+// TestPolicyPushUploadsUnderLockName covers a cookbook whose directory name is
+// not its cookbook name (a cache entry, or a path source like
+// cookbooks/base-cookbook) and whose metadata.rb names it with a non-literal
+// that cinc-api's static parser can't read. The artifact must still land
+// under the name the lock records.
+func TestPolicyPushUploadsUnderLockName(t *testing.T) {
+	const identifier = "0000000000000000000000000000000000000002"
+	var uploadedArtifact bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	mux.HandleFunc("/organizations/acme/sandboxes", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sandbox_id":"sb","checksums":{}}`)
+	})
+	mux.HandleFunc("/organizations/acme/sandboxes/sb", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts/base/"+identifier, func(w http.ResponseWriter, _ *http.Request) {
+		uploadedArtifact = true
+		_, _ = io.WriteString(w, `{}`)
+	})
+	mux.HandleFunc("/organizations/acme/policy_groups/prod/policies/appserver", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"revision_id":"rev123","name":"appserver"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	lockPath := writePolicyLockFixture(t, identifier)
+	dir := filepath.Dir(lockPath)
+	if err := os.Rename(filepath.Join(dir, "cookbooks", "base"), filepath.Join(dir, "cookbooks", "base-cookbook")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cookbooks", "base-cookbook", "metadata.rb"), []byte("name 'base'.dup\nversion '1.0.0'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockPath, bytes.ReplaceAll(data, []byte(`"cookbooks/base"`), []byte(`"cookbooks/base-cookbook"`)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"policy", "push", "prod", lockPath, "--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc policy push: %v", err)
+	}
+	if !uploadedArtifact {
+		t.Error("cookbook artifact was not uploaded under the lock's cookbook name")
 	}
 }
 
