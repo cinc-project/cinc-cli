@@ -174,14 +174,19 @@ cinc %[1]s key create %[2]s temp --expires 2030-01-01T00:00:00Z`, owner.noun, ow
 // the key, opens its JSON in the shared editor (where the expiration date,
 // public key, or name can be changed), and PUTs the result back. `--file`
 // reads the updated JSON from disk for scripted use, mirroring the other
-// edit verbs.
+// edit verbs. A body with "create_key": true has the server regenerate the
+// key pair; the new private key is then streamed to stdout or written to
+// `--key-file`, like `key create`.
 func newKeyEditCmd(owner keyOwner) *cobra.Command {
-	var inputFile string
+	var inputFile, keyFile string
 	cmd := &cobra.Command{
 		Use:   "edit <" + owner.noun + "> <key-name>",
 		Short: "Edit one of a " + owner.noun + "'s keys",
 		Example: fmt.Sprintf(`Edit one of a %[1]s's keys, for example its expiration.
-cinc %[1]s key edit %[2]s default`, owner.noun, owner.sample),
+cinc %[1]s key edit %[2]s default
+
+Have the server regenerate a key (regenerate.json holds {"create_key": true}) and save the new private key.
+cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pem`, owner.noun, owner.sample),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := resolveClient(cmd)
@@ -223,14 +228,24 @@ cinc %[1]s key edit %[2]s default`, owner.noun, owner.sample),
 				updated.Name = keyName
 			}
 
-			if _, _, err := scope.Update(cmd.Context(), keyName, &updated); err != nil {
+			result, _, err := scope.Update(cmd.Context(), keyName, &updated)
+			if err != nil {
 				return err
+			}
+			// An edit with "create_key": true has the server regenerate the
+			// key; the response carries the only copy of the new private key.
+			if result != nil && result.PrivateKey != "" {
+				fileMsg := fmt.Sprintf("Updated key %q on %s %q (key written to %s)", keyName, owner.noun, ownerName, keyFile)
+				return writePrivateKey(cmd.OutOrStdout(), result.PrivateKey, keyFile, fileMsg)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated key %q on %s %q\n", keyName, owner.noun, ownerName)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&inputFile, "file", "", "read the updated key JSON from this file instead of launching the editor")
+	// No -f shorthand here, unlike create: next to --file it would read as
+	// the input file.
+	cmd.Flags().StringVar(&keyFile, "key-file", "", "write a regenerated private key (from \"create_key\": true) to this file instead of stdout")
 	return cmd
 }
 
