@@ -8,7 +8,7 @@ module github.com/cinc-project/cinc-cli/integration
 go 1.26.4
 
 require (
-	github.com/cinc-project/cinc-api v0.13.0
+	github.com/cinc-project/cinc-api v0.14.1
 	github.com/cinc-project/cinc-cli v0.0.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.57.0
