@@ -147,7 +147,7 @@ func (f *Fetcher) fetchChefServer(ctx context.Context, name, version, dest strin
 }
 
 // fetchGit clones the lock's git repository, checks out the pinned revision,
-// and copies the cookbook (the repo root, or the source_options "path"
+// and copies the cookbook (the repo root, or the source_options "rel"
 // subdirectory) into dest, omitting the .git directory. It shells out to the
 // `git` binary, which must be installed.
 func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL, dest string) error {
@@ -187,15 +187,24 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 	}
 
 	root := clone
-	if sub := stringOption(lock.SourceOptions, "path"); sub != "" {
-		// "path" selects a subdirectory of the clone and comes from the
-		// untrusted lock, so it has to stay inside it. Nested paths are
-		// legitimate (the "cookbooks/<name>" monorepo layout), so this is a
-		// containment check rather than the stricter safeJoin used for
-		// single-segment names like cache keys.
+	// chef (cookbook-omnifetch) records a cookbook in a subdirectory of its
+	// repository as "rel". "path" is accepted too, though a lock carrying it
+	// is classified as a path source before it gets here.
+	key := "rel"
+	sub := stringOption(lock.SourceOptions, key)
+	if sub == "" {
+		key = "path"
+		sub = stringOption(lock.SourceOptions, key)
+	}
+	if sub != "" {
+		// The subdirectory comes from the untrusted lock, so it has to stay
+		// inside the clone. Nested paths are legitimate (the
+		// "cookbooks/<name>" monorepo layout), so this is a containment
+		// check rather than the stricter safeJoin used for single-segment
+		// names like cache keys.
 		root = filepath.Join(clone, sub)
 		if !withinDir(clone, root) {
-			return fmt.Errorf("refusing git source path %q: it escapes the repository", sub)
+			return fmt.Errorf("refusing git source %s %q: it escapes the repository", key, sub)
 		}
 	}
 	if !hasCookbookMetadata(root) {

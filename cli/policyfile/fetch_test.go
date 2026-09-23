@@ -354,6 +354,77 @@ func TestFetchGitAcceptsNestedPath(t *testing.T) {
 	}
 }
 
+// TestEnsureCookbookGitHonoursRel covers the lock chef writes for a git
+// cookbook in a subdirectory of its repository: cookbook-omnifetch records
+// the subdirectory as source_options "rel", not "path" (a "path" key would
+// make the lock a path source). The fetch must copy that subdirectory, not
+// the repository root.
+func TestEnsureCookbookGitHonoursRel(t *testing.T) {
+	repo, sha := initNestedGitCookbookRepo(t)
+	f := &Fetcher{CacheRoot: t.TempDir(), LockDir: t.TempDir()}
+	dir, err := f.EnsureCookbook(context.Background(), "nested", cinc.CookbookLock{
+		CacheKey:      "nested-" + sha,
+		SourceOptions: map[string]any{"git": repo, "revision": sha, "rel": "cookbooks/nested"},
+	})
+	if err != nil {
+		t.Fatalf("EnsureCookbook (git, rel): %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "metadata.rb")); err != nil || !contains(string(got), "nested") {
+		t.Errorf("rel cookbook metadata not cached: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cookbooks")); err == nil {
+		t.Error("the whole repository was cached instead of the rel subdirectory")
+	}
+}
+
+// TestEnsureCookbookGitRejectsRelEscapingTheClone: rel comes from the
+// untrusted lock, so it gets the same containment check as path.
+func TestEnsureCookbookGitRejectsRelEscapingTheClone(t *testing.T) {
+	repo, sha := initNestedGitCookbookRepo(t)
+	f := &Fetcher{CacheRoot: t.TempDir(), LockDir: t.TempDir()}
+	_, err := f.EnsureCookbook(context.Background(), "nested", cinc.CookbookLock{
+		CacheKey:      "nested-" + sha,
+		SourceOptions: map[string]any{"git": repo, "revision": sha, "rel": "../outside"},
+	})
+	if err == nil || !contains(err.Error(), "escapes") {
+		t.Errorf("error = %v, want rel rejected for escaping the repository", err)
+	}
+}
+
+// initNestedGitCookbookRepo creates a git repository holding a cookbook at
+// cookbooks/nested and returns the repository path and HEAD's sha. It skips
+// the test if git is not installed.
+func initNestedGitCookbookRepo(t *testing.T) (string, string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	repo := t.TempDir()
+	nested := filepath.Join(repo, "cookbooks", "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "metadata.rb"), []byte("name 'nested'\nversion '1.0.0'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "--quiet"},
+		{"config", "user.email", "t@example.test"},
+		{"config", "user.name", "Test"},
+		{"add", "-A"},
+		{"commit", "--quiet", "-m", "cookbook"},
+	} {
+		if out, err := runGit(context.Background(), repo, args...); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	out, err := runGit(context.Background(), repo, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("git rev-parse: %v: %s", err, out)
+	}
+	return repo, strings.TrimSpace(out)
+}
+
 func TestEnsureCookbookGitNeedsRevision(t *testing.T) {
 	f := &Fetcher{CacheRoot: t.TempDir(), LockDir: t.TempDir()}
 	_, err := f.EnsureCookbook(context.Background(), "gitcb", cinc.CookbookLock{
