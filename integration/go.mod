@@ -14,6 +14,8 @@ require (
 	golang.org/x/crypto v0.57.0
 )
 
+require github.com/creack/pty v1.1.24
+
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
