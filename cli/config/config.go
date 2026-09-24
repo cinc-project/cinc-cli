@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -197,7 +198,13 @@ func DefaultPath() (string, error) {
 func Load(path string) (*Config, error) {
 	var raw map[string]rawProfile
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
-		return nil, fmt.Errorf("config: %w", err)
+		// An open or read failure already names the file. A parse or type
+		// error only names a line, and the user may keep several files.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			return nil, fmt.Errorf("config: %w", err)
+		}
+		return nil, fmt.Errorf("config: we couldn't read %s: %w", path, err)
 	}
 	cfg := &Config{Profiles: make(map[string]Profile, len(raw))}
 	for name, rp := range raw {

@@ -73,6 +73,37 @@ func testConfigCreateNameCollision(t *testing.T, tgt Target, c *cli) {
 	c.run("node", "list", "--profile", "renamed")
 }
 
+// testConfigCreateMalformedFile runs config create over a credentials file
+// that is not TOML, with flags and interactively. It must not overwrite
+// the file, which may hold knife settings the user can still fix, and it
+// has to say which file is broken.
+func testConfigCreateMalformedFile(t *testing.T, tgt Target, c *cli) {
+	const broken = "[default\ncinc_server_url = \n"
+	for _, tc := range []struct {
+		what string
+		opts runOpts
+		args []string
+	}{
+		{"with flags", runOpts{}, []string{"--server-url", c.orgURL(tgt.Org), "--client-name", tgt.Admin, "--client-key", tgt.KeyPath}},
+		{"interactively", runOpts{stdin: lines(append([]string{"", "default"}, serverAnswers(tgt, tgt.Org)...)...)}, nil},
+	} {
+		b := behBareCLI(c)
+		writeFile(t, b.credentialsPath(), broken)
+		r := b.exec(tc.opts, append([]string{"config", "create"}, tc.args...)...)
+		if r.exitCode == 0 {
+			t.Errorf("config create %s over a malformed file should fail: %s", tc.what, r)
+		}
+		if line := behStderrLine(t, r); !strings.Contains(line, b.credentialsPath()) {
+			t.Errorf("config create %s should name the malformed file: %s", tc.what, r)
+		}
+		wantEqual(t, "malformed file after config create "+tc.what, behReadFile(t, b.credentialsPath()), broken)
+	}
+	// Every command reports it the same way.
+	if line := behStderrLine(t, c.fail("node", "list", "--config", writeJSON(t, "not toml"))); !strings.Contains(line, "we couldn't read") {
+		t.Errorf("a server command over a malformed file should say it couldn't read it: %s", line)
+	}
+}
+
 // testConfigCreateProfileName checks the name config create writes under.
 // A public-Supermarket-only profile left at the default name becomes
 // [supermarket], where the supermarket commands look first; a name the user
