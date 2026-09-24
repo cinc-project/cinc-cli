@@ -442,11 +442,7 @@ func writeNodeShowHuman(cmd *cobra.Command, node *cinc.Node) error {
 	}
 	fmt.Fprintf(tw, "Run List\t%s\n", runList)
 
-	environment := node.Environment
-	if environment == "" {
-		environment = "_default"
-	}
-	fmt.Fprintf(tw, "Environment\t%s\n", environment)
+	fmt.Fprintf(tw, "Environment\t%s\n", node.EnvironmentName())
 
 	optional("Policy Name", node.PolicyName)
 	optional("Policy Group", node.PolicyGroup)
@@ -557,13 +553,12 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.Search.SearchAll(cmd.Context(), "node", expandNodeSSHQuery(query))
-	if err != nil {
-		return nil, err
-	}
-	targets := make([]remote.Target, 0, len(rows))
-	for _, row := range rows {
-		host, err := searchRowAttribute(row, flags.attribute)
+	var targets []remote.Target
+	for node, err := range c.Search.Nodes(cmd.Context(), expandNodeSSHQuery(query)) {
+		if err != nil {
+			return nil, err
+		}
+		host, err := nodeSSHHost(node, flags.attribute)
 		if err != nil {
 			return nil, err
 		}
@@ -584,52 +579,18 @@ func expandNodeSSHQuery(query string) string {
 	return "tags:*" + query + "* OR roles:*" + query + "* OR fqdn:*" + query + "* OR addresses:*" + query + "*"
 }
 
-// searchRowAttribute reads the SSH host attribute from one node search row.
-// The lookup follows Chef's read precedence (automatic, override, normal,
-// default) and accepts dotted paths such as cloud.public_hostname, the way
-// node[...] does in a recipe. "name" is the node's own name, which isn't an
-// attribute.
-func searchRowAttribute(row json.RawMessage, attr string) (string, error) {
-	var node cinc.Node
-	if err := json.Unmarshal(row, &node); err != nil {
-		return "", err
-	}
+// nodeSSHHost reads the SSH host attribute from a node. The lookup follows
+// Chef's read precedence (automatic, override, normal, default) and accepts
+// dotted paths such as cloud.public_hostname, the way node[...] does in a
+// recipe. "name" is the node's own name, which isn't an attribute.
+func nodeSSHHost(node *cinc.Node, attr string) (string, error) {
 	if attr == "name" {
 		return node.Name, nil
 	}
 	if _, ok := node.Attribute(attr); !ok {
-		return "", fmt.Errorf("search row missing SSH attribute %q", attr)
+		return "", fmt.Errorf("node %q has no %q attribute to connect to. Pick another with --attribute, or pass --attribute name to use the node name", node.Name, attr)
 	}
 	return node.AttributeString(attr), nil
-}
-
-func lookupAttribute(data any, path []string) (any, bool) {
-	current := data
-	for _, part := range path {
-		m, ok := current.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		current, ok = m[part]
-		if !ok {
-			return nil, false
-		}
-	}
-	return current, true
-}
-
-func attributeString(value any) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case []any:
-		if len(v) == 0 {
-			return ""
-		}
-		return attributeString(v[0])
-	default:
-		return fmt.Sprint(v)
-	}
 }
 
 func remoteOptions(flags nodeSSHFlags) remote.SSHOptions {
