@@ -307,6 +307,25 @@ cinc_server_url = "https://cinc.example.com/organizations/cinc-org"
 	}
 }
 
+// TestLoadNamesAnUnreadableFile loads credentials files that are not valid
+// TOML or hold a key of the wrong type. The error has to say which file,
+// since a user may keep several and --config, CINC_PROFILE and first-run
+// setup all pick one for them.
+func TestLoadNamesAnUnreadableFile(t *testing.T) {
+	for name, body := range map[string]string{
+		"not TOML":   "[default\ncinc_server_url =\n",
+		"wrong type": "[default]\nclient_key = 1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := writeConfig(t, body)
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), path) {
+				t.Errorf("Load = %v, want an error naming %s", err, path)
+			}
+		})
+	}
+}
+
 func TestLoadKeepsServerURLWithoutOrganizationSegmentForValidation(t *testing.T) {
 	// A malformed server URL no longer fails the whole load: the raw value is
 	// preserved (with ServerURL/Org left empty) so `cinc config validate` can
