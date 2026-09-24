@@ -48,6 +48,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/config-create-interactive-update", []string{"config create", "node list"}, testConfigCreateInteractiveUpdate},
 	{"cli/config-create-replace", []string{"config create", "node list"}, testConfigCreateReplace},
 	{"cli/config-create-name-collision", []string{"config create", "node list"}, testConfigCreateNameCollision},
+	{"cli/config-create-tightens-permissions", []string{"config create", "node list"}, testConfigCreateTightensPermissions},
 	{"cli/config-create-profile-name", []string{"config create"}, testConfigCreateProfileName},
 	{"cli/first-run-migrates-chef-credentials", []string{"node list", "node create", "node show"}, testFirstRunMigrates},
 	{"cli/first-run-migration-keeps-knife-keys", []string{"node list"}, testFirstRunMigrationKeepsKnifeKeys},

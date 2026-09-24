@@ -416,6 +416,32 @@ func TestWriteProfileCreatesCredentialsFile(t *testing.T) {
 	}
 }
 
+// TestWriteProfileTightensAnExistingFile rewrites a credentials file that
+// others can read, as knife setups often leave one. The file names private
+// keys and data bag secrets, so any write leaves it readable by its owner
+// alone, whatever mode it had.
+func TestWriteProfileTightensAnExistingFile(t *testing.T) {
+	path := writeConfig(t, sampleConfig)
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UpdateProfile(path, "default", func(p *Profile) error {
+		p.SSLVerifyMode = ":verify_peer"
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("credentials mode after a rewrite = %o, want 0600", perm)
+	}
+}
+
 func TestWriteProfileRoundTripsAllKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".cinc", "credentials")
 

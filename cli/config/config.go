@@ -359,6 +359,13 @@ func WriteProfileWithExtras(path, name string, p Profile, extra map[string]any) 
 	if err != nil {
 		return fmt.Errorf("config: write %s: %w", path, err)
 	}
+	// The mode above applies only to a new file. The file names private
+	// keys and data bag secrets, so tighten an existing one too, before
+	// anything is written into it; knife setups often leave it 0644.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("config: restrict %s to its owner: %w", path, err)
+	}
 	if err := toml.NewEncoder(f).Encode(raw); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("config: encode %s: %w", path, err)
