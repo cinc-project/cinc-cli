@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -233,11 +235,19 @@ func (c *cli) cleanup(args ...string) {
 	})
 }
 
+// hasStatus reports whether s mentions the HTTP status code as a number of
+// its own. A plain substring check is not enough: every object a case
+// creates ends in random hex (uniqueName), so a 403 naming the node
+// t-node-b4010604 also "contains" 401.
+func hasStatus(s string, code int) bool {
+	return regexp.MustCompile(`(^|[^0-9A-Za-z])` + strconv.Itoa(code) + `([^0-9A-Za-z]|$)`).MatchString(s)
+}
+
 // isNotFound reports whether a failed run is the CLI's not-found error.
 func isNotFound(r result) bool {
 	low := strings.ToLower(r.stderr)
 	return strings.Contains(low, "not found") || strings.Contains(low, "couldn't find") ||
-		strings.Contains(low, "cannot find") || strings.Contains(low, "404")
+		strings.Contains(low, "cannot find") || hasStatus(low, 404)
 }
 
 // wantNotFound fails the case unless r is the CLI's not-found error.

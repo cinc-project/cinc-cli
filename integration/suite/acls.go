@@ -238,7 +238,7 @@ func aclTarget(c *cli, noun, name string) string {
 // isDenied reports whether a failed run is a permission refusal.
 func isDenied(r result) bool {
 	low := strings.ToLower(r.stderr)
-	return strings.Contains(low, "403") || strings.Contains(low, "forbidden") ||
+	return hasStatus(low, 403) || strings.Contains(low, "forbidden") ||
 		strings.Contains(low, "permission")
 }
 

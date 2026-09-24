@@ -67,7 +67,7 @@ func addClientActor(c *cli, profile string) string {
 func wantConflict(t *testing.T, r result) {
 	t.Helper()
 	low := strings.ToLower(r.stderr)
-	conflict := strings.Contains(low, "already exists") || strings.Contains(r.stderr, "409")
+	conflict := strings.Contains(low, "already exists") || hasStatus(r.stderr, 409)
 	if r.exitCode == 0 || !conflict {
 		t.Fatalf("want an already-exists error: %s", r)
 	}
@@ -77,7 +77,7 @@ func wantConflict(t *testing.T, r result) {
 // request body or query: a 400.
 func wantBadRequest(t *testing.T, r result) {
 	t.Helper()
-	if r.exitCode == 0 || !strings.Contains(r.stderr, "400") {
+	if r.exitCode == 0 || !hasStatus(r.stderr, 400) {
 		t.Fatalf("want a 400 bad request error: %s", r)
 	}
 }

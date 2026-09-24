@@ -262,7 +262,7 @@ func testDatabagInvalidNames(t *testing.T, _ Target, c *cli) {
 		{"databag", "item", "delete", bag, "bad id"},
 	} {
 		r := c.fail(args...)
-		if strings.Contains(r.stderr, "401") {
+		if hasStatus(r.stderr, 401) {
 			t.Errorf("an escaped path failed signature verification: %s", r)
 			continue
 		}
