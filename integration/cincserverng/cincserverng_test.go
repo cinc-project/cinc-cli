@@ -121,7 +121,6 @@ func run(m *testing.M) int {
 			"acls/missing-object":   "the _acl of a missing object answers with a default ACL instead of 404: https://github.com/cinc-project/cinc-server-ng/issues/169",
 			"acls/unknown-member":   "ACL PUT stores actors and groups that do not exist instead of a 400: https://github.com/cinc-project/cinc-server-ng/issues/170",
 
-			"policies/delete-leaves-group-empty": "deleting a policy leaves groups pinning its deleted revisions: https://github.com/cinc-project/cinc-server-ng/issues/182",
 			"policies/push-rejects-invalid-lock": "policy revision PUT accepts revision ids and run lists erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/183",
 		},
 	}
