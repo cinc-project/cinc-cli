@@ -190,3 +190,30 @@ func testMigrationKeepsInvalidSSLMode(t *testing.T, _ Target, c *cli) {
 	}
 	rep.profile(t, "default").wantCheck(t, checkSSLMode, false)
 }
+
+// testMigrationOrglessServerURL migrates the profile chef-zero's docs have
+// knife users write: a server URL with no /organizations/<org>. It is a
+// server, so it must stay the server URL, never be filed away as a
+// Supermarket site, and the next command has to say what the URL lacks.
+func testMigrationOrglessServerURL(t *testing.T, tgt Target, c *cli) {
+	b := behBareCLI(c)
+	const zeroURL = "http://127.0.0.1:8889"
+	behCopyFile(t, tgt.KeyPath, filepath.Join(b.home, ".chef", "admin.pem"))
+	writeFile(t, filepath.Join(b.home, ".chef", "credentials"), fmt.Sprintf(
+		"[default]\nchef_server_url = %q\nclient_name = %q\nclient_key = %q\n",
+		zeroURL, tgt.Admin, filepath.Join(b.home, ".chef", "admin.pem")))
+
+	migrateOnFirstRun(t, b)
+
+	written := behReadFile(t, b.credentialsPath())
+	if strings.Contains(written, "supermarket_site") {
+		t.Errorf("a server URL must not be migrated as a Supermarket site:\n%s", written)
+	}
+	if !strings.Contains(written, fmt.Sprintf("cinc_server_url = %q", zeroURL)) {
+		t.Errorf("migration should keep the server URL as written:\n%s", written)
+	}
+	r := b.fail("node", "list")
+	if line := behStderrLine(t, r); !strings.Contains(line, "/organizations/") {
+		t.Errorf("a server URL with no organization should be explained: %s", r)
+	}
+}

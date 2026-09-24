@@ -57,6 +57,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/migration-prefers-cinc-server-url", []string{"node list"}, testMigrationPrefersCincServerURL},
 	{"cli/migration-all-or-nothing", []string{"node list"}, testMigrationAllOrNothing},
 	{"cli/migration-keeps-invalid-ssl-mode", []string{"config validate"}, testMigrationKeepsInvalidSSLMode},
+	{"cli/migration-orgless-server-url", []string{"node list"}, testMigrationOrglessServerURL},
 	{"cli/first-run-gate-eof", []string{"node list"}, testFirstRunGateEOF},
 	{"cli/first-run-location-tilde", []string{"node list"}, testFirstRunLocationTilde},
 	{"cli/first-run-accept-defaults", []string{"node list"}, testFirstRunAcceptDefaults},
