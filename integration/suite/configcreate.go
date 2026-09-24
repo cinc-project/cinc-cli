@@ -3,6 +3,7 @@ package suite
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -89,6 +90,27 @@ func testConfigCreateSymlinkedFile(t *testing.T, tgt Target, c *cli) {
 	wantLink("replacing")
 	wantSlice(t, "profiles in the symlink's target after replacing", profileNames(t, real), []string{"fresh"})
 	c.run("node", "list", "--profile", "fresh")
+}
+
+// testConfigCreateTightensPermissions updates a profile in a credentials
+// file others can read, as knife setups often leave it. The file names
+// private keys and secrets, so config create leaves it readable by its
+// owner alone.
+func testConfigCreateTightensPermissions(t *testing.T, tgt Target, c *cli) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no owner-only file mode to check")
+	}
+	if err := os.Chmod(c.credentialsPath(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.run("config", "create", "--profile", "extra", "--server-url", c.orgURL(tgt.Org),
+		"--client-name", tgt.Admin, "--client-key", tgt.KeyPath)
+	info, err := os.Stat(c.credentialsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEqual(t, "credentials file mode after config create", info.Mode().Perm(), os.FileMode(0o600))
+	c.run("node", "list", "--profile", "extra")
 }
 
 // testConfigCreateNameCollision adds a profile under a name the file

@@ -20,6 +20,12 @@ A leading `~` in `--config` is expanded to your home directory, so
 `--config=~/.chef/credentials` works even though no shell expands a `~`
 after `=`.
 
+The file names your signing keys and data bag secrets, so `cinc` keeps
+it readable by you alone. A new file is created with mode `0600` in a
+`0700` directory, and whenever `cinc` rewrites an existing file (with
+`cinc config create` or first-run setup) it tightens that file to
+`0600` too, even if it started out readable by others.
+
 The file holds one or more **profiles**. A profile is a named bundle of
 everything needed to talk to one server (or one Supermarket): a server
 URL, a client identity, a signing key, and a handful of optional
@@ -363,6 +369,7 @@ that:
 ```sh
 cinc config validate            # checks ~/.cinc/credentials
 cinc config validate ./creds    # checks a specific file
+cinc config validate --profile staging   # checks just one profile
 cinc config validate --format json
 ```
 
