@@ -46,9 +46,10 @@ cinc config create`,
 			replaceFile := false
 
 			if !configureOptionsChanged(cmd) {
+				defaultProfileName := configureProfileNameForCommand(cmd)
 				answers, err := promptConfigure(cmd, configureDefaults{
 					ConfigPath:      cfgPath,
-					ProfileName:     configureProfileNameForCommand(cmd),
+					ProfileName:     defaultProfileName,
 					SupermarketSite: supermarket.DefaultSite,
 					ClientName:      defaultClientName(),
 					ChefServerURL:   serverURL,
@@ -64,7 +65,11 @@ cinc config create`,
 				clientKey = answers.ClientKey
 				serverURL = answers.ChefServerURL
 				sslVerifyMode = answers.SSLVerifyMode
-				profileNameExplicit = profileNameExplicit || answers.ProfileNameExplicit
+				// A name typed at the profile-name prompt is as much the
+				// user's choice as one picked from the existing-file menu,
+				// so it too is kept rather than renamed to [supermarket].
+				profileNameExplicit = profileNameExplicit || answers.ProfileNameExplicit ||
+					answers.ProfileName != defaultProfileName
 				replaceFile = answers.ReplaceFile
 			} else if serverURL == "" && supermarketSite == "" {
 				supermarketSite = supermarket.DefaultSite

@@ -920,3 +920,31 @@ func TestFirstRunConfigureExpandsTildePaths(t *testing.T) {
 		t.Error("first-run configure created a directory named ~")
 	}
 }
+
+// TestConfigureInteractiveKeepsTypedProfileName types a profile name for a
+// profile that only uses the public Supermarket. The [supermarket] rename
+// is for a profile left at the default name; a name the user typed is the
+// one they asked for.
+func TestConfigureInteractiveKeepsTypedProfileName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := filepath.Join(home, "credentials")
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	// Location, profile, Supermarket, client name, key, no server, SSL.
+	root.SetIn(strings.NewReader(strings.Join([]string{cfgPath, "lab", "", "tim", "/keys/tim.pem", "", ""}, "\n") + "\n"))
+	root.SetArgs([]string{"config", "create"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc config create: %v\n%s", err, out.String())
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Profiles["lab"]; !ok || len(cfg.Profiles) != 1 {
+		t.Errorf("profiles = %v, want only the typed name lab", sortedProfileNames(cfg))
+	}
+}

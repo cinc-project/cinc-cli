@@ -85,6 +85,7 @@ func testConfigCreateProfileName(t *testing.T, tgt Target, c *cli) {
 		want    string
 	}{
 		{"the default name", nil, "", "supermarket"},
+		{"a typed name", nil, "lab", "lab"},
 		{"CINC_PROFILE", []string{"CINC_PROFILE=cincprof", "CHEF_PROFILE=chefprof"}, "", "cincprof"},
 		{"CHEF_PROFILE", []string{"CHEF_PROFILE=chefprof"}, "", "chefprof"},
 	} {
