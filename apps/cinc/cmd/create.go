@@ -101,8 +101,8 @@ cinc config create`,
 				return err
 			}
 			if replaceFile {
-				if err := os.Remove(cfgPath); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("cinc: remove old credentials: %w", err)
+				if err := clearCredentials(cfgPath); err != nil {
+					return err
 				}
 			}
 			// UpdateProfile starts from whatever is already on disk, so
@@ -564,6 +564,17 @@ func defaultClientKey(clientName string) string {
 		return ""
 	}
 	return filepath.Join(home, ".cinc", clientName+".pem")
+}
+
+// clearCredentials empties the credentials file at path so a replace
+// starts over. It truncates rather than deletes: truncating follows a
+// symlink, so a file kept in a dotfiles checkout stays linked, and the
+// file keeps its permissions. A file that does not exist yet is fine.
+func clearCredentials(path string) error {
+	if err := os.Truncate(path, 0); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cinc: clear old credentials: %w", err)
+	}
+	return nil
 }
 
 func expandHome(path string) (string, error) {
