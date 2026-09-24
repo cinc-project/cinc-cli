@@ -42,6 +42,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/config-create-updates-in-place", []string{"config create", "node list"}, testConfigCreateUpdatesInPlace},
 	{"cli/config-create-malformed-file", []string{"config create", "node list"}, testConfigCreateMalformedFile},
 	{"cli/config-create-rejects-incomplete", []string{"config create"}, testConfigCreateRejectsIncomplete},
+	{"cli/config-create-conflicting-server-urls", []string{"config create", "node list"}, testConfigCreateConflictingServerURLs},
 	{"cli/config-create-server-url-without-org", []string{"config create"}, testConfigCreateServerURLWithoutOrg},
 	{"cli/config-create-interactive", []string{"config create", "node list"}, testConfigCreateInteractive},
 	{"cli/config-create-interactive-update", []string{"config create", "node list"}, testConfigCreateInteractiveUpdate},

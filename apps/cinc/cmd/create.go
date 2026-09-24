@@ -24,7 +24,7 @@ import (
 // config.rb/client.rb files.
 func newConfigCreateCmd() *cobra.Command {
 	var (
-		serverURL       string
+		serverURLs      [len(serverURLFlags)]string
 		supermarketSite string
 		clientName      string
 		clientKey       string
@@ -37,6 +37,10 @@ func newConfigCreateCmd() *cobra.Command {
 cinc config create`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			serverURL, err := serverURLFlag(serverURLs)
+			if err != nil {
+				return err
+			}
 			cfgPath, err := configPathForCommand(cmd)
 			if err != nil {
 				return err
@@ -134,9 +138,11 @@ cinc config create`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&serverURL, "server-url", "", "Cinc Server URL including /organizations/<org>")
-	cmd.Flags().StringVar(&serverURL, "chef-server-url", "", "Cinc Server URL including /organizations/<org>")
-	cmd.Flags().StringVar(&serverURL, "cinc-server-url", "", "Cinc Server URL including /organizations/<org>")
+	// Three spellings of one setting, each with its own variable so
+	// serverURLFlag can tell when they disagree.
+	cmd.Flags().StringVar(&serverURLs[0], "server-url", "", "Cinc Server URL including /organizations/<org>")
+	cmd.Flags().StringVar(&serverURLs[1], "chef-server-url", "", "Cinc Server URL including /organizations/<org>")
+	cmd.Flags().StringVar(&serverURLs[2], "cinc-server-url", "", "Cinc Server URL including /organizations/<org>")
 	cmd.Flags().StringVar(&supermarketSite, "supermarket-site", "", "Chef Supermarket URL for cookbook uploads")
 	cmd.Flags().StringVar(&clientName, "client-name", "", "client name used to sign API requests")
 	cmd.Flags().StringVar(&clientKey, "client-key", "", "path to the PEM private key for the client")
@@ -519,6 +525,29 @@ func configureProfileExplicit(cmd *cobra.Command) bool {
 		return true
 	}
 	return false
+}
+
+// serverURLFlags are config create's spellings of the server URL flag,
+// kept for knife users (--chef-server-url) and for symmetry with the
+// cinc_server_url key (--cinc-server-url).
+var serverURLFlags = [...]string{"server-url", "chef-server-url", "cinc-server-url"}
+
+// serverURLFlag returns the server URL config create was given under any
+// of its spellings. Two spellings naming different URLs are refused rather
+// than resolved by flag order: they are one setting, and a silent pick
+// writes a profile for a server the user may not have meant.
+func serverURLFlag(values [len(serverURLFlags)]string) (string, error) {
+	chosen, from := "", ""
+	for i, v := range values {
+		switch {
+		case v == "":
+		case chosen == "":
+			chosen, from = v, serverURLFlags[i]
+		case v != chosen:
+			return "", fmt.Errorf("--%s and --%s name different servers (%s and %s). They set the same thing, so pass just one", from, serverURLFlags[i], chosen, v)
+		}
+	}
+	return chosen, nil
 }
 
 // isServerURL reports whether raw is a Cinc Server URL, organization and all.

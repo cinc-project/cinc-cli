@@ -989,3 +989,41 @@ func TestConfigureReplaceKeepsSymlink(t *testing.T) {
 		t.Errorf("profiles in the link's target = %v, want only fresh", names)
 	}
 }
+
+// TestConfigCreateRejectsConflictingServerURLs passes two different URLs
+// through the spellings of the server URL flag. They are one setting, so
+// the command refuses to guess which was meant, before writing anything;
+// the same URL under two spellings is fine.
+func TestConfigCreateRejectsConflictingServerURLs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	base := []string{"config", "create", "--config", cfgPath, "--client-name", "tim", "--client-key", "/keys/tim.pem"}
+
+	_, _, err := runRoot(t, append(base,
+		"--server-url", "https://a.example.test/organizations/acme",
+		"--chef-server-url", "https://b.example.test/organizations/acme")...)
+	if err == nil {
+		t.Fatal("config create accepted two different server URLs")
+	}
+	for _, want := range []string{"--server-url", "--chef-server-url", "a.example.test", "b.example.test"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
+	}
+	if _, statErr := os.Stat(cfgPath); statErr == nil {
+		t.Errorf("a refused config create wrote %s", cfgPath)
+	}
+
+	if _, _, err := runRoot(t, append(base,
+		"--server-url", "https://a.example.test/organizations/acme",
+		"--cinc-server-url", "https://a.example.test/organizations/acme")...); err != nil {
+		t.Fatalf("the same URL under two spellings: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Profiles["default"]; p.ServerURL != "https://a.example.test" || p.Org != "acme" {
+		t.Errorf("profile = %+v, want the one server URL given", p)
+	}
+}

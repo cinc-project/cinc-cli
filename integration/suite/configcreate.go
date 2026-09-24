@@ -173,3 +173,24 @@ func testConfigCreateProfileName(t *testing.T, tgt Target, c *cli) {
 		"--server-url", b.orgURL(tgt.Org), "--client-name", tgt.Admin, "--client-key", tgt.KeyPath)
 	wantSlice(t, "profile written with flags and CINC_PROFILE", profileNames(t, b.credentialsPath()), []string{"staging"})
 }
+
+// testConfigCreateConflictingServerURLs passes two different server URLs
+// through the spellings of the server URL flag. They are one setting, so
+// the command refuses to guess which one was meant rather than keeping
+// whichever came last; the same URL twice is fine.
+func testConfigCreateConflictingServerURLs(t *testing.T, tgt Target, c *cli) {
+	b := behBareCLI(c)
+	r := b.fail("config", "create", "--server-url", b.orgURL(tgt.Org), "--chef-server-url", b.orgURL(tgt.OtherOrg),
+		"--client-name", tgt.Admin, "--client-key", tgt.KeyPath)
+	if line := behStderrLine(t, r); !strings.Contains(line, "--server-url") || !strings.Contains(line, "--chef-server-url") {
+		t.Errorf("conflicting server URLs should name both flags: %s", r)
+	}
+	if _, err := os.Stat(b.credentialsPath()); err == nil {
+		t.Errorf("a refused config create wrote %s", b.credentialsPath())
+	}
+
+	trustTargetCA(t, b)
+	b.run("config", "create", "--server-url", b.orgURL(tgt.Org), "--cinc-server-url", b.orgURL(tgt.Org),
+		"--client-name", tgt.Admin, "--client-key", tgt.KeyPath)
+	b.run("node", "list")
+}
