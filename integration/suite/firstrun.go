@@ -15,6 +15,10 @@ import (
 // to tell whether first-run setup was offered at all.
 const firstRunGate = "first time using Cinc"
 
+// eot is the terminal's end-of-file character (Ctrl-D). In canonical mode it
+// makes the pending read return nothing, which the CLI sees as EOF.
+const eot = "\x04"
+
 // configureAnswers are the lines a new user types at the configure prompts
 // to set up a profile signing as the target's admin. location and key are
 // typed as given, so a case can answer with a ~ path.
@@ -138,4 +142,35 @@ func testFirstRunNeverOffered(t *testing.T, tgt Target, c *cli) {
 		t.Errorf("config create in an empty HOME should go straight to its prompts: %s", r)
 	}
 	b.run("node", "list")
+}
+
+// testFirstRunGateEOF presses Ctrl-D at a first-run prompt. End of input is
+// not a yes: the user gets the decline message, nothing is written, and the
+// command never goes on to read prompts nobody is answering.
+func testFirstRunGateEOF(t *testing.T, _ Target, c *cli) {
+	for _, tc := range []struct {
+		what, answers string
+		chef          bool
+	}{
+		{"Ctrl-D at the setup gate", eot, false},
+		{"Ctrl-D at the migration prompt", "y\n" + eot, true},
+	} {
+		b := behBareCLI(c)
+		if tc.chef {
+			behChefCredentials(t, b, "")
+		}
+		r := b.execTTY(tc.answers, "node", "list")
+		if r.exitCode == 0 {
+			t.Errorf("%s should fail the command: %s", tc.what, r)
+		}
+		if !strings.Contains(r.stderr, "No problem") || !strings.Contains(r.stderr, behProgName(b)+" config create") {
+			t.Errorf("%s should decline and point at config create: %s", tc.what, r)
+		}
+		if strings.Contains(r.stdout, "Credentials file location") {
+			t.Errorf("%s should not go on to the configure prompts: %s", tc.what, r)
+		}
+		if _, err := os.Stat(b.credentialsPath()); err == nil {
+			t.Errorf("%s wrote %s", tc.what, b.credentialsPath())
+		}
+	}
 }

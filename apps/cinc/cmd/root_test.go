@@ -23,7 +23,7 @@ func TestFirstRunExitsCleanlyBeforeServerCommandRuns(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetIn(strings.NewReader(""))
+	root.SetIn(strings.NewReader("\n"))
 	root.SetArgs([]string{"node", "list"})
 
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "first-run setup completed") {
@@ -127,7 +127,7 @@ func TestBareCincRunsConfigureWhenChefAbsent(t *testing.T) {
 		return fakeConfigure(t)(cmd, cincPath)
 	})
 
-	stdout, stderr, err := runBareCinc(t, "")
+	stdout, stderr, err := runBareCinc(t, "\n")
 	if err != nil {
 		t.Fatalf("bare cinc returned error: %v", err)
 	}
