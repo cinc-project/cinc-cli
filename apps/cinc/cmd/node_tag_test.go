@@ -130,3 +130,35 @@ func TestNodeTagListJSONFormatEmitsArray(t *testing.T) {
 		t.Errorf("json output = %v, want [prod]", got)
 	}
 }
+
+// TestNodeTagUnchangedSkipsPut checks that adding a tag the node already has
+// sends no PUT and says so.
+func TestNodeTagUnchangedSkipsPut(t *testing.T) {
+	srv, puts := nodeModifyServer(t, cinc.Node{Name: "web01", Normal: cinc.Attributes{"tags": []any{"prod"}}}, nil)
+	out, err := runNodeCmd(t, srv.URL, "tag", "add", "web01", "prod")
+	if err != nil {
+		t.Fatalf("node tag add: %v\n%s", err, out)
+	}
+	if len(*puts) != 0 {
+		t.Errorf("sent %d PUT(s), want none", len(*puts))
+	}
+	if want := "Node \"web01\" already has those tags, so there's nothing to change: prod\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+// TestNodeTagReportsServerState checks the reported tags are the ones the
+// server answered with.
+func TestNodeTagReportsServerState(t *testing.T) {
+	srv, _ := nodeModifyServer(t, cinc.Node{Name: "web01"}, func(n cinc.Node) cinc.Node {
+		n.AddTags("server-side")
+		return n
+	})
+	out, err := runNodeCmd(t, srv.URL, "tag", "add", "web01", "prod")
+	if err != nil {
+		t.Fatalf("node tag add: %v\n%s", err, out)
+	}
+	if want := "Node \"web01\" tags are now: prod, server-side\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}

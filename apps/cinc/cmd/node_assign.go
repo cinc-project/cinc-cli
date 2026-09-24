@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 )
 
@@ -22,16 +23,18 @@ cinc node environment-set web01 prod`,
 				return err
 			}
 			name, env := args[0], args[1]
-			node, _, err := c.Nodes.Get(cmd.Context(), name)
+			node, changed, err := c.Nodes.Modify(cmd.Context(), name, func(n *cinc.Node) error {
+				n.Environment = env
+				return nil
+			})
 			if err != nil {
 				return err
 			}
-			node.Name = name
-			node.Environment = env
-			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
-				return err
+			if !changed {
+				fmt.Fprintf(cmd.OutOrStdout(), "Node %q is already in environment %q, so there's nothing to change\n", name, node.EnvironmentName())
+				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Set node %q environment to %q\n", name, env)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set node %q environment to %q\n", name, node.EnvironmentName())
 			return nil
 		},
 	}
@@ -53,17 +56,18 @@ cinc node policy-set web01 prod base`,
 				return err
 			}
 			name, group, policy := args[0], args[1], args[2]
-			node, _, err := c.Nodes.Get(cmd.Context(), name)
+			node, changed, err := c.Nodes.Modify(cmd.Context(), name, func(n *cinc.Node) error {
+				n.PolicyGroup, n.PolicyName = group, policy
+				return nil
+			})
 			if err != nil {
 				return err
 			}
-			node.Name = name
-			node.PolicyGroup = group
-			node.PolicyName = policy
-			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
-				return err
+			if !changed {
+				fmt.Fprintf(cmd.OutOrStdout(), "Node %q already uses policy %q in group %q, so there's nothing to change\n", name, node.PolicyName, node.PolicyGroup)
+				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Set node %q to policy %q in group %q\n", name, policy, group)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set node %q to policy %q in group %q\n", name, node.PolicyName, node.PolicyGroup)
 			return nil
 		},
 	}

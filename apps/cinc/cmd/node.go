@@ -79,7 +79,7 @@ cinc node create web01 --file web01.json`,
 			if err != nil {
 				return err
 			}
-			node := cinc.Node{Name: args[0], RunList: []string{}}
+			node := cinc.Node{Name: args[0]}
 			if inputFile != "" {
 				data, err := os.ReadFile(inputFile)
 				if err != nil {
@@ -116,9 +116,9 @@ cinc node create web01 --file web01.json`,
 }
 
 // newNodeEditCmd builds the `cinc node edit <name>` command. It fetches the
-// node, opens its JSON in the shared editor, and PUTs the result back. The
-// path arg pins the node name. `--file` reads the updated JSON from disk for
-// scripted use.
+// node, opens it in the node edit form, and PUTs the result back unless
+// nothing changed. The path arg pins the node name. `--file` replaces the
+// node with the JSON read from disk, for scripted use.
 func newNodeEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -134,21 +134,16 @@ cinc node edit web01`,
 			}
 			name := args[0]
 
-			var updated cinc.Node
-			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
-				}
-			} else {
-				current, _, err := c.Nodes.Get(cmd.Context(), name)
-				if err != nil {
-					return err
-				}
-				edited, changed, err := editNodeForm(current)
+			if inputFile == "" {
+				_, changed, err := c.Nodes.Modify(cmd.Context(), name, func(n *cinc.Node) error {
+					edited, changed, err := editNodeForm(n)
+					if err != nil || !changed {
+						return err
+					}
+					*n = *edited
+					n.Name = name
+					return nil
+				})
 				if err != nil {
 					return err
 				}
@@ -156,10 +151,19 @@ cinc node edit web01`,
 					fmt.Fprintf(cmd.OutOrStdout(), "Node %q unchanged\n", name)
 					return nil
 				}
-				updated = *edited
+				fmt.Fprintf(cmd.OutOrStdout(), "Updated node %q\n", name)
+				return nil
+			}
+
+			data, err := os.ReadFile(inputFile)
+			if err != nil {
+				return fmt.Errorf("cinc: read %s: %w", inputFile, err)
+			}
+			var updated cinc.Node
+			if err := json.Unmarshal(data, &updated); err != nil {
+				return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
 			}
 			updated.Name = name
-
 			if _, _, err := c.Nodes.Update(cmd.Context(), &updated); err != nil {
 				return err
 			}
@@ -657,6 +661,18 @@ func validateBootstrapFlags(flags nodeBootstrapFlags, environmentChanged bool) e
 	return nil
 }
 
+// gatherCSVArgs flattens args that may each be a single entry or a
+// comma-separated list of entries into one ordered slice.
+func gatherCSVArgs(args []string) []string {
+	var out []string
+	for _, arg := range args {
+		out = append(out, splitCSV(arg)...)
+	}
+	return out
+}
+
+// splitCSV splits a comma-separated list, trimming each entry and dropping
+// empty ones. It returns nil for an empty string.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil

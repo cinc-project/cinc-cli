@@ -46,7 +46,7 @@ cinc role create webserver`,
 			if err != nil {
 				return err
 			}
-			role := cinc.Role{Name: args[0], RunList: []string{}}
+			role := cinc.Role{Name: args[0]}
 			if inputFile != "" {
 				data, err := os.ReadFile(inputFile)
 				if err != nil {
