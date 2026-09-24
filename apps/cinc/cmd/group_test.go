@@ -413,3 +413,42 @@ client_key      = %q
 		t.Errorf("PUT users = %v, want [dave]", gotUsers)
 	}
 }
+
+// A group file in the PUT shape, members nested under "actors" (what a group
+// PUT sends and erchef echoes back), must keep those members. Reading it as
+// the flat GET shape found no members and PUT the group back empty.
+func TestGroupEditFileInPutShapeKeepsMembers(t *testing.T) {
+	var got struct {
+		Actors struct {
+			Users   []string `json:"users"`
+			Clients []string `json:"clients"`
+			Groups  []string `json:"groups"`
+		} `json:"actors"`
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/groups/devs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	filePath := filepath.Join(t.TempDir(), "group.json")
+	body := `{"groupname":"devs","actors":{"users":["alice"],"clients":["worker-01"],"groups":["ops"]}}`
+	if err := os.WriteFile(filePath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := runRoot(t, "group", "edit", "devs", "--file", filePath, "--config", groupMemberConfig(t, srv)); err != nil {
+		t.Fatalf("cinc group edit --file: %v", err)
+	}
+	if !slices.Equal(got.Actors.Users, []string{"alice"}) ||
+		!slices.Equal(got.Actors.Clients, []string{"worker-01"}) ||
+		!slices.Equal(got.Actors.Groups, []string{"ops"}) {
+		t.Errorf("PUT actors = %+v, want users [alice], clients [worker-01], groups [ops]", got.Actors)
+	}
+}

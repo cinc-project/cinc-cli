@@ -26,7 +26,7 @@ func newGroupCmd() *cobra.Command {
 	cmd.AddCommand(newGroupEditCmd())
 	cmd.AddCommand(newGroupDeleteCmd())
 	cmd.AddCommand(newGroupMemberCmd())
-	cmd.AddCommand(newACLCmd("group", "groups"))
+	cmd.AddCommand(newACLCmd("group", cinc.ACLGroups))
 	return cmd
 }
 
@@ -146,25 +146,15 @@ func newGroupMemberCmd() *cobra.Command {
 	return cmd
 }
 
-// memberKind names the three actor lists a group can hold, selected
-// with the --type flag.
-type memberKind string
-
-const (
-	memberUser   memberKind = "user"
-	memberClient memberKind = "client"
-	memberGroup  memberKind = "group"
-)
-
 // newGroupMemberChangeCmd builds either `group member add` or
-// `group member remove` depending on add. Both fetch the group, mutate
-// the actor list selected by --type, and PUT the result back.
+// `group member remove` depending on add. The library reads the group,
+// changes the list --type selects, and reads it back to see what stuck.
 func newGroupMemberChangeCmd(add bool) *cobra.Command {
 	verb, preposition := "remove", "from"
 	if add {
 		verb, preposition = "add", "to"
 	}
-	var kind string
+	var kindFlag string
 	cmd := &cobra.Command{
 		Use:   verb + " <group> <name>...",
 		Short: cases(add, "Add actors to a group", "Remove actors from a group"),
@@ -176,108 +166,55 @@ cinc group member remove admins alice`),
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Check --type before anything talks to the server.
-			if _, err := memberSlice(&cinc.Group{}, memberKind(kind)); err != nil {
-				return err
+			kind, err := cinc.ParseMemberKind(kindFlag)
+			if err != nil {
+				return fmt.Errorf("%q isn't a member type we know. Use --type user, client, or group", kindFlag)
 			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
 			group, names := args[0], args[1:]
-			current, _, err := c.Groups.Get(cmd.Context(), group)
+			change := c.Groups.RemoveMembers
+			if add {
+				change = c.Groups.AddMembers
+			}
+			result, err := change(cmd.Context(), group, kind, names...)
 			if err != nil {
 				return err
 			}
-			current.Name = group
-			changed, unchanged, err := applyMemberChange(current, memberKind(kind), names, add)
-			if err != nil {
-				return err
-			}
+
 			out := cmd.OutOrStdout()
-			if len(changed) == 0 {
+			unchanged := result.Unchanged
+			if len(result.Changed) == 0 && len(result.Dropped) == 0 {
 				fmt.Fprintf(out, "No change: %s %s group %q.\n",
 					strings.Join(unchanged, ", "), memberState(add, len(unchanged) > 1, false), group)
 				return nil
 			}
-			if _, _, err := c.Groups.Update(cmd.Context(), current); err != nil {
-				return err
+			if len(result.Changed) > 0 {
+				note := ""
+				if len(unchanged) > 0 {
+					note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
+						memberState(add, len(unchanged) > 1, true))
+				}
+				fmt.Fprintf(out, "%s %s %s group %q%s\n",
+					cases(add, "Added", "Removed"), strings.Join(result.Changed, ", "), preposition, group, note)
+			}
+			if len(result.Dropped) == 0 {
+				return nil
 			}
 			// erchef accepts a group PUT naming an actor that does not exist
-			// and silently drops it, answering with the body as sent. Read
-			// the group back so an add reports only what actually landed.
-			var dropped []string
+			// and silently leaves it out; the read-back is what caught it.
 			if add {
-				if changed, dropped, err = keptMembers(cmd, c, group, memberKind(kind), changed); err != nil {
-					return err
-				}
-			}
-			note := ""
-			if len(unchanged) > 0 {
-				note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
-					memberState(add, len(unchanged) > 1, true))
-			}
-			if len(changed) > 0 {
-				fmt.Fprintf(out, "%s %s %s group %q%s\n",
-					cases(add, "Added", "Removed"), strings.Join(changed, ", "), preposition, group, note)
-			}
-			if len(dropped) > 0 {
 				return fmt.Errorf("the server didn't add %s to group %q. Check that a %s by that name exists in this organization",
-					strings.Join(dropped, ", "), group, kind)
+					strings.Join(result.Dropped, ", "), group, kind)
 			}
-			return nil
+			return fmt.Errorf("the server still lists %s in group %q after the removal. Someone may have added it back at the same time; run `cinc group show %s` to check",
+				strings.Join(result.Dropped, ", "), group, group)
 		},
 	}
-	cmd.Flags().StringVar(&kind, "type", string(memberUser), "actor type to change: user, client, or group")
+	cmd.Flags().StringVar(&kindFlag, "type", string(cinc.MemberUser), "actor type to change: user, client, or group")
 	return cmd
-}
-
-// keptMembers reads group back after an add and splits the names the add
-// sent into those the group now holds and those the server dropped.
-func keptMembers(cmd *cobra.Command, c *cinc.Client, group string, kind memberKind, added []string) (kept, dropped []string, err error) {
-	after, _, err := c.Groups.Get(cmd.Context(), group)
-	if err != nil {
-		return nil, nil, err
-	}
-	members, err := memberSlice(after, kind)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, name := range added {
-		if slices.Contains(*members, name) {
-			kept = append(kept, name)
-		} else {
-			dropped = append(dropped, name)
-		}
-	}
-	return kept, dropped, nil
-}
-
-// applyMemberChange adds or removes names from the actor list of the
-// given kind on group, in place. It reports which names it changed and
-// which were already as asked (already a member for add, not a member for
-// remove), each in argument order.
-func applyMemberChange(group *cinc.Group, kind memberKind, names []string, add bool) (changed, unchanged []string, err error) {
-	target, err := memberSlice(group, kind)
-	if err != nil {
-		return nil, nil, err
-	}
-	result := *target
-	for _, name := range names {
-		if slices.Contains(result, name) == add {
-			if !slices.Contains(unchanged, name) {
-				unchanged = append(unchanged, name)
-			}
-			continue
-		}
-		if add {
-			result = append(result, name)
-		} else {
-			result = slices.DeleteFunc(result, func(n string) bool { return n == name })
-		}
-		changed = append(changed, name)
-	}
-	*target = result
-	return changed, unchanged, nil
 }
 
 // memberState describes names a member change left as they were: already
@@ -298,21 +235,6 @@ func memberState(add, plural, past bool) string {
 		i += 2
 	}
 	return forms[i]
-}
-
-// memberSlice returns a pointer to the group actor slice selected by
-// kind so callers can mutate it directly.
-func memberSlice(group *cinc.Group, kind memberKind) (*[]string, error) {
-	switch kind {
-	case memberUser:
-		return &group.Users, nil
-	case memberClient:
-		return &group.Clients, nil
-	case memberGroup:
-		return &group.Groups, nil
-	default:
-		return nil, fmt.Errorf("invalid --type %q: want user, client, or group", kind)
-	}
 }
 
 // cases returns a when add is true, otherwise b.
