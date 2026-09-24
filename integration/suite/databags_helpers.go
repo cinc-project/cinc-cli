@@ -122,7 +122,7 @@ func databagClientActor(c *cli) string {
 func databagWantConflict(t *testing.T, r result) {
 	t.Helper()
 	low := strings.ToLower(r.stderr)
-	conflict := strings.Contains(low, "already exists") || strings.Contains(low, "409")
+	conflict := strings.Contains(low, "already exists") || hasStatus(low, 409)
 	if r.exitCode == 0 || !conflict {
 		t.Fatalf("want an already-exists error: %s", r)
 	}
@@ -133,7 +133,7 @@ func databagWantConflict(t *testing.T, r result) {
 func databagWantForbidden(t *testing.T, r result) {
 	t.Helper()
 	low := strings.ToLower(r.stderr)
-	forbidden := strings.Contains(low, "403") || strings.Contains(low, "forbidden") ||
+	forbidden := hasStatus(low, 403) || strings.Contains(low, "forbidden") ||
 		strings.Contains(low, "permission")
 	if r.exitCode == 0 || !forbidden {
 		t.Fatalf("want a permission error: %s", r)

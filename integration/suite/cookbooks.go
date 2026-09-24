@@ -754,7 +754,7 @@ func testCookbookDownloadNewDir(t *testing.T, _ Target, c *cli) {
 func wantCookbookForbidden(t *testing.T, r result) {
 	t.Helper()
 	low := strings.ToLower(r.stderr)
-	denied := strings.Contains(low, "403") || strings.Contains(low, "permission") ||
+	denied := hasStatus(low, 403) || strings.Contains(low, "permission") ||
 		strings.Contains(low, "forbidden") || strings.Contains(low, "not allowed")
 	if r.exitCode == 0 || !denied {
 		t.Fatalf("want a permission error: %s", r)

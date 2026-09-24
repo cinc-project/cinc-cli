@@ -757,7 +757,7 @@ func testPolicyForbidden(t *testing.T, tgt Target, c *cli) {
 	wantForbidden := func(r result) {
 		t.Helper()
 		low := strings.ToLower(r.stderr)
-		if !strings.Contains(low, "403") && !strings.Contains(low, "permission") && !strings.Contains(low, "forbidden") {
+		if !hasStatus(low, 403) && !strings.Contains(low, "permission") && !strings.Contains(low, "forbidden") {
 			t.Errorf("want a 403: %s", r)
 		}
 	}

@@ -141,7 +141,7 @@ func testConfigValidateAuthFailures(t *testing.T, tgt Target, c *cli) {
 		// The key parses; only the server can tell it is the wrong one.
 		p.wantCheck(t, checkKeyReadable, true)
 		detail := p.wantCheck(t, checkReachable, false).Detail
-		if !strings.Contains(detail, "401") {
+		if !hasStatus(detail, 401) {
 			t.Errorf("%s: reachability detail should report the 401: %q\n%s", name, detail, r)
 		}
 	}
@@ -167,7 +167,7 @@ func testConfigValidateWrongOrg(t *testing.T, tgt Target, c *cli) {
 	p := rep.profile(t, "wrongorg")
 	wantEqual(t, "wrongorg valid", p.Valid, false)
 	p.wantCheck(t, checkServerURL, true)
-	if detail := p.wantCheck(t, checkReachable, false).Detail; !strings.Contains(detail, "404") {
+	if detail := p.wantCheck(t, checkReachable, false).Detail; !hasStatus(detail, 404) {
 		t.Errorf("reachability detail for a missing org should report the 404: %q", detail)
 	}
 
@@ -850,7 +850,7 @@ func showNodeIn(c *cli, name, profile string) cinc.Node {
 func behWantUnauthorized(t *testing.T, r result) string {
 	t.Helper()
 	line := behStderrLine(t, r)
-	if r.exitCode == 0 || !strings.Contains(line, "401") {
+	if r.exitCode == 0 || !hasStatus(line, 401) {
 		t.Errorf("want a 401: %s", r)
 	}
 	if !strings.Contains(line, "client key") || !strings.Contains(line, "clock") {
@@ -916,7 +916,7 @@ func testForbiddenShape(t *testing.T, _ Target, c *cli) {
 	} {
 		r := c.fail(append(args, "--profile", "robot")...)
 		line := behStderrLine(t, r)
-		if !strings.Contains(line, "403") || strings.Contains(line, "401") || isNotFound(r) {
+		if !hasStatus(line, 403) || hasStatus(line, 401) || isNotFound(r) {
 			t.Errorf("%s as a plain client should be a 403: %s", strings.Join(args, " "), r)
 		}
 	}
@@ -1056,7 +1056,7 @@ func behCreateDataBag(c *cli, name string) {
 // phrases it.
 func behMentionsConflict(line string) bool {
 	low := strings.ToLower(line)
-	return strings.Contains(line, "409") || strings.Contains(low, "already exist") || strings.Contains(low, "conflict")
+	return hasStatus(line, 409) || strings.Contains(low, "already exist") || strings.Contains(low, "conflict")
 }
 
 // testConflictShape creates, then creates again, one object of every noun

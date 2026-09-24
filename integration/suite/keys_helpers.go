@@ -176,12 +176,12 @@ func signAs(c *cli, profile string, p probe) result {
 // request succeeded, or authorization refused it (403) after authentication
 // passed. Only a 401 means the key was rejected.
 func authenticated(r result) bool {
-	return r.exitCode == 0 || (strings.Contains(r.stderr, "403") && !strings.Contains(r.stderr, "401"))
+	return r.exitCode == 0 || (hasStatus(r.stderr, 403) && !hasStatus(r.stderr, 401))
 }
 
 // rejected reports whether the server refused r's signature with a 401.
 func rejected(r result) bool {
-	return r.exitCode != 0 && strings.Contains(r.stderr, "401")
+	return r.exitCode != 0 && hasStatus(r.stderr, 401)
 }
 
 // wantSigns fails the case unless a request signed as profile authenticates.
