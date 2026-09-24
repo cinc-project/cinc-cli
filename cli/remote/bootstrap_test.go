@@ -141,7 +141,7 @@ func TestClientRBEscapesQuotesAndBackslashes(t *testing.T) {
 	}
 }
 
-// rubyQuote stops a node name interpolating Ruby, but the client.rb it
+// rubylit.Quote stops a node name interpolating Ruby, but the client.rb it
 // produces is then delivered inside a shell heredoc. A newline in the node
 // name (or the profile's server URL) can close that heredoc early and turn the
 // rest of the value into commands, which run through sudo on the target. The
