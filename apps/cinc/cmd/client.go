@@ -95,7 +95,7 @@ cinc client show worker-01`,
 // fetches the named client, presents the editable fields in a small
 // form (see editor.go), and PUTs the result back to the server.
 // With `--file` the JSON is read from a file unmodified, which makes
-// the command scriptable and keeps the unit/acceptance tests off the
+// the command scriptable and keeps the unit and integration tests off the
 // TUI codepath. The form short-circuits with "unchanged" when the
 // user submits without modifying any field.
 func newClientEditCmd() *cobra.Command {

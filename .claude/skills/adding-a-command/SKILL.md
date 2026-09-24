@@ -1,6 +1,6 @@
 ---
 name: adding-a-command
-description: Use when adding or modifying a `cinc <noun> <verb>` command, covering the constructor, registration, flag resolution, the required unit and acceptance tests, the coverage manifest, and regenerating docs
+description: Use when adding or modifying a `cinc <noun> <verb>` command, covering the constructor, registration, flag resolution, the required unit test and integration suite case, the coverage guard, and regenerating docs
 ---
 
 # Adding a server command
@@ -35,25 +35,24 @@ request.
    end-to-end against an `httptest` server: fast, deterministic, no external
    dependencies. See `apps/cinc/cmd/CLAUDE.md` for the environment-isolation
    rules, which you will get wrong otherwise.
-6. **Acceptance test** in `test/acceptance/<noun>_test.go`, running the real
-   compiled binary against `cinc-zero` and asserting on the same behavior. See
-   the `acceptance-tests` skill for the harness and seed data. If the cinc-zero
-   response shape or seed makes a code path untestable there, document the gap
-   inline and cover it in the unit test instead.
+6. **Integration suite case** in `integration/suite/<family>.go`, running the
+   real compiled binary against a live server and asserting on the same
+   behavior. List the case in its family with the leaf commands it covers
+   (`covers`). Write it once against `suite.Target`; it runs against the
+   in-process cinc-server-ng in CI and against real erchef by hand. See
+   `integration/README.md` for the rules a case follows. If a server gets
+   the behavior wrong, list the case in that target's `Gaps` with a link to
+   the upstream issue rather than weakening the assertion.
 
-Both `go test ./...` and `go test -tags acceptance ./test/...` must pass.
+Both `go test ./...` and `make test-integration` must pass.
 
 ## 3. Record and document it
 
-7. Add every new leaf command to `test/acceptance/coverage_manifest.toml`, either
-   `status = "covered"` with the acceptance test function name(s), or
-   `status = "exempt"` with a reason (for example it needs the external
-   Supermarket service or an interactive TTY).
-
-   `coverage_meta_test.go` walks the live cobra tree and **fails CI** if a
-   shipped leaf command is missing from the manifest, an exemption has no
-   reason, or a `covered` entry names a test that does not exist. This is what
-   lets us say everything we ship is tested against a real server.
+7. The suite's coverage guard (`integration/suite/coverage_test.go`) walks
+   the live cobra tree and **fails CI** if a shipped leaf command is neither
+   covered by a case nor listed in `exempt` (`integration/suite/coverage.go`)
+   with a reason, such as needing the external Supermarket service. This is
+   what lets us say everything we ship is tested against a real server.
 8. Run `make docs` to regenerate the per-command reference under `docs/commands/`.
    CI also runs this on every push to `main` and commits the result, but landing
    the docs alongside the code keeps PR review honest.

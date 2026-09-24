@@ -52,9 +52,9 @@ type testCase struct {
 	run    func(t *testing.T, tgt Target, c *cli)
 }
 
-// family is one file's worth of cases. pending lists the leaf commands the
-// family owns whose cases have not been ported from test/acceptance yet; the
-// port empties it.
+// family is one file's worth of cases. pending lists leaf commands the
+// family owns but has no case for yet, which the coverage guard accepts
+// until a case claims them.
 type family struct {
 	cases   []testCase
 	pending []string

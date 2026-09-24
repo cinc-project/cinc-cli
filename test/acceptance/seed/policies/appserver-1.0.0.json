@@ -1,1 +1,0 @@
-{"name":"appserver","revision_id":"1.0.0","run_list":["recipe[appserver::default]"],"cookbook_locks":{}}

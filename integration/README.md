@@ -38,8 +38,8 @@ target's admin, and:
 
 `TestCoverage` walks the live command tree and fails if a leaf command is
 neither covered by a case nor listed, with a reason, in `exempt`
-(`suite/coverage.go`). Families still being ported from `test/acceptance`
-list their commands in `pending`.
+(`suite/coverage.go`). A family can list a command it does not cover yet in
+`pending`, which the guard accepts until a case claims it.
 
 ## Running against cinc-server-erlang
 

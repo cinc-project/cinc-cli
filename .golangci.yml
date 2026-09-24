@@ -1,13 +1,5 @@
 version: "2"
 
-run:
-  # test/acceptance sits behind a build tag; without naming it here the linter
-  # never loads those files. (The race/!race pair in cli/policyfile/rubyeval
-  # is inherently one-or-the-other and follows the default build, as `go vet`
-  # did.)
-  build-tags:
-    - acceptance
-
 # The default set: errcheck, govet, ineffassign, staticcheck, unused.
 # govet makes a separate `go vet` step redundant, and the gofmt formatter
 # below makes a separate `gofmt -l` step redundant, so CI runs this alone.
