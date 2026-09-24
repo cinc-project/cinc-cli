@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
@@ -68,7 +69,15 @@ cinc config create`,
 			} else if serverURL == "" && supermarketSite == "" {
 				supermarketSite = supermarket.DefaultSite
 			}
-			if !configureProfileExplicit(cmd) && !profileNameExplicit && !replaceFile && isPublicSupermarketProfile(serverURL, supermarketSite) {
+			if err := checkServerURLFlag(serverURL); err != nil {
+				return err
+			}
+			// A profile that only talks to the public Supermarket is named
+			// [supermarket], where the supermarket commands look first. One
+			// with a Cinc Server keeps its name, whatever Supermarket it
+			// also names.
+			if !configureProfileExplicit(cmd) && !profileNameExplicit && !replaceFile &&
+				!isServerURL(serverURL) && isPublicSupermarketProfile(serverURL, supermarketSite) {
 				profileName = "supermarket"
 			}
 
@@ -505,6 +514,28 @@ func configureProfileExplicit(cmd *cobra.Command) bool {
 		return true
 	}
 	return false
+}
+
+// isServerURL reports whether raw is a Cinc Server URL, organization and all.
+func isServerURL(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	_, _, err := cinc.ParseServerURL(raw)
+	return err == nil
+}
+
+// checkServerURLFlag rejects a --server-url that names no organization. The
+// public Supermarket's URL is the one exception, kept so `--server-url
+// https://supermarket.chef.io` still sets up a Supermarket-only profile.
+// Anything else without /organizations/<org> is almost certainly a server
+// URL with the org left off; filing it away as a Supermarket site instead
+// would write a profile no server command can use.
+func checkServerURLFlag(raw string) error {
+	if raw == "" || isServerURL(raw) || strings.TrimRight(raw, "/") == supermarket.DefaultSite {
+		return nil
+	}
+	return fmt.Errorf("the server URL %s doesn't include /organizations/<org>. Add your organization (for example %s/organizations/acme), or pass a Supermarket with --supermarket-site instead", raw, strings.TrimRight(raw, "/"))
 }
 
 func isPublicSupermarketProfile(serverURL, supermarketSite string) bool {
