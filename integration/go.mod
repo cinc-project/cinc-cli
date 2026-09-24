@@ -8,7 +8,7 @@ module github.com/cinc-project/cinc-cli/integration
 go 1.26.4
 
 require (
-	github.com/cinc-project/cinc-api v0.14.2
+	github.com/cinc-project/cinc-api v0.15.0
 	github.com/cinc-project/cinc-cli v0.0.0
 	github.com/creack/pty v1.1.24
 	github.com/spf13/cobra v1.10.2
@@ -62,5 +62,3 @@ require (
 )
 
 replace github.com/cinc-project/cinc-cli => ../
-
-replace github.com/cinc-project/cinc-api => /Users/tsmith/dev/oss/cinc-api/.claude/worktrees/combined

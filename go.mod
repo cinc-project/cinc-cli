@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/cinc-project/cinc-api v0.14.2
+	github.com/cinc-project/cinc-api v0.15.0
 	github.com/cinc-project/cinc-supermarket-api v0.6.0
 	github.com/goruby/goruby v0.0.0-20210827060341-983436007185
 	github.com/kevinburke/ssh_config v1.6.0
@@ -47,5 +47,3 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-replace github.com/cinc-project/cinc-api => /Users/tsmith/dev/oss/cinc-api/.claude/worktrees/combined
