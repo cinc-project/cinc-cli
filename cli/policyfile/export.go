@@ -43,10 +43,7 @@ func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lo
 		if err != nil {
 			return ExportResult{}, err
 		}
-		ddi := cl.DottedDecimalIdentifier
-		if ddi == "" {
-			ddi = cl.Identifier
-		}
+		ddi := cl.DottedIdentifier()
 		// name and ddi come from the (untrusted) lock; keep them from escaping
 		// the export directory.
 		dst, err := safeJoin(destDir, "cookbooks", name+"-"+ddi)

@@ -114,6 +114,36 @@ func TestPolicyPushArchiveCommandTarballInput(t *testing.T) {
 	}
 }
 
+// TestPolicyPushArchiveUploadsUnderLockName covers a bundled cookbook whose
+// metadata.rb names it with a non-literal the static parser can't read, so
+// the only name on hand is its directory, base-<identifier>. The artifact
+// must still land under the lock's name, base.
+func TestPolicyPushArchiveUploadsUnderLockName(t *testing.T) {
+	const identifier = "0000000000000000000000000000000000000004"
+	var uploadedArtifact, associated bool
+	var associateBody []byte
+	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
+
+	bundleDir, _ := exportBundle(t, identifier)
+	dirs, err := filepath.Glob(filepath.Join(bundleDir, "cookbooks", "base-*"))
+	if err != nil || len(dirs) != 1 {
+		t.Fatalf("bundle cookbook dirs = %v, %v; want one base-* dir", dirs, err)
+	}
+	if err := os.WriteFile(filepath.Join(dirs[0], "metadata.rb"), []byte("name File.basename(__dir__)\nversion '1.0.0'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"policy", "push-archive", "prod", bundleDir, "--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc policy push-archive: %v", err)
+	}
+	if !uploadedArtifact {
+		t.Error("cookbook artifact was not uploaded under the lock's cookbook name")
+	}
+}
+
 // TestPolicyPushArchiveDefaultsToCwdArchive omits the archive argument; the
 // command should discover the single .tar.gz in the working directory.
 func TestPolicyPushArchiveDefaultsToCwdArchive(t *testing.T) {

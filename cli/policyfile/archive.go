@@ -52,16 +52,13 @@ func OpenBundle(path string) (string, func(), error) {
 
 // LoadBundleCookbooks reads each cookbook the lock pins from a bundle's
 // cookbooks/<name>-<identifier>/ tree into an uploadable LocalCookbook, keyed by
-// cookbook name. The directory layout matches what Export writes; the cookbook's
-// upload name is taken from the lock (not the on-disk directory, which carries
-// the identifier suffix).
+// cookbook name. The directory layout matches what Export writes. PushRevision
+// uploads each one under its lock name, so the identifier suffix on the
+// directory never reaches the server.
 func LoadBundleCookbooks(dir string, lock *cinc.PolicyRevision) (map[string]*cinc.LocalCookbook, error) {
 	cookbooks := make(map[string]*cinc.LocalCookbook, len(lock.CookbookLocks))
 	for name, cl := range lock.CookbookLocks {
-		ddi := cl.DottedDecimalIdentifier
-		if ddi == "" {
-			ddi = cl.Identifier
-		}
+		ddi := cl.DottedIdentifier()
 		// name and ddi come from the (untrusted) lock; keep the lookup from
 		// escaping the bundle's cookbooks directory.
 		cbDir, err := safeJoin(dir, "cookbooks", name+"-"+ddi)
@@ -72,12 +69,6 @@ func LoadBundleCookbooks(dir string, lock *cinc.PolicyRevision) (map[string]*cin
 		if err != nil {
 			return nil, fmt.Errorf("policyfile: load cookbook %q from %s: %w", name, cbDir, err)
 		}
-		// The on-disk directory is "<name>-<identifier>"; the upload name is
-		// the bare cookbook name the lock records. The manifest's metadata
-		// must agree with it, and cinc-api falls back to the directory name
-		// there when metadata.rb names the cookbook with a non-literal.
-		cb.Name = name
-		cb.Metadata.Name = name
 		cookbooks[name] = cb
 	}
 	return cookbooks, nil

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -197,8 +198,18 @@ func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
 			if !strings.Contains(buf.String(), tc.want) {
 				t.Errorf("output = %q, want it to contain %q", buf.String(), tc.want)
 			}
-			if tc.format == "json" && !strings.Contains(buf.String(), `"cookbooks": 1`) {
-				t.Errorf("json output = %q, want the lock's cookbook count too", buf.String())
+			if tc.format == "json" {
+				var got struct {
+					Cookbooks      int      `json:"cookbooks"`
+					Uploaded       []string `json:"uploaded"`
+					AlreadyPresent []string `json:"already_present"`
+				}
+				if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+					t.Fatalf("json output not valid JSON: %v\n%s", err, buf.String())
+				}
+				if got.Cookbooks != 1 || len(got.Uploaded) != 0 || !slices.Equal(got.AlreadyPresent, []string{"base"}) {
+					t.Errorf("json output = %+v, want 1 cookbook, none uploaded, base already present", got)
+				}
 			}
 		})
 	}
