@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	cinc "github.com/cinc-project/cinc-api"
+
 	"github.com/spf13/cobra"
 
 	localcookbook "github.com/cinc-project/cinc-cli/cli/cookbook"

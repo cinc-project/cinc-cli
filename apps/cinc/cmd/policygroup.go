@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	cinc "github.com/cinc-project/cinc-api"
+
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
