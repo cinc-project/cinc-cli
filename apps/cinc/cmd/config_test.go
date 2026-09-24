@@ -536,3 +536,45 @@ cinc_server_url = "%s/organizations/acme"
 		t.Errorf("stdout = %q, want the reachability check to fail", out)
 	}
 }
+
+// TestConfigValidateChecksOnlyTheProfileFlagNames validates a file with a
+// good and a broken profile. With --profile only that profile is checked;
+// CINC_PROFILE, which users often set for every command, does not narrow
+// it; and an unknown --profile is an error naming the profile and file.
+func TestConfigValidateChecksOnlyTheProfileFlagNames(t *testing.T) {
+	srv := configValidateServer(t, http.StatusOK)
+	cfgPath := writeValidateConfig(t, fmt.Sprintf(`
+[default]
+client_name = "tim"
+client_key = %q
+cinc_server_url = "%s/organizations/acme"
+
+[broken]
+client_name = "tim"
+client_key = "/no/such/key.pem"
+cinc_server_url = "%s/organizations/acme"
+`, writeTestKey(t), srv.URL, srv.URL))
+
+	out, _, err := runRoot(t, "config", "validate", cfgPath, "--profile", "default", "--format", "json")
+	if err != nil {
+		t.Fatalf("config validate --profile default: %v\n%s", err, out)
+	}
+	var result configValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Profiles) != 1 || result.Profiles[0].Name != "default" {
+		t.Errorf("profiles checked = %+v, want only default", result.Profiles)
+	}
+
+	t.Setenv("CINC_PROFILE", "default")
+	out, _, err = runRoot(t, "config", "validate", cfgPath, "--format", "json")
+	if err == nil || !strings.Contains(out, `"broken"`) {
+		t.Errorf("CINC_PROFILE should not narrow config validate; err = %v, out:\n%s", err, out)
+	}
+
+	_, _, err = runRoot(t, "config", "validate", cfgPath, "--profile", "nosuch")
+	if err == nil || !strings.Contains(err.Error(), `"nosuch"`) || !strings.Contains(err.Error(), cfgPath) {
+		t.Errorf("unknown --profile: err = %v, want one naming the profile and %s", err, cfgPath)
+	}
+}

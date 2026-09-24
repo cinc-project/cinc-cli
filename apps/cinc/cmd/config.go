@@ -8,6 +8,7 @@ import (
 	cliclient "github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newConfigCmd builds the `cinc config` command group.
@@ -26,7 +27,10 @@ func newConfigValidateCmd() *cobra.Command {
 		Use:   "validate [path]",
 		Short: "Validate local Cinc TOML configuration and endpoint reachability",
 		Example: `Run the pre-flight checks for every profile in your credentials file.
-cinc config validate`,
+cinc config validate
+
+Check just one profile.
+cinc config validate --profile staging`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := configValidatePath(cmd, args)
@@ -50,6 +54,9 @@ cinc config validate`,
 					},
 				}
 			} else {
+				if cfg, err = profileToValidate(cmd, path, cfg); err != nil {
+					return err
+				}
 				// The reachable check connects through cliclient.New, which warns
 				// when a profile disables TLS verification. Validate reports TLS
 				// posture as its own check, so silence the redundant warning here.
@@ -75,6 +82,23 @@ cinc config validate`,
 		},
 	}
 	return cmd
+}
+
+// profileToValidate narrows cfg to the profile --profile names, so
+// `config validate --profile staging` checks only staging. Without the flag
+// every profile is checked; CINC_PROFILE and CHEF_PROFILE do not narrow it,
+// since users often set them for every command and still expect validate
+// to vet the whole file.
+func profileToValidate(cmd *cobra.Command, path string, cfg *config.Config) (*config.Config, error) {
+	name, _ := cmd.Flags().GetString("profile")
+	if name == "" {
+		return cfg, nil
+	}
+	p, ok := cfg.Profiles[name]
+	if !ok {
+		return nil, fmt.Errorf("there's no profile %q in %s. Run `%s config validate` without --profile to check every profile it has", name, path, progname.Get())
+	}
+	return &config.Config{Profiles: map[string]config.Profile{name: p}}, nil
 }
 
 func configValidatePath(cmd *cobra.Command, args []string) (string, error) {

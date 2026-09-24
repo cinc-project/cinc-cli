@@ -71,6 +71,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/chef-credentials-in-place", []string{"node list", "node create"}, testChefCredentialsInPlace},
 	{"cli/chef-server-url-key", []string{"node list"}, testChefServerURLKey},
 	{"cli/profile-precedence", []string{"node list"}, testProfilePrecedence},
+	{"cli/config-validate-profile-flag", []string{"config validate"}, testConfigValidateProfileFlag},
 	{"cli/ssl-verify-mode-typo", []string{"node list"}, testSSLVerifyModeTypo},
 	{"cli/config-relative-path", []string{"config validate", "node list"}, testConfigRelativePath},
 	{"cli/explore-profile-from-env", []string{"explore"}, testExploreProfileFromEnv},
