@@ -53,9 +53,6 @@ func Load(dir string, skipChefignore bool) (*cinc.LocalCookbook, error) {
 	if skipChefignore {
 		opts = append(opts, cinc.SkipChefignore())
 	}
-	// Absolute, so a cookbook without a declared name is named after the
-	// directory it's in rather than ".".
-	dir = absDir(dir)
 	cb, err := cinc.LocalCookbookFromDir(dir, "", opts...)
 	if errors.Is(err, cinc.ErrMetadataVersionNotLiteral) {
 		return nil, fmt.Errorf("we can't tell which version the cookbook in %s is: its metadata.rb works the version out in Ruby, which cinc doesn't run. "+

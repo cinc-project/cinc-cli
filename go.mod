@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/cinc-project/cinc-api v0.15.0
+	github.com/cinc-project/cinc-api v0.15.1
 	github.com/cinc-project/cinc-supermarket-api v0.6.0
 	github.com/kevinburke/ssh_config v1.6.0
 	github.com/mattn/go-isatty v0.0.24

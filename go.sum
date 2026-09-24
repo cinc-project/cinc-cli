@@ -28,8 +28,8 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
-github.com/cinc-project/cinc-api v0.15.0 h1:LRZyI0Xn3fZ4/WsZQ3lyrLimr9wq3S1fJ1GfH3DmV/4=
-github.com/cinc-project/cinc-api v0.15.0/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
+github.com/cinc-project/cinc-api v0.15.1 h1:fYN+f/QQGtYujtdC2sEGEIMiH+QTEVcYd7uqFmogCO0=
+github.com/cinc-project/cinc-api v0.15.1/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
 github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=
 github.com/cinc-project/cinc-supermarket-api v0.6.0/go.mod h1:EAxUjVWn4otvz06+I9rbfIivivUrOxj7tAEKKnjIdug=
 github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSEFgwIwO+UVM8=
@@ -43,8 +43,6 @@ github.com/dlclark/regexp2/v2 v2.7.1 h1:yqDtwI1ptXXvEUNpYTk2lad4jLtAcKqkzepn4sav
 github.com/dlclark/regexp2/v2 v2.7.1/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f/go.mod h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM=
-github.com/goruby/goruby v0.0.0-20210827060341-983436007185 h1:GedMqwfSDl/8KBSbE99/eO04ktF1TpT/O0tSoOkaqsM=
-github.com/goruby/goruby v0.0.0-20210827060341-983436007185/go.mod h1:eoncWkzp2aZ8fX/wbB29hl1N4eCQMfrR4rZOZ/ztecs=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
@@ -65,8 +63,6 @@ github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELU
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
 github.com/muesli/termenv v0.16.0 h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc=
 github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk=
-github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
-github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
