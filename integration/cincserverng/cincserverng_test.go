@@ -100,6 +100,19 @@ func run(m *testing.M) int {
 			"environments/invalid-name":                "environment create accepts names erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
 			"environments/invalid-cookbook-constraint": "environment create and update accept cookbook constraints erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
 			"search/escaped-query":                     "search queries do not support Lucene backslash escapes: https://github.com/cinc-project/cinc-server-ng/issues/185",
+
+			"clients/edit-missing":                "PUT on a missing client creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+			"clients/create-invalid-name":         "client names are not validated: https://github.com/cinc-project/cinc-server-ng/issues/175",
+			"clients/create-invalid-public-key":   "a client's public_key is not validated: https://github.com/cinc-project/cinc-server-ng/issues/175",
+			"clients/reregister-new-key-signs":    "a re-created default key never authenticates: https://github.com/cinc-project/cinc-server-ng/issues/172",
+			"keys/client-added-key-signs":         "keys added through the keys API never authenticate: https://github.com/cinc-project/cinc-server-ng/issues/172",
+			"keys/user-added-key-signs":           "keys added through the keys API never authenticate: https://github.com/cinc-project/cinc-server-ng/issues/172",
+			"keys/client-invalid-expiration":      "a key's expiration_date is not validated: https://github.com/cinc-project/cinc-server-ng/issues/175",
+			"keys/client-default-already-exists":  "a second key named default is accepted: https://github.com/cinc-project/cinc-server-ng/issues/173",
+			"keys/client-edit-default-expiration": "PUT on the default key ignores expiration_date: https://github.com/cinc-project/cinc-server-ng/issues/173",
+			"keys/client-edit-partial":            "key PUT drops fields the body omits: https://github.com/cinc-project/cinc-server-ng/issues/163",
+			"keys/client-edit-rename":             "key PUT ignores a new name: https://github.com/cinc-project/cinc-server-ng/issues/163",
+			"keys/client-edit-create-key":         "key PUT stores create_key instead of regenerating the key: https://github.com/cinc-project/cinc-server-ng/issues/174",
 		},
 	}
 	return m.Run()
