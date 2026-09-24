@@ -394,9 +394,13 @@ func NewProfile(serverURL, clientName, clientKey, sslVerifyMode, supermarketSite
 	return p, nil
 }
 
+// profileServerURL is the server URL to write for p. A URL that did not
+// parse into server and organization is written back as it was, so
+// rewriting a profile never quietly deletes a URL the user typed; config
+// validate reports what is wrong with it instead.
 func profileServerURL(p Profile) string {
 	if p.ServerURL == "" || p.Org == "" {
-		return ""
+		return p.RawServerURL
 	}
 	return strings.TrimRight(p.ServerURL, "/") + "/organizations/" + p.Org
 }

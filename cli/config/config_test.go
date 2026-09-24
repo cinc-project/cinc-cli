@@ -447,6 +447,32 @@ func TestWriteProfileAllowsSupermarketOnlyProfile(t *testing.T) {
 	}
 }
 
+// TestUpdateProfileKeepsUnparsedServerURL rewrites a profile whose server
+// URL has no /organizations/<org>, changing an unrelated key. The URL is
+// the user's; the rewrite keeps it as written for config validate to
+// report, rather than quietly deleting it.
+func TestUpdateProfileKeepsUnparsedServerURL(t *testing.T) {
+	path := writeConfig(t, `[default]
+cinc_server_url = "http://127.0.0.1:8889"
+client_name = "tim"
+client_key = "/keys/tim.pem"
+`)
+	if err := UpdateProfile(path, "default", func(p *Profile) error {
+		p.SSLVerifyMode = ":verify_peer"
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Profiles["default"].RawServerURL; got != "http://127.0.0.1:8889" {
+		t.Errorf("server URL after rewrite = %q, want it kept as written", got)
+	}
+}
+
 func TestWriteProfilePreservesExistingProfiles(t *testing.T) {
 	path := writeConfig(t, sampleConfig)
 

@@ -277,3 +277,32 @@ cookbook_path   = ["/src/cookbooks", "/src/site-cookbooks"]
 		t.Errorf("default.cinc_server_url = %v", def["cinc_server_url"])
 	}
 }
+
+// TestMigrateChefKeepsOrglessServerURL migrates the profile chef-zero's
+// docs give knife users: a server URL with no /organizations/<org>. It is
+// a server, so it stays the server URL, never becomes a Supermarket site,
+// and is kept as written so config validate can say what it lacks.
+func TestMigrateChefKeepsOrglessServerURL(t *testing.T) {
+	chefPath := writeChefCredentials(t, `
+[default]
+chef_server_url = "http://127.0.0.1:8889"
+client_name     = "tim"
+client_key      = "/keys/tim.pem"
+`)
+	cincPath := filepath.Join(t.TempDir(), "credentials")
+
+	if _, err := MigrateChef(chefPath, cincPath); err != nil {
+		t.Fatalf("MigrateChef: %v", err)
+	}
+	var got map[string]map[string]any
+	if _, err := toml.DecodeFile(cincPath, &got); err != nil {
+		t.Fatal(err)
+	}
+	def := got["default"]
+	if def["cinc_server_url"] != "http://127.0.0.1:8889" {
+		t.Errorf("default.cinc_server_url = %v, want the knife URL as written", def["cinc_server_url"])
+	}
+	if site, ok := def["supermarket_site"]; ok {
+		t.Errorf("a server URL was migrated as supermarket_site = %v", site)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
+	cinc "github.com/cinc-project/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
 )
@@ -74,10 +75,20 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 		if serverURL == "" {
 			serverURL = rp.ChefServerURL
 		}
+		// A knife server URL names a server even when it has no
+		// /organizations/<org> (chef-zero's docs use a bare host), so it
+		// never goes through NewProfile's fallback that files such a URL
+		// away as a Supermarket site. It is kept as written instead, and
+		// config validate and the server commands say what it lacks.
+		orgless := ""
+		if _, _, err := cinc.ParseServerURL(serverURL); serverURL != "" && err != nil {
+			orgless, serverURL = serverURL, ""
+		}
 		profile, err := config.NewProfile(serverURL, rp.ClientName, rp.ClientKey, rp.SSLVerifyMode, rp.SupermarketSite)
 		if err != nil {
 			return 0, fmt.Errorf("setup: profile %q: %w", name, err)
 		}
+		profile.RawServerURL = orgless
 		// NewProfile only takes the core connection fields, so carry the
 		// remaining keys chefRawProfile models across by hand.
 		profile.SecretFile = rp.SecretFile
