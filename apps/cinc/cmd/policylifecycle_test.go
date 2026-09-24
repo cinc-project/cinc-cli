@@ -192,35 +192,46 @@ func TestPolicyCreateCommandForceOverwrites(t *testing.T) {
 // --- diff (command) -----------------------------------------------------
 
 // policyDiffServer serves policy revisions and, optionally, policy-group
-// pinnings for the diff command tests.
-func policyDiffServer(t *testing.T, revisions map[string]cinc.PolicyRevision, groups map[string]string) *httptest.Server {
+// pinnings for the diff command tests. It counts the requests it answers, so
+// a test can pin how many a diff takes.
+func policyDiffServer(t *testing.T, revisions map[string]cinc.PolicyRevision, groups map[string]string) (*httptest.Server, *int) {
 	t.Helper()
+	requests := new(int)
 	mux := http.NewServeMux()
-	for rev, doc := range revisions {
-		mux.HandleFunc("/organizations/acme/policies/appserver/revisions/"+rev, func(w http.ResponseWriter, _ *http.Request) {
+	handle := func(path string, body any) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
+			*requests++
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(doc)
+			_ = json.NewEncoder(w).Encode(body)
 		})
 	}
+	for rev, doc := range revisions {
+		handle("/organizations/acme/policies/appserver/revisions/"+rev, doc)
+	}
 	for group, rev := range groups {
-		mux.HandleFunc("/organizations/acme/policy_groups/"+group, func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(cinc.PolicyGroup{
-				Policies: map[string]cinc.PolicyAssignment{"appserver": {RevisionID: rev}},
-			})
+		if rev == "" {
+			// A group that exists but doesn't pin appserver.
+			handle("/organizations/acme/policy_groups/"+group, cinc.PolicyGroup{Policies: map[string]cinc.PolicyAssignment{}})
+			continue
+		}
+		handle("/organizations/acme/policy_groups/"+group, cinc.PolicyGroup{
+			Policies: map[string]cinc.PolicyAssignment{"appserver": {RevisionID: rev}},
 		})
+		handle("/organizations/acme/policy_groups/"+group+"/policies/appserver", revisions[rev])
 	}
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, requests
 }
 
+// TestPolicyDiffCommandGroupsForm diffs the revisions active in two groups.
+// Each side is one request for the group's active revision of the policy.
 func TestPolicyDiffCommandGroupsForm(t *testing.T) {
 	revisions := map[string]cinc.PolicyRevision{
 		"1.1.0": {RevisionID: "1.1.0", CookbookLocks: map[string]cinc.CookbookLock{"web": {Version: "1.3.0"}}},
 		"1.0.0": {RevisionID: "1.0.0", CookbookLocks: map[string]cinc.CookbookLock{"web": {Version: "1.2.0"}}},
 	}
-	srv := policyDiffServer(t, revisions, map[string]string{"staging": "1.1.0", "prod": "1.0.0"})
+	srv, requests := policyDiffServer(t, revisions, map[string]string{"staging": "1.1.0", "prod": "1.0.0"})
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -237,8 +248,31 @@ func TestPolicyDiffCommandGroupsForm(t *testing.T) {
 	if d.From.Ref != "staging" || d.To.Ref != "prod" {
 		t.Errorf("refs = %+v / %+v", d.From, d.To)
 	}
+	if d.From.RevisionID != "1.1.0" || d.To.RevisionID != "1.0.0" {
+		t.Errorf("revision ids = %+v / %+v", d.From, d.To)
+	}
 	if len(d.Cookbooks) != 1 || d.Cookbooks[0].From != "1.3.0" || d.Cookbooks[0].To != "1.2.0" {
 		t.Errorf("cookbooks = %+v", d.Cookbooks)
+	}
+	if *requests != 2 {
+		t.Errorf("diff made %d requests, want 2 (one per group)", *requests)
+	}
+}
+
+// TestPolicyDiffCommandGroupWithoutPolicy names the problem when a group
+// exists but doesn't pin the policy, rather than a bare not-found.
+func TestPolicyDiffCommandGroupWithoutPolicy(t *testing.T) {
+	revisions := map[string]cinc.PolicyRevision{"1.0.0": {RevisionID: "1.0.0"}}
+	srv, _ := policyDiffServer(t, revisions, map[string]string{"staging": "1.0.0", "empty": ""})
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"policy", "diff", "appserver", "staging", "empty", "--config", writePolicyConfig(t, srv.URL)})
+
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), `policy "appserver" is not assigned to group "empty"`) {
+		t.Errorf("err = %v, want it to say the policy isn't assigned to the group", err)
 	}
 }
 
@@ -247,7 +281,7 @@ func TestPolicyDiffCommandRevisionsForm(t *testing.T) {
 		"1.0.0": {RevisionID: "1.0.0", RunList: []string{"recipe[base]"}},
 		"1.1.0": {RevisionID: "1.1.0", RunList: []string{"recipe[base]", "recipe[web::ssl]"}},
 	}
-	srv := policyDiffServer(t, revisions, nil)
+	srv, _ := policyDiffServer(t, revisions, nil)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -270,7 +304,7 @@ func TestPolicyDiffCommandRevisionsForm(t *testing.T) {
 }
 
 func TestPolicyDiffCommandRejectsMixedForms(t *testing.T) {
-	srv := policyDiffServer(t, map[string]cinc.PolicyRevision{"1.0.0": {RevisionID: "1.0.0"}}, nil)
+	srv, _ := policyDiffServer(t, map[string]cinc.PolicyRevision{"1.0.0": {RevisionID: "1.0.0"}}, nil)
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
@@ -403,12 +437,9 @@ func cleanCookbooksServer(t *testing.T, deleted *[]string) *httptest.Server {
 	})
 	for policy, revs := range revisions {
 		mux.HandleFunc("/organizations/acme/policies/"+policy, func(w http.ResponseWriter, _ *http.Request) {
-			out := cinc.PolicyRevisions{Revisions: map[string]json.RawMessage{}}
-			for rev := range revs {
-				out.Revisions[rev] = json.RawMessage(`{}`)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(out)
+			// The policy list already names every revision.
+			t.Errorf("clean-cookbooks fetched /policies/%s, which the policy list makes redundant", policy)
+			w.WriteHeader(http.StatusInternalServerError)
 		})
 		mux.HandleFunc("/organizations/acme/policies/"+policy+"/revisions/", func(w http.ResponseWriter, r *http.Request) {
 			rev := strings.TrimPrefix(r.URL.Path, "/organizations/acme/policies/"+policy+"/revisions/")
