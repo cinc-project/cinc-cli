@@ -49,7 +49,8 @@ func trustTargetCA(t *testing.T, b *cli) {
 // testFirstRunBareCinc runs cinc with no command, the first thing many new
 // users type. It offers setup; declining exits cleanly without dumping help
 // on someone who said no, and finishing setup shows the help so they see
-// what to run next. Once credentials exist it is just help.
+// what to run next. Once credentials exist, or when --config names a file,
+// it is just help.
 func testFirstRunBareCinc(t *testing.T, tgt Target, c *cli) {
 	b := behBareCLI(c)
 	r := b.execTTY("n\n")
@@ -79,6 +80,12 @@ func testFirstRunBareCinc(t *testing.T, tgt Target, c *cli) {
 	// assertion below instead of hanging on the terminal.
 	if r := c.execTTY("n\n"); strings.Contains(r.stderr, firstRunGate) || !strings.Contains(r.stdout, "Usage:") {
 		t.Errorf("bare cinc with credentials in place should print help and nothing else: %s", r)
+	}
+	b = behBareCLI(c)
+	cfg := filepath.Join(b.home, "elsewhere", "credentials")
+	behCopyFile(t, c.credentialsPath(), cfg)
+	if r := b.execTTY("n\n", "--config", cfg); strings.Contains(r.stderr, firstRunGate) || !strings.Contains(r.stdout, "Usage:") {
+		t.Errorf("bare cinc --config should use that file, not offer setup: %s", r)
 	}
 }
 
