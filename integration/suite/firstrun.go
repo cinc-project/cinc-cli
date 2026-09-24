@@ -1,6 +1,7 @@
 package suite
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,4 +174,31 @@ func testFirstRunGateEOF(t *testing.T, _ Target, c *cli) {
 			t.Errorf("%s wrote %s", tc.what, b.credentialsPath())
 		}
 	}
+}
+
+// testFirstRunLocationTilde answers the location and key prompts with ~
+// paths, as a user naturally types them. Both must mean the home directory,
+// as they do for `config create`, never a directory literally named ~ under
+// wherever the command ran.
+func testFirstRunLocationTilde(t *testing.T, tgt Target, c *cli) {
+	b := behBareCLI(c)
+	trustTargetCA(t, b)
+	behCopyFile(t, tgt.KeyPath, filepath.Join(b.home, "keys", "admin.pem"))
+
+	r := b.execTTY(lines(append([]string{"y"}, configureAnswers(tgt, "~/work/credentials", "~/keys/admin.pem")...)...), "node", "list")
+	if r.exitCode != 0 {
+		t.Fatalf("first-run setup with ~ paths failed: %s", r)
+	}
+	if _, err := os.Stat(filepath.Join(b.home, "~")); err == nil {
+		t.Errorf("first-run setup created a directory literally named ~: %s", r)
+	}
+	path := filepath.Join(b.home, "work", "credentials")
+	if !strings.Contains(r.stdout, path) {
+		t.Errorf("first-run setup should report the expanded path %s: %s", path, r)
+	}
+	written := behReadFile(t, path)
+	if want := fmt.Sprintf("client_key = %q", filepath.Join(b.home, "keys", "admin.pem")); !strings.Contains(written, want) {
+		t.Errorf("the key path should be written expanded, as config create writes it (%s):\n%s", want, written)
+	}
+	b.run("--config", "~/work/credentials", "node", "list")
 }

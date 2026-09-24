@@ -887,3 +887,36 @@ func TestConfigureCommandRejectsServerURLWithoutOrg(t *testing.T) {
 		t.Errorf("a rejected config create wrote %s", cfgPath)
 	}
 }
+
+// TestFirstRunConfigureExpandsTildePaths answers the location and key
+// prompts with ~ paths. They mean the home directory, as they do for
+// `config create`, not a directory named ~ under the working directory.
+func TestFirstRunConfigureExpandsTildePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	out := new(bytes.Buffer)
+	c := fakeCmd("", "", strings.Join([]string{
+		"~/work/credentials", "", "", "tim", "~/keys/tim.pem", "https://cinc.example.test", "acme", "",
+	}, "\n")+"\n", new(bytes.Buffer))
+	c.SetOut(out)
+	if err := realRunFirstRunConfigure(c, filepath.Join(home, ".cinc", "credentials")); err != nil {
+		t.Fatalf("first-run configure: %v", err)
+	}
+
+	cfgPath := filepath.Join(home, "work", "credentials")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load %s: %v", cfgPath, err)
+	}
+	if got, want := cfg.Profiles["default"].KeyPath, filepath.Join(home, "keys", "tim.pem"); got != want {
+		t.Errorf("client_key = %q, want %q", got, want)
+	}
+	if !strings.Contains(out.String(), "to "+cfgPath) {
+		t.Errorf("expected the expanded path in the success message, got:\n%s", out.String())
+	}
+	if _, err := os.Stat("~"); err == nil {
+		t.Error("first-run configure created a directory named ~")
+	}
+}
