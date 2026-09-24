@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	cinc "github.com/cinc-project/cinc-api"
+
 	"github.com/spf13/cobra"
 
 	localcookbook "github.com/cinc-project/cinc-cli/cli/cookbook"
@@ -21,7 +23,7 @@ func newCookbookCmd() *cobra.Command {
 	cmd.AddCommand(newCookbookDeleteCmd())
 	cmd.AddCommand(newCookbookUploadCmd())
 	cmd.AddCommand(newCookbookDownloadCmd())
-	cmd.AddCommand(newACLCmd("cookbook", "cookbooks"))
+	cmd.AddCommand(newACLCmd("cookbook", cinc.ACLCookbooks))
 	return cmd
 }
 

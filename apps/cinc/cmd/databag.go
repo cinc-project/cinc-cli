@@ -26,7 +26,7 @@ func newDataBagCmd() *cobra.Command {
 	cmd.AddCommand(newDataBagDeleteCmd())
 	cmd.AddCommand(newDataBagItemCmd())
 	cmd.AddCommand(newDataBagSecretCmd())
-	cmd.AddCommand(newACLCmd("databag", "data"))
+	cmd.AddCommand(newACLCmd("databag", cinc.ACLDataBags))
 	return cmd
 }
 

@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	cinc "github.com/cinc-project/cinc-api"
+
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
@@ -25,7 +27,7 @@ func newPolicyCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyPushCmd())
 	cmd.AddCommand(newPolicyPushArchiveCmd())
 	cmd.AddCommand(newPolicyExportCmd())
-	cmd.AddCommand(newACLCmd("policy", "policies"))
+	cmd.AddCommand(newACLCmd("policy", cinc.ACLPolicies))
 	return cmd
 }
 

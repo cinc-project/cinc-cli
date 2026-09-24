@@ -3,6 +3,7 @@ package explore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -397,33 +398,17 @@ func searchRowIdentity(raw json.RawMessage) string {
 	return o.ID
 }
 
-// serverInfoCmd makes one cheap authenticated request and reads the
-// server's Chef API version out of the X-Ops-Server-Api-Version response
-// header. A failure just leaves the version blank — it's title-bar trim,
-// not load-bearing.
+// serverInfoCmd asks the server which Chef API versions it supports, for
+// the title bar. A failure just leaves the version blank: it's title-bar
+// trim, not load-bearing.
 func serverInfoCmd(ctx context.Context, c *cinc.Client) tea.Cmd {
 	return func() tea.Msg {
-		_, resp, err := c.Nodes.List(ctx)
-		if err != nil || resp == nil || resp.HTTPResponse == nil {
+		v, _, err := c.ServerAPIVersion(ctx)
+		if err != nil {
 			return serverInfoMsg{}
 		}
-		return serverInfoMsg{version: parseAPIVersion(resp.HTTPResponse.Header.Get("X-Ops-Server-Api-Version"))}
+		return serverInfoMsg{version: fmt.Sprintf("API v%d", v.Max)}
 	}
-}
-
-// parseAPIVersion turns a Chef X-Ops-Server-Api-Version header value
-// (JSON like {"max_version":"2",…}) into a short label like "API v2".
-func parseAPIVersion(header string) string {
-	if header == "" {
-		return ""
-	}
-	var v struct {
-		MaxVersion string `json:"max_version"`
-	}
-	if err := json.Unmarshal([]byte(header), &v); err != nil || v.MaxVersion == "" {
-		return ""
-	}
-	return "API v" + v.MaxVersion
 }
 
 // ----- tea.Model -------------------------------------------------------

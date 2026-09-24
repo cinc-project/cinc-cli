@@ -7,13 +7,9 @@ import (
 	cinc "github.com/cinc-project/cinc-api"
 )
 
-// pivotalUser is the Cinc/Chef Server's bootstrap superuser, and
-// adminsGroup is the per-org group whose members hold admin rights.
-// userType uses both to classify a user for the summary pane.
-const (
-	pivotalUser = "pivotal"
-	adminsGroup = "admins"
-)
+// adminsGroup is the per-org group whose members hold admin rights. userType
+// uses it, with cinc.SuperuserName, to classify a user for the summary pane.
+const adminsGroup = "admins"
 
 // newUserKind builds the Users kind. Creating a user with create_key
 // returns a one-time private key, surfaced through CreateResult.Secret.
@@ -68,7 +64,7 @@ func newUserKind() Kind {
 // guess. Membership is the group's direct user list, matching what
 // `cinc group show admins` reports.
 func userType(ctx context.Context, c *cinc.Client, username string) string {
-	if username == pivotalUser {
+	if username == cinc.SuperuserName {
 		return "Superuser"
 	}
 	group, _, err := c.Groups.Get(ctx, adminsGroup)

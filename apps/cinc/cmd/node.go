@@ -37,7 +37,7 @@ func newNodeCmd() *cobra.Command {
 	cmd.AddCommand(newNodeStatusCmd())
 	cmd.AddCommand(newNodeEnvironmentSetCmd())
 	cmd.AddCommand(newNodePolicySetCmd())
-	cmd.AddCommand(newACLCmd("node", "nodes"))
+	cmd.AddCommand(newACLCmd("node", cinc.ACLNodes))
 	return cmd
 }
 
@@ -315,7 +315,7 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			}
 			bootstrapCommand, err := remote.BootstrapCommand(remote.BootstrapOptions{
 				NodeName:         flags.nodeName,
-				ServerURL:        strings.TrimRight(profile.ServerURL, "/") + "/organizations/" + profile.Org,
+				ServerURL:        cinc.FormatServerURL(profile.ServerURL, profile.Org),
 				ClientKeyPEM:     privateKey,
 				RunList:          splitCSV(flags.runList),
 				Environment:      flags.environment,

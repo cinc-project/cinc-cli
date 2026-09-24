@@ -211,6 +211,11 @@ var profileChecks = []profileCheck{
 			if err != nil {
 				return fail(err.Error())
 			}
+			// This checks more than reachability: a signed request under
+			// the org also proves the key is accepted (a 401 otherwise)
+			// and the org exists (a 404). Client.ServerAPIVersion would be
+			// cheaper, but /server_api_version sits outside any org, so it
+			// would pass a profile pointed at an org that isn't there.
 			if _, _, err := c.Clients.List(ctx); err != nil {
 				// A 403 means the server answered and accepted the
 				// signature; the actor just may not list clients, as a

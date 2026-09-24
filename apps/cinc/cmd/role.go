@@ -22,7 +22,7 @@ func newRoleCmd() *cobra.Command {
 	cmd.AddCommand(newRoleCreateCmd())
 	cmd.AddCommand(newRoleEditCmd())
 	cmd.AddCommand(newRoleDeleteCmd())
-	cmd.AddCommand(newACLCmd("role", "roles"))
+	cmd.AddCommand(newACLCmd("role", cinc.ACLRoles))
 	return cmd
 }
 

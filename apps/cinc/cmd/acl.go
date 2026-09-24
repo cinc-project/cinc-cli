@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -13,84 +13,58 @@ import (
 )
 
 // aclScope captures what differs between a normal org-scoped object ACL, the
-// organization's own ACL, and a global user ACL: how to read and write the
-// ACL, whether the verbs take a <name> argument, and how to describe the
-// target in messages. Everything else — the read-modify-write core, the
-// member flags, the perm parsing — is shared.
+// organization's own ACL, and a global user ACL: which ACL the library
+// targets, whether the verbs take a <name> argument, and how to describe the
+// target in messages. The read-modify-write lives in the library
+// (ACLs.Grant/Revoke); the member flags and perm parsing are shared here.
 type aclScope struct {
 	// noun is the parent command this acl subgroup hangs under ("node",
-	// "org", "user", …); it drives the help and example text.
+	// "org", "user", ...); it drives the help and example text.
 	noun string
 	// needsName is true when show/grant/revoke take a <name> positional.
 	// The org's own ACL has no name; object and user ACLs do.
 	needsName bool
-	// get fetches the full ACL. name is "" when needsName is false.
-	get func(ctx context.Context, c *cinc.Client, name string) (*cinc.ACL, error)
-	// set rewrites one permission's ACE. name is "" when needsName is false.
-	set func(ctx context.Context, c *cinc.Client, name, perm string, ace *cinc.ACE) error
-	// target renders the object for confirmation messages, e.g.
-	// `node "web01"` or `organization "acme"`.
-	target func(cmd *cobra.Command, name string) string
+	// target names the ACL to read or write. name is "" when needsName is
+	// false.
+	target func(name string) cinc.ACLTarget
+	// describe renders the object for messages, e.g. `node "web01"` or
+	// `organization "acme"`.
+	describe func(c *cinc.Client, name string) string
 }
 
 // newACLCmd builds the `acl` subgroup for a normal org-scoped object whose
 // ACL lives at /organizations/<org>/<objectType>/<name>/_acl. noun is the
-// parent command name (for help text); objectType is the URL segment.
+// parent command name (for help text); objectType is the URL segment, one of
+// the cinc.ACL* constants.
 func newACLCmd(noun, objectType string) *cobra.Command {
 	return newACLGroup(aclScope{
 		noun:      noun,
 		needsName: true,
-		get: func(ctx context.Context, c *cinc.Client, name string) (*cinc.ACL, error) {
-			acl, _, err := c.ACLs.Get(ctx, objectType, name)
-			return acl, err
-		},
-		set: func(ctx context.Context, c *cinc.Client, name, perm string, ace *cinc.ACE) error {
-			return c.ACLs.SetPermission(ctx, objectType, name, perm, ace)
-		},
-		target: func(_ *cobra.Command, name string) string {
-			return fmt.Sprintf("%s %q", noun, name)
-		},
+		target:    func(name string) cinc.ACLTarget { return cinc.ObjectACL(objectType, name) },
+		describe:  func(_ *cinc.Client, name string) string { return fmt.Sprintf("%s %q", noun, name) },
 	})
 }
 
 // newOrgACLCmd builds the `cinc org acl` subgroup. It manages the ACL of the
-// organization object itself, which erchef serves at
-// /organizations/<org>/organizations/_acl, so its verbs take no <name>. The
-// org is whichever one the current profile points at.
+// organization object itself, so its verbs take no <name>. The org is
+// whichever one the current profile points at.
 func newOrgACLCmd() *cobra.Command {
 	return newACLGroup(aclScope{
 		noun:      "org",
 		needsName: false,
-		get: func(ctx context.Context, c *cinc.Client, _ string) (*cinc.ACL, error) {
-			acl, _, err := c.ACLs.GetOrg(ctx)
-			return acl, err
-		},
-		set: func(ctx context.Context, c *cinc.Client, _, perm string, ace *cinc.ACE) error {
-			return c.ACLs.SetOrgPermission(ctx, perm, ace)
-		},
-		target: func(cmd *cobra.Command, _ string) string {
-			return fmt.Sprintf("organization %q", orgName(cmd))
-		},
+		target:    func(string) cinc.ACLTarget { return cinc.OrgACL() },
+		describe:  func(c *cinc.Client, _ string) string { return fmt.Sprintf("organization %q", c.Org()) },
 	})
 }
 
-// newUserACLCmd builds the `cinc user acl` subgroup. User ACLs are global —
-// served at /users/<name>/_acl, not under an org — so they take a <name> but
-// ignore the profile's org.
+// newUserACLCmd builds the `cinc user acl` subgroup. User ACLs are global,
+// not under an org, so they take a <name> but ignore the profile's org.
 func newUserACLCmd() *cobra.Command {
 	return newACLGroup(aclScope{
 		noun:      "user",
 		needsName: true,
-		get: func(ctx context.Context, c *cinc.Client, name string) (*cinc.ACL, error) {
-			acl, _, err := c.ACLs.GetUser(ctx, name)
-			return acl, err
-		},
-		set: func(ctx context.Context, c *cinc.Client, name, perm string, ace *cinc.ACE) error {
-			return c.ACLs.SetUserPermission(ctx, name, perm, ace)
-		},
-		target: func(_ *cobra.Command, name string) string {
-			return fmt.Sprintf("user %q", name)
-		},
+		target:    cinc.UserACL,
+		describe:  func(_ *cinc.Client, name string) string { return fmt.Sprintf("user %q", name) },
 	})
 }
 
@@ -154,9 +128,9 @@ func newACLShowCmd(scope aclScope) *cobra.Command {
 				return err
 			}
 			name := aclName(scope, cmdArgs)
-			acl, err := scope.get(cmd.Context(), c, name)
+			acl, _, err := c.ACLs.GetTarget(cmd.Context(), scope.target(name))
 			if err != nil {
-				return explainACLError(err, scope.target(cmd, name), "")
+				return explainACLError(err, scope.describe(c, name), "")
 			}
 			return printer.New(cmd.OutOrStdout(), format).Value(acl)
 		},
@@ -193,9 +167,9 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 		Example: aclExample(scope, verb),
 		Args:    args,
 		RunE: func(cmd *cobra.Command, cmdArgs []string) error {
-			perms, err := cinc.ExpandPerm(cmdArgs[0])
-			if err != nil {
-				return fmt.Errorf("%q isn't a permission we know. Use one of create, read, update, delete, grant, or all", cmdArgs[0])
+			perm := cmdArgs[0]
+			if _, err := cinc.ExpandPerm(perm); err != nil {
+				return fmt.Errorf("%q isn't a permission we know. Use one of create, read, update, delete, grant, or all", perm)
 			}
 			actors := append(append([]string{}, users...), clients...)
 			if len(actors) == 0 && len(groups) == 0 {
@@ -206,33 +180,16 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 				return err
 			}
 			name := aclName(scope, cmdArgs)
-			target := scope.target(cmd, name)
+			target := scope.describe(c, name)
 			members := strings.Join(append(actors, groups...), ", ")
-			acl, err := scope.get(cmd.Context(), c, name)
-			if err != nil {
-				return explainACLError(err, target, "")
-			}
 
-			var changed []string
-			for _, perm := range perms {
-				ace, err := acl.ACEFor(perm)
-				if err != nil {
-					return err
-				}
-				var aceChanged bool
-				if grant {
-					aceChanged = ace.AddMembers(actors, groups)
-				} else {
-					aceChanged = ace.RemoveMembers(actors, groups)
-				}
-				if !aceChanged {
-					continue
-				}
-				if err := scope.set(cmd.Context(), c, name, perm, ace); err != nil {
-					return explainACLError(err, target,
-						fmt.Sprintf("%s %s on %s %s %s", verb, perm, target, preposition, members))
-				}
-				changed = append(changed, perm)
+			change := c.ACLs.Revoke
+			if grant {
+				change = c.ACLs.Grant
+			}
+			changed, err := change(cmd.Context(), scope.target(name), perm, actors, groups)
+			if err != nil {
+				return explainACLChangeError(err, grant, target, members, groups)
 			}
 
 			out := cmd.OutOrStdout()
@@ -242,7 +199,7 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 				if !grant {
 					has = cases(plural, "don't have", "doesn't have")
 				}
-				fmt.Fprintf(out, "No change: %s %s %s on %s.\n", members, has, cmdArgs[0], target)
+				fmt.Fprintf(out, "No change: %s %s %s on %s.\n", members, has, perm, target)
 				return nil
 			}
 			fmt.Fprintf(out, "%s %s on %s %s %s\n",
@@ -271,24 +228,64 @@ func (e *aclError) Unwrap() error { return e.err }
 // on node \"web01\" to ops"), or is "" for a read. Errors it has nothing to
 // add to pass through unchanged.
 func explainACLError(err error, target, change string) error {
-	var resp *cinc.ErrorResponse
-	if !errors.As(err, &resp) {
+	var msg string
+	switch {
+	case errors.Is(err, cinc.ErrForbidden):
+		msg = fmt.Sprintf("you don't have grant permission on %s, and you need it to see or change its ACL. "+
+			"Ask an org admin, or anyone who has grant on it, to do this for you", target)
+	case errors.Is(err, cinc.ErrNotFound):
+		msg = fmt.Sprintf("we couldn't find %s on the server (%s)", target, serverMessage(err))
+	case errors.Is(err, cinc.ErrBadRequest) && change != "":
+		msg = fmt.Sprintf("we couldn't %s: the server said %q. Check that every user, client, and group you named exists in this org",
+			change, serverMessage(err))
+	default:
 		return err
 	}
-	server := strings.Join(resp.Messages, "; ")
-	switch {
-	case resp.StatusCode == 403:
-		return &aclError{err: err, msg: fmt.Sprintf(
-			"you don't have grant permission on %s, and you need it to see or change its ACL. "+
-				"Ask an org admin, or anyone who has grant on it, to do this for you", target)}
-	case resp.StatusCode == 404:
-		return &aclError{err: err, msg: fmt.Sprintf("we couldn't find %s on the server (%s)", target, server)}
-	case resp.StatusCode == 400 && change != "":
-		return &aclError{err: err, msg: fmt.Sprintf(
-			"we couldn't %s: the server said %q. Check that every user, client, and group you named exists in this org",
-			change, server)}
+	return &aclError{err: err, msg: msg}
+}
+
+// explainACLChangeError explains a failed grant or revoke. A failure reading
+// the ACL is explained as a read. A failed write names the permission that
+// failed and, since each permission is its own request, the ones already
+// changed before it, so the user knows what state the ACL is left in.
+func explainACLChangeError(err error, grant bool, target, members string, groups []string) error {
+	var partial *cinc.ACLChangeError
+	if !errors.As(err, &partial) {
+		return explainACLError(err, target, "")
 	}
-	return err
+	verb, preposition := cases(grant, "grant", "revoke"), cases(grant, "to", "from")
+	change := fmt.Sprintf("%s %s on %s %s %s", verb, partial.Perm, target, preposition, members)
+
+	var explained error
+	if !grant && partial.Perm == "grant" && slices.Contains(groups, "admins") && errors.Is(err, cinc.ErrForbidden) {
+		// erchef refuses to take admins off grant for anyone but the
+		// superuser, with a 403 that says nothing about the caller's own
+		// grant permission.
+		explained = &aclError{err: err, msg: fmt.Sprintf(
+			"we couldn't %s: the server said %q. Chef servers only let the superuser (%s) take the admins group off the grant permission",
+			change, serverMessage(err), cinc.SuperuserName)}
+	} else {
+		explained = explainACLError(err, target, change)
+		if explained == err {
+			// Nothing to add about the cause; still say which write failed.
+			explained = &aclError{err: err, msg: fmt.Sprintf("we couldn't %s: %s", change, serverMessage(err))}
+		}
+	}
+	if len(partial.Changed) == 0 {
+		return explained
+	}
+	return &aclError{err: err, msg: fmt.Sprintf("%s. We'd already %s %s before that, and those changes are still in place",
+		explained.Error(), cases(grant, "granted", "revoked"), strings.Join(partial.Changed, ", "))}
+}
+
+// serverMessage returns what the server said about a failed request, or the
+// error itself when it isn't a server response.
+func serverMessage(err error) string {
+	var resp *cinc.ErrorResponse
+	if errors.As(err, &resp) && len(resp.Messages) > 0 {
+		return strings.Join(resp.Messages, "; ")
+	}
+	return err.Error()
 }
 
 // aclName returns the object name from the positional args, or "" for a

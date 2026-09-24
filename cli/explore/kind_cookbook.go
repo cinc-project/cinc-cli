@@ -18,7 +18,7 @@ func (cookbookKind) Title() string     { return "Cookbooks" }
 func (cookbookKind) Columns() []string { return []string{"NAME", "VERSIONS"} }
 
 func (cookbookKind) List(ctx context.Context, c *cinc.Client) ([]Row, error) {
-	index, _, err := c.Cookbooks.List(ctx)
+	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (cookbookKind) Child(parent string) Kind { return cookbookVersionsKind{name
 // metadata lives on the per-version manifest, so we fetch the latest version to
 // read it; the JSON carried along for the detail view is that same manifest.
 func (cookbookKind) Summary(ctx context.Context, c *cinc.Client, name string) (summaryView, error) {
-	index, _, err := c.Cookbooks.List(ctx)
+	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
 	if err != nil {
 		return summaryView{}, err
 	}
@@ -92,7 +92,7 @@ func (k cookbookVersionsKind) Title() string   { return k.name }
 func (cookbookVersionsKind) Columns() []string { return []string{"VERSION"} }
 
 func (k cookbookVersionsKind) List(ctx context.Context, c *cinc.Client) ([]Row, error) {
-	index, _, err := c.Cookbooks.List(ctx)
+	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
 	if err != nil {
 		return nil, err
 	}

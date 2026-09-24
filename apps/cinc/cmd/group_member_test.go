@@ -151,3 +151,26 @@ func TestGroupMemberAddReportsDroppedMembers(t *testing.T) {
 		t.Errorf("output = %q, want %q", out, want)
 	}
 }
+
+// A remove the server accepts but does not apply (a member still listed
+// when the group is read back) is an error, not a claimed success.
+func TestGroupMemberRemoveReportsMemberStillPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Every GET, before and after the PUT, still lists bob.
+		_, _ = w.Write([]byte(`{"groupname":"admins","users":["alice","bob"]}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := groupMemberConfig(t, srv)
+
+	out, err := runGroupMember(t, cfg, "remove", "admins", "bob")
+	if err == nil {
+		t.Fatalf("remove succeeded though bob is still in the group: %q", out)
+	}
+	if !strings.Contains(err.Error(), "bob") || !strings.Contains(err.Error(), `"admins"`) {
+		t.Errorf("error = %v, want it to name bob and the group", err)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing claimed as removed", out)
+	}
+}

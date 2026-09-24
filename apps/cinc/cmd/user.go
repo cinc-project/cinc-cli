@@ -137,14 +137,12 @@ cinc user create alice --email alice@example.com --public-key alice.pub`,
 					return fmt.Errorf("cinc: read public key: %w", err)
 				}
 				req.PublicKey = string(pem)
-			} else {
-				req.CreateKey = true
 			}
 			created, _, err := c.Users.Create(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return emitUserCreateResult(cmd, req.UserName, created, flags.keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created user %q", req.UserName), "key", created.ChefKey.PrivateKey, flags.keyFile)
 		},
 	}
 	cmd.Flags().StringVar(&flags.email, "email", "", "user's email address")
@@ -157,26 +155,6 @@ cinc user create alice --email alice@example.com --public-key alice.pub`,
 	cmd.Flags().StringVar(&flags.publicKeyFile, "public-key", "", "path to a PEM public key; the server will not generate a key pair")
 	return cmd
 }
-
-// emitUserCreateResult renders the response from a successful user
-// create, mirroring the client-create behavior: a server-generated
-// private key is written to keyFile if given, otherwise streamed to
-// stdout; the bring-your-own-public-key path prints a confirmation.
-func emitUserCreateResult(cmd *cobra.Command, name string, created *cinc.UserCreateResult, keyFile string) error {
-	out := cmd.OutOrStdout()
-	priv := created.ChefKey.PrivateKey
-	if priv == "" {
-		fmt.Fprintf(out, "Created user %q\n", name)
-		return nil
-	}
-	fileMsg := fmt.Sprintf("Created user %q (key written to %s)", name, keyFile)
-	return writePrivateKey(out, priv, keyFile, fileMsg)
-}
-
-// pivotalUser is the Cinc/Chef Server's bootstrap superuser. It signs
-// the server's own administrative requests, so deleting it can lock
-// everyone out — hence the extra confirmation in `user delete`.
-const pivotalUser = "pivotal"
 
 // newUserDeleteCmd builds the `cinc user delete <name>` command.
 func newUserDeleteCmd() *cobra.Command {
@@ -193,7 +171,9 @@ cinc user delete alice`,
 				return err
 			}
 			name := args[0]
-			if name == pivotalUser && !assumeYes {
+			// The superuser signs the server's own administrative requests, so
+			// deleting it can lock everyone out.
+			if name == cinc.SuperuserName && !assumeYes {
 				if !confirmDeletePivotal(cmd) {
 					return nil
 				}
@@ -215,22 +195,21 @@ cinc user delete alice`,
 // empty default and non-interactive input) declines.
 func confirmDeletePivotal(cmd *cobra.Command) bool {
 	out := cmd.ErrOrStderr()
-	fmt.Fprintln(out, "Warning: \"pivotal\" is the Cinc Server's bootstrap superuser.")
+	fmt.Fprintf(out, "Warning: %q is the Cinc Server's bootstrap superuser.\n", cinc.SuperuserName)
 	fmt.Fprintln(out, "Deleting it can lock every user out of the server and is rarely what you want.")
 	fmt.Fprint(out, "Are you sure you want to delete it? [y/N] ")
 	switch strings.ToLower(readPromptLine(cmd.InOrStdin())) {
 	case "y", "yes":
 		return true
 	default:
-		fmt.Fprintln(out, "Aborted — \"pivotal\" was not deleted.")
+		fmt.Fprintf(out, "Aborted. %q was not deleted.\n", cinc.SuperuserName)
 		return false
 	}
 }
 
-// newUserPasswordCmd builds the `cinc user password <name>` command. It
-// fetches the user so the existing metadata survives, sets the new
-// password, and PUTs the result back. The password comes from
-// `--password` or, if omitted, an interactive prompt.
+// newUserPasswordCmd builds the `cinc user password <name>` command. The
+// password comes from `--password` or, if omitted, an interactive prompt;
+// Users.SetPassword keeps the rest of the user's metadata intact.
 func newUserPasswordCmd() *cobra.Command {
 	var password string
 	cmd := &cobra.Command{
@@ -254,13 +233,7 @@ cinc user password alice`,
 			if password == "" {
 				return fmt.Errorf("a non-empty password is required")
 			}
-			user, _, err := c.Users.Get(cmd.Context(), name)
-			if err != nil {
-				return err
-			}
-			user.UserName = name
-			user.Password = password
-			if _, _, err := c.Users.Update(cmd.Context(), user); err != nil {
+			if _, err := c.Users.SetPassword(cmd.Context(), name, password); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated password for user %q\n", name)

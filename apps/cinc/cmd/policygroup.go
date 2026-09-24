@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	cinc "github.com/cinc-project/cinc-api"
+
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
@@ -17,7 +19,7 @@ func newPolicyGroupCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyGroupListCmd())
 	cmd.AddCommand(newPolicyGroupShowCmd())
 	cmd.AddCommand(newPolicyGroupDeleteCmd())
-	cmd.AddCommand(newACLCmd("policy-group", "policy_groups"))
+	cmd.AddCommand(newACLCmd("policy-group", cinc.ACLPolicyGroups))
 	return cmd
 }
 
