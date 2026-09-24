@@ -233,7 +233,7 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 			return configureDefaults{}, err
 		}
 		if serverOrg != "" {
-			defaults.ChefServerURL = base + "/organizations/" + serverOrg
+			defaults.ChefServerURL = cinc.FormatServerURL(base, serverOrg)
 		} else {
 			defaults.ChefServerURL = ""
 		}
@@ -394,7 +394,7 @@ func applyExistingProfileDefaults(defaults configureDefaults, existing *config.C
 	defaults.ClientKey = p.KeyPath
 	defaults.SSLVerifyMode = p.SSLVerifyMode
 	if p.ServerURL != "" && p.Org != "" {
-		defaults.ChefServerURL = strings.TrimRight(p.ServerURL, "/") + "/organizations/" + p.Org
+		defaults.ChefServerURL = cinc.FormatServerURL(p.ServerURL, p.Org)
 	} else {
 		defaults.ChefServerURL = ""
 	}

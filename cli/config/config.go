@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 	cinc "github.com/cinc-project/cinc-api"
@@ -416,7 +415,7 @@ func profileServerURL(p Profile) string {
 	if p.ServerURL == "" || p.Org == "" {
 		return p.RawServerURL
 	}
-	return strings.TrimRight(p.ServerURL, "/") + "/organizations/" + p.Org
+	return cinc.FormatServerURL(p.ServerURL, p.Org)
 }
 
 // resolveProfile turns a raw on-disk entry into a usable Profile, splitting
