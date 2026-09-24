@@ -211,7 +211,7 @@ var profileChecks = []profileCheck{
 				return fail(err.Error())
 			}
 			if _, _, err := c.Clients.List(ctx); err != nil {
-				return fail(err.Error())
+				return fail(cliclient.Explain(err).Error())
 			}
 			return pass()
 		},
