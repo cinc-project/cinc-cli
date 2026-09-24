@@ -22,7 +22,7 @@ func newEnvironmentCmd() *cobra.Command {
 	cmd.AddCommand(newEnvironmentCreateCmd())
 	cmd.AddCommand(newEnvironmentEditCmd())
 	cmd.AddCommand(newEnvironmentDeleteCmd())
-	cmd.AddCommand(newACLCmd("environment", "environments"))
+	cmd.AddCommand(newACLCmd("environment", cinc.ACLEnvironments))
 	return cmd
 }
 

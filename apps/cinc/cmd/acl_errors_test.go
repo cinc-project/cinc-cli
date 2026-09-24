@@ -169,3 +169,73 @@ func TestACLMessagesHaveNoEmDash(t *testing.T) {
 		}
 	}
 }
+
+// newACLServerFailingPerm serves the ACL rooted at base, accepting every
+// permission PUT except failPerm, which it answers with status and message.
+func newACLServerFailingPerm(t *testing.T, base, failPerm string, status int, message string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc(base+"/_acl", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(fullACL())
+	})
+	mux.HandleFunc(base+"/_acl/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/"+failPerm) {
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": []string{message}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Each permission is its own PUT, so a failure part way leaves the earlier
+// ones changed. The error has to say which, or the user can't tell what
+// state the ACL is in.
+func TestACLGrantAllPartialFailureSaysWhatChanged(t *testing.T) {
+	srv := newACLServerFailingPerm(t, "/organizations/acme/nodes/web01", "update", http.StatusBadRequest, "Invalid/missing actors: ghost")
+	cfg := writeACLConfig(t, srv.URL)
+
+	_, _, err := runRoot(t, "node", "acl", "grant", "all", "web01", "--group", "ops", "--config", cfg)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{`couldn't grant update on node "web01" to ops`, "create, read", "Invalid/missing actors: ghost"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should contain %q: %v", want, err)
+		}
+	}
+	wantNoRawRequest(t, err)
+	if !errors.Is(err, cinc.ErrBadRequest) {
+		t.Errorf("error should still unwrap to cinc.ErrBadRequest: %v", err)
+	}
+}
+
+// erchef refuses to take the admins group off grant unless the caller is
+// the superuser, with a 403 that has nothing to do with the caller's own
+// grant permission. Telling them they lack grant would send them chasing
+// the wrong problem.
+func TestACLRevokeAdminsFromGrantSurfacesServerMessage(t *testing.T) {
+	const msg = "Admin group cannot be removed from the Grant ACE"
+	srv := newACLServerFailingPerm(t, "/organizations/acme/nodes/web01", "grant", http.StatusForbidden, msg)
+	cfg := writeACLConfig(t, srv.URL)
+
+	_, _, err := runRoot(t, "node", "acl", "revoke", "grant", "web01", "--group", "admins", "--config", cfg)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), msg) {
+		t.Errorf("error should pass on the server's message: %v", err)
+	}
+	if strings.Contains(err.Error(), "you don't have grant permission") {
+		t.Errorf("error blames the caller's grant permission: %v", err)
+	}
+	wantNoRawRequest(t, err)
+	if !errors.Is(err, cinc.ErrForbidden) {
+		t.Errorf("error should still unwrap to cinc.ErrForbidden: %v", err)
+	}
+}

@@ -17,7 +17,7 @@ func newPolicyGroupCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyGroupListCmd())
 	cmd.AddCommand(newPolicyGroupShowCmd())
 	cmd.AddCommand(newPolicyGroupDeleteCmd())
-	cmd.AddCommand(newACLCmd("policy-group", "policy_groups"))
+	cmd.AddCommand(newACLCmd("policy-group", cinc.ACLPolicyGroups))
 	return cmd
 }
 

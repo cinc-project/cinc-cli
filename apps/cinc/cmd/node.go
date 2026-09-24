@@ -37,7 +37,7 @@ func newNodeCmd() *cobra.Command {
 	cmd.AddCommand(newNodeStatusCmd())
 	cmd.AddCommand(newNodeEnvironmentSetCmd())
 	cmd.AddCommand(newNodePolicySetCmd())
-	cmd.AddCommand(newACLCmd("node", "nodes"))
+	cmd.AddCommand(newACLCmd("node", cinc.ACLNodes))
 	return cmd
 }
 

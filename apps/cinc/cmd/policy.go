@@ -25,7 +25,7 @@ func newPolicyCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyPushCmd())
 	cmd.AddCommand(newPolicyPushArchiveCmd())
 	cmd.AddCommand(newPolicyExportCmd())
-	cmd.AddCommand(newACLCmd("policy", "policies"))
+	cmd.AddCommand(newACLCmd("policy", cinc.ACLPolicies))
 	return cmd
 }
 
