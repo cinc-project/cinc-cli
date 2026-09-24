@@ -306,3 +306,43 @@ client_key      = "/keys/tim.pem"
 		t.Errorf("a server URL was migrated as supermarket_site = %v", site)
 	}
 }
+
+// TestCheckChef sorts knife credentials files into ones first-run setup
+// can migrate and ones it cannot, with the reason a user would need.
+func TestCheckChef(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "credentials")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path string
+		wantErr    string
+	}{
+		{"one profile", writeChefCredentials(t, "[default]\nclient_name = \"tim\"\nclient_key = \"/k.pem\"\n"), ""},
+		{"no profiles", writeChefCredentials(t, "# knife credentials\n"), "no profiles"},
+		{"not TOML", writeChefCredentials(t, "[default\nchef_server_url =\n"), "couldn't read"},
+		{"not profiles", writeChefCredentials(t, "chef_server_url = \"https://x.example.com\"\n"), "couldn't read"},
+		{"a directory", dir, "directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CheckChef(tc.path)
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Errorf("CheckChef = %v, want nil", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Errorf("CheckChef = %v, want an error mentioning %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestMigrateChefRefusesAFileWithNoProfiles keeps MigrateChef from
+// reporting success for a file it wrote nothing from: no cinc file would
+// exist afterwards, and first-run setup would start over on every run.
+func TestMigrateChefRefusesAFileWithNoProfiles(t *testing.T) {
+	chefPath := writeChefCredentials(t, "# knife credentials\n")
+	cincPath := filepath.Join(t.TempDir(), "credentials")
+	if n, err := MigrateChef(chefPath, cincPath); err == nil {
+		t.Errorf("MigrateChef = %d, nil; want an error for a file with no profiles", n)
+	}
+}

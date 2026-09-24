@@ -41,6 +41,11 @@ var errAlreadyReported = errors.New("cinc: already reported")
 // so tests can swap in a fake.
 var migrateChef = setup.MigrateChef
 
+// checkChef reports why ~/.chef/credentials cannot be migrated, or nil if
+// it can, before first-run setup offers the migration. It is a
+// package-level variable so tests can swap in a fake.
+var checkChef = setup.CheckChef
+
 // runFirstRunConfigure interactively configures a fresh credentials
 // profile, the same way `cinc config create` does. It is a package-level
 // variable so tests can swap in a fake.
@@ -352,6 +357,13 @@ func offerFirstRun(cmd *cobra.Command, cincPath string) (succeeded, declined boo
 
 	chefPath := filepath.Join(home, ".chef", "credentials")
 	if _, err := os.Stat(chefPath); err == nil {
+		// Offering to migrate a file that can only fail, or that would
+		// migrate nothing, leaves the user stuck at this prompt on every
+		// run. Say why and set up a new profile instead.
+		if problem := checkChef(chefPath); problem != nil {
+			fmt.Fprintf(out, "We found a Chef config at %s, but we can't migrate it: %v. Let's set up a new profile instead.\n", chefPath, problem)
+			return runConfigurePrompt(cmd, cincPath, out)
+		}
 		return runMigrationPrompt(cmd, chefPath, cincPath, out)
 	}
 	return runConfigurePrompt(cmd, cincPath, out)
