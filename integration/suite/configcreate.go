@@ -1,6 +1,8 @@
 package suite
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -52,6 +54,41 @@ func testConfigCreateReplace(t *testing.T, tgt Target, c *cli) {
 			t.Errorf("declining the replace kept profiles %v, want %s among them", names, want)
 		}
 	}
+}
+
+// testConfigCreateSymlinkedFile keeps ~/.cinc/credentials as a symlink into
+// a dotfiles checkout, as many users do. Updating and replacing both write
+// through the link: the link survives and the dotfiles copy holds the
+// result.
+func testConfigCreateSymlinkedFile(t *testing.T, tgt Target, c *cli) {
+	real := filepath.Join(c.home, "dotfiles", "cinc-credentials")
+	writeFile(t, real, behReadFile(t, c.credentialsPath()))
+	if err := os.Remove(c.credentialsPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, c.credentialsPath()); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+	wantLink := func(what string) {
+		t.Helper()
+		info, err := os.Lstat(c.credentialsPath())
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s replaced the symlink at %s with a plain file", what, c.credentialsPath())
+		}
+	}
+
+	c.run("config", "create", "--profile", "extra", "--server-url", c.orgURL(tgt.Org),
+		"--client-name", tgt.Admin, "--client-key", tgt.KeyPath)
+	wantLink("updating")
+	if !strings.Contains(behReadFile(t, real), "[extra]") {
+		t.Errorf("the update should land in the symlink's target:\n%s", behReadFile(t, real))
+	}
+
+	answers := append([]string{"", "3", "y", "fresh"}, serverAnswers(tgt, tgt.Org)...)
+	c.runWith(runOpts{stdin: lines(answers...)}, "config", "create")
+	wantLink("replacing")
+	wantSlice(t, "profiles in the symlink's target after replacing", profileNames(t, real), []string{"fresh"})
+	c.run("node", "list", "--profile", "fresh")
 }
 
 // testConfigCreateNameCollision adds a profile under a name the file

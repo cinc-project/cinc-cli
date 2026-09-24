@@ -948,3 +948,44 @@ func TestConfigureInteractiveKeepsTypedProfileName(t *testing.T) {
 		t.Errorf("profiles = %v, want only the typed name lab", sortedProfileNames(cfg))
 	}
 }
+
+// TestConfigureReplaceKeepsSymlink replaces a credentials file that is a
+// symlink into a dotfiles checkout. Replacing starts the file over; it must
+// not delete the link and leave a plain file in its place.
+func TestConfigureReplaceKeepsSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, "dotfiles", "credentials")
+	if err := config.WriteProfile(target, "old", config.Profile{
+		ServerURL: "https://cinc.example.test", Org: "acme", ClientName: "tim", KeyPath: "/keys/tim.pem",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(home, "credentials")
+	if err := os.Symlink(target, cfgPath); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	// Location, replace, confirm, profile, Supermarket, client, key, server, org, SSL.
+	root.SetIn(strings.NewReader(strings.Join([]string{
+		cfgPath, "3", "y", "fresh", "", "tim", "/keys/tim.pem", "https://cinc.example.test", "acme", "",
+	}, "\n") + "\n"))
+	root.SetArgs([]string{"config", "create"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc config create: %v\n%s", err, out.String())
+	}
+
+	if info, err := os.Lstat(cfgPath); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("replacing the file removed the symlink at %s", cfgPath)
+	}
+	cfg, err := config.Load(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := sortedProfileNames(cfg); len(names) != 1 || names[0] != "fresh" {
+		t.Errorf("profiles in the link's target = %v, want only fresh", names)
+	}
+}

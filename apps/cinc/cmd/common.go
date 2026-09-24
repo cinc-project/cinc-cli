@@ -475,8 +475,8 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 		return err
 	}
 	if answers.ReplaceFile {
-		if err := os.Remove(answers.ConfigPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("cinc: remove old credentials: %w", err)
+		if err := clearCredentials(answers.ConfigPath); err != nil {
+			return err
 		}
 	}
 	// Same reasoning as `config create`: the prompts do not cover every
