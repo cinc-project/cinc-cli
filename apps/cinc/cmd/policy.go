@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
 
@@ -56,8 +58,10 @@ cinc policy delete appserver`,
 	}
 }
 
-// newPolicyShowCmd builds the `cinc policy show <name>` command. It
-// shows every revision of the named policy, keyed by revision ID.
+// newPolicyShowCmd builds the `cinc policy show <name>` command. It lists
+// the revision IDs of the named policy, sorted. The server's answer is
+// {"revisions": {"<id>": {}}}, whose values are always empty, so the human
+// form prints just the IDs; --format json keeps that wire shape as-is.
 func newPolicyShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <name>",
@@ -78,7 +82,11 @@ cinc policy show appserver`,
 			if err != nil {
 				return err
 			}
-			return printer.New(cmd.OutOrStdout(), format).Value(policy)
+			p := printer.New(cmd.OutOrStdout(), format)
+			if format == printer.FormatJSON {
+				return p.Value(policy)
+			}
+			return p.List(slices.Sorted(maps.Keys(policy.Revisions)))
 		},
 	}
 }

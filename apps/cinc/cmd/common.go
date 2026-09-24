@@ -133,19 +133,37 @@ func resolveSecret(cmd *cobra.Command, profile config.Profile) ([]byte, error) {
 	return nil, errors.New("we need an encrypted data bag secret but couldn't find one. Pass --secret-file <path> (or --secret <literal>), set $CINC_SECRET_FILE, or add a secret_file key to your credentials profile.")
 }
 
-// readSecretFile reads a secret file the way Chef does: its contents with
-// leading and trailing whitespace stripped. A read error, or a file with
-// nothing left once stripped, becomes a conversational message.
+// readSecretFile reads a secret file the way Chef's load_secret does (see
+// cinc.LoadDataBagSecret: the ends are stripped, the contents must be
+// UTF-8). A file we can't read, or one with nothing left once stripped,
+// becomes a conversational message.
 func readSecretFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("can't read the data bag secret at %s: %w", path, err)
-	}
-	secret := bytes.TrimSpace(data)
-	if len(secret) == 0 {
+	secret, err := cinc.LoadDataBagSecret(path)
+	var pathErr *fs.PathError
+	switch {
+	case errors.Is(err, cinc.ErrEmptyDataBagSecret):
 		return nil, fmt.Errorf("the data bag secret file at %s is empty. Put the shared secret in it, or point --secret-file at the right file.", path)
+	case errors.As(err, &pathErr):
+		return nil, fmt.Errorf("we couldn't read the data bag secret at %s: %w", path, pathErr.Err)
+	case err != nil:
+		return nil, fmt.Errorf("we can't use the data bag secret at %s: %w", path, err)
 	}
 	return secret, nil
+}
+
+// readJSONFile reads the JSON document a --file flag points at into a T.
+// Every `create`/`edit --file` path goes through it, so they all report a
+// missing file or bad JSON the same way.
+func readJSONFile[T any](path string) (T, error) {
+	var v T
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return v, fmt.Errorf("we couldn't read %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return v, fmt.Errorf("%s isn't valid JSON: %w", path, err)
+	}
+	return v, nil
 }
 
 // resolveClient builds a server client from the --config and --profile
@@ -155,6 +173,13 @@ func resolveClient(cmd *cobra.Command) (*cinc.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return clientForProfile(cmd, profile)
+}
+
+// clientForProfile builds a server client for an already-resolved profile,
+// for commands that need the profile for something else too (the data bag
+// secret, say) and shouldn't load the credentials file twice.
+func clientForProfile(cmd *cobra.Command, profile config.Profile) (*cinc.Client, error) {
 	c, err := client.New(profile)
 	if errors.Is(err, config.ErrMissingServerURL) {
 		return nil, missingServerURLError(cmd)

@@ -210,9 +210,6 @@ func resolvePushArchivePath(arg string) (string, error) {
 	}
 }
 
-// newFetcher builds a policyfile.Fetcher rooted at the default cinc cookbook
-// cache, resolving path sources relative to lockDir and using chef for
-// chef_server sources.
 // lockNeedsServer reports whether any cookbook the lock pins is fetched from
 // the Cinc/Chef server rather than a path, git, or artifact source.
 func lockNeedsServer(lock *cinc.PolicyRevision) bool {
@@ -224,6 +221,9 @@ func lockNeedsServer(lock *cinc.PolicyRevision) bool {
 	return false
 }
 
+// newFetcher builds a policyfile.Fetcher rooted at the default cinc cookbook
+// cache, resolving path sources relative to lockDir and using chef for
+// chef_server sources.
 func newFetcher(lockDir string, chef *cinc.Client) (*policyfile.Fetcher, error) {
 	cacheRoot, err := policyfile.DefaultCacheRoot()
 	if err != nil {
@@ -245,47 +245,41 @@ func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *
 		if err != nil {
 			return nil, fmt.Errorf("cinc: load cookbook %q from %s: %w", name, dir, err)
 		}
-		// Upload under the name the lock records. The directory is often a
-		// cache entry (<name>-<version>-<source>), and cinc-api falls back to
-		// it when metadata.rb names the cookbook with a non-literal.
-		cb.Name = name
-		cb.Metadata.Name = name
 		cookbooks[name] = cb
 	}
 	return cookbooks, nil
 }
 
-// pushRevision deploys lockJSON to group and reports what it did. PushRevision
-// uploads only the artifacts the server lacks, so the upload count is read
-// from the server first rather than assumed to be every cookbook.
+// pushRevision deploys lockJSON to group and reports what it did, including
+// how many of the lock's cookbook artifacts the server already held.
 func pushRevision(cmd *cobra.Command, format printer.Format, c *cinc.Client, lock *cinc.PolicyRevision, lockJSON []byte, group string, cookbooks map[string]*cinc.LocalCookbook) error {
-	uploads, err := policyfile.ArtifactsToUpload(cmd.Context(), c, lock)
+	res, _, err := c.Policies.PushRevision(cmd.Context(), lockJSON, group, cookbooks)
 	if err != nil {
 		return err
 	}
-	rev, _, err := c.Policies.PushRevision(cmd.Context(), lockJSON, group, cookbooks)
-	if err != nil {
-		return err
-	}
-	return emitPushResult(cmd, format, lock.Name, group, rev.Revision, uploads, len(cookbooks))
+	return emitPushResult(cmd, format, lock.Name, group, res)
 }
 
-func emitPushResult(cmd *cobra.Command, format printer.Format, policy, group string, rev *cinc.PolicyRevision, uploaded, total int) error {
+func emitPushResult(cmd *cobra.Command, format printer.Format, policy, group string, res *cinc.PushResult) error {
+	uploaded := len(res.Uploaded)
+	total := uploaded + len(res.AlreadyPresent)
 	if format == printer.FormatJSON {
 		return printer.New(cmd.OutOrStdout(), format).Value(map[string]any{
 			"policy":             policy,
 			"group":              group,
-			"revision_id":        rev.RevisionID,
+			"revision_id":        res.Revision.RevisionID,
 			"cookbooks":          total,
 			"cookbooks_uploaded": uploaded,
+			"uploaded":           res.Uploaded,
+			"already_present":    res.AlreadyPresent,
 		})
 	}
 	if uploaded == total {
 		fmt.Fprintf(cmd.OutOrStdout(), "Pushed policy %q (revision %s) to group %q with %d cookbook(s)\n",
-			policy, rev.RevisionID, group, total)
+			policy, res.Revision.RevisionID, group, total)
 		return nil
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Pushed policy %q (revision %s) to group %q with %d cookbook(s) (%d uploaded, %d already on the server)\n",
-		policy, rev.RevisionID, group, total, uploaded, total-uploaded)
+		policy, res.Revision.RevisionID, group, total, uploaded, total-uploaded)
 	return nil
 }

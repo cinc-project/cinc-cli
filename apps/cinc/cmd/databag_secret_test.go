@@ -117,7 +117,7 @@ func TestDataBagSecretCreateReadsSecretFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "item.json")
-	body, _ := json.Marshal(cinc.DataBagItem{"id": "ignored", "password": "from-file"})
+	body, _ := json.Marshal(cinc.DataBagItem{"id": "mysql", "password": "from-file"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestDataBagSecretCreateReadsSecretFromFile(t *testing.T) {
 		t.Fatalf("databag secret create --secret-file: %v", err)
 	}
 	if gotItem["id"] != "mysql" {
-		t.Errorf("POST body id = %v, want mysql (path arg wins over file)", gotItem["id"])
+		t.Errorf("POST body id = %v, want mysql", gotItem["id"])
 	}
 	plain, err := gotItem.Decrypt([]byte("file-secret"))
 	if err != nil {

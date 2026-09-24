@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -192,12 +191,8 @@ cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pe
 
 			var updated cinc.Key
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.Key](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := scope.Get(cmd.Context(), keyName)

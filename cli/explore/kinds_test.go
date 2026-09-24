@@ -51,10 +51,19 @@ func TestKindCapabilities(t *testing.T) {
 	}
 }
 
+// TestCookbookKindListReportsVersionCount counts every version. erchef lists
+// only a cookbook's latest version unless asked for num_versions=all, which
+// this server mimics.
 func TestCookbookKindListReportsVersionCount(t *testing.T) {
 	mux := http.NewServeMux()
-	jsonHandler(mux, "/organizations/acme/cookbooks",
-		`{"apache":{"url":"u","versions":[{"version":"1.0.0","url":"u"},{"version":"2.0.0","url":"u"}]}}`)
+	mux.HandleFunc("/organizations/acme/cookbooks", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("num_versions") != "all" {
+			_, _ = w.Write([]byte(`{"apache":{"url":"u","versions":[{"version":"2.0.0","url":"u"}]}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"apache":{"url":"u","versions":[{"version":"1.0.0","url":"u"},{"version":"2.0.0","url":"u"}]}}`))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -70,10 +79,12 @@ func TestCookbookKindListReportsVersionCount(t *testing.T) {
 	}
 }
 
+// TestCookbookVersionsSortNewestFirst drills into one cookbook. Versions
+// order numerically, as Chef orders them: 1.10.0 is newer than 1.9.0.
 func TestCookbookVersionsSortNewestFirst(t *testing.T) {
 	mux := http.NewServeMux()
-	jsonHandler(mux, "/organizations/acme/cookbooks",
-		`{"apache":{"url":"u","versions":[{"version":"1.0.0","url":"u"},{"version":"2.0.0","url":"u"}]}}`)
+	jsonHandler(mux, "/organizations/acme/cookbooks/apache",
+		`{"apache":{"url":"u","versions":[{"version":"1.9.0","url":"u"},{"version":"2.0.0","url":"u"},{"version":"1.10.0","url":"u"}]}}`)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -81,7 +92,7 @@ func TestCookbookVersionsSortNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := names(rows); !equal(got, []string{"2.0.0", "1.0.0"}) {
+	if got := names(rows); !equal(got, []string{"2.0.0", "1.10.0", "1.9.0"}) {
 		t.Errorf("versions = %v, want newest first", got)
 	}
 }

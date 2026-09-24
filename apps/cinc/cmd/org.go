@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -206,12 +204,8 @@ cinc org edit acme`,
 
 			var updated cinc.Org
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.Org](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := c.Orgs.Get(cmd.Context(), name)

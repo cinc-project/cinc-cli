@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -81,12 +79,8 @@ cinc node create web01 --file web01.json`,
 			}
 			node := cinc.Node{Name: args[0]}
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &node); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if node, err = readJSONFile[cinc.Node](inputFile); err != nil {
+					return err
 				}
 				node.Name = args[0]
 			}
@@ -155,13 +149,9 @@ cinc node edit web01`,
 				return nil
 			}
 
-			data, err := os.ReadFile(inputFile)
+			updated, err := readJSONFile[cinc.Node](inputFile)
 			if err != nil {
-				return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-			}
-			var updated cinc.Node
-			if err := json.Unmarshal(data, &updated); err != nil {
-				return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				return err
 			}
 			updated.Name = name
 			if _, _, err := c.Nodes.Update(cmd.Context(), &updated); err != nil {

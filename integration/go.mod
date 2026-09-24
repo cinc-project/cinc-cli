@@ -15,6 +15,8 @@ require (
 	golang.org/x/crypto v0.57.0
 )
 
+require github.com/kevinburke/ssh_config v1.6.0 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
@@ -37,7 +39,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/goruby/goruby v0.0.0-20210827060341-983436007185 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect

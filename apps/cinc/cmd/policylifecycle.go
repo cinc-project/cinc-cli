@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -130,8 +131,9 @@ func computePolicyDiff(policy, fromRef, toRef string, a, b *cinc.PolicyRevision)
 	}
 }
 
-// cookbookRefs returns the value to show for a lock when versions differ
-// (the version) versus when only the identifier differs (the identifier).
+// diffCookbooks reports each cookbook added, removed, or changed between two
+// revisions' locks, sorted by name. A changed cookbook shows its versions,
+// or its identifiers when only the content changed under the same version.
 func diffCookbooks(a, b map[string]cinc.CookbookLock) []cookbookDelta {
 	names := map[string]struct{}{}
 	for n := range a {
@@ -249,8 +251,10 @@ func newPolicyDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <name> <ref1> <ref2>",
 		Short: "Compare two revisions of a policy",
-		Example: `Compare two revisions of a policy.
-cinc policy diff appserver 1.0.0 1.1.0`,
+		Example: `Compare the appserver revisions active in the staging and production groups.
+cinc policy diff appserver staging production
+Compare two revisions by their revision ids.
+cinc policy diff appserver --revisions 1a2b3c4d 5e6f7a8b`,
 		Long: "Compare two revisions of a policy.\n\n" +
 			"By default ref1 and ref2 name policy groups and the comparison is\n" +
 			"between the revision active in each. Pass --revisions to treat them as\n" +
@@ -276,21 +280,18 @@ cinc policy diff appserver 1.0.0 1.1.0`,
 				return err
 			}
 
-			fromRev, toRev := fromRef, toRef
-			if !revisionsForm {
-				if fromRev, err = activeRevision(cmd.Context(), c, fromRef, name); err != nil {
-					return err
+			fetch := func(ref string) (*cinc.PolicyRevision, error) {
+				if revisionsForm {
+					rev, _, err := c.Policies.GetRevision(cmd.Context(), name, ref)
+					return rev, err
 				}
-				if toRev, err = activeRevision(cmd.Context(), c, toRef, name); err != nil {
-					return err
-				}
+				return activeRevision(cmd.Context(), c, ref, name)
 			}
-
-			a, _, err := c.Policies.GetRevision(cmd.Context(), name, fromRev)
+			a, err := fetch(fromRef)
 			if err != nil {
 				return err
 			}
-			b, _, err := c.Policies.GetRevision(cmd.Context(), name, toRev)
+			b, err := fetch(toRef)
 			if err != nil {
 				return err
 			}
@@ -307,17 +308,19 @@ cinc policy diff appserver 1.0.0 1.1.0`,
 	return cmd
 }
 
-// activeRevision returns the revision id of policy active in group.
-func activeRevision(ctx context.Context, c *cinc.Client, group, policy string) (string, error) {
-	g, _, err := c.PolicyGroups.Get(ctx, group)
-	if err != nil {
-		return "", err
+// activeRevision returns the revision of policy active in group, in one
+// request. The server answers 404 both for a group that doesn't exist and
+// for one that doesn't pin the policy, so only then do we look at the group
+// to say which.
+func activeRevision(ctx context.Context, c *cinc.Client, group, policy string) (*cinc.PolicyRevision, error) {
+	rev, _, err := c.PolicyGroups.GetPolicy(ctx, group, policy)
+	if !errors.Is(err, cinc.ErrNotFound) {
+		return rev, err
 	}
-	assignment, ok := g.Policies[policy]
-	if !ok {
-		return "", fmt.Errorf("policy %q is not assigned to group %q", policy, group)
+	if _, _, err := c.PolicyGroups.Get(ctx, group); err != nil {
+		return nil, err
 	}
-	return assignment.RevisionID, nil
+	return nil, fmt.Errorf("policy %q is not assigned to group %q", policy, group)
 }
 
 // renderPolicyDiff prints the human form of a diff.
@@ -503,27 +506,17 @@ cinc policy clean-cookbooks --dry-run`,
 }
 
 // referencedArtifacts returns the set of "<cookbook>@<identifier>" artifacts
-// pinned by any revision of any policy. It walks every policy, every revision,
-// and every cookbook lock so an artifact is considered orphaned only when no
-// revision anywhere still points at it.
+// pinned by any revision of any policy. The policy list already names every
+// revision, so it fetches each revision once and reads its cookbook locks; an
+// artifact is orphaned only when no revision anywhere still points at it.
 func referencedArtifacts(ctx context.Context, c *cinc.Client) (map[string]struct{}, error) {
 	index, _, err := c.Policies.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-
 	referenced := map[string]struct{}{}
-	for _, name := range names {
-		revs, _, err := c.Policies.Get(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		for revID := range revs.Revisions {
+	for name, entry := range index {
+		for revID := range entry.Revisions {
 			rev, _, err := c.Policies.GetRevision(ctx, name, revID)
 			if err != nil {
 				return nil, err

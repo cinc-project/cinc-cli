@@ -141,7 +141,7 @@ func (f *Fetcher) fetchChefServer(ctx context.Context, name, version, dest strin
 		return fmt.Errorf("chef_server source requires a configured server connection")
 	}
 	if version == "" {
-		version = "_latest"
+		version = cinc.LatestVersion
 	}
 	return f.Chef.Cookbooks.Download(ctx, name, version, dest)
 }
@@ -151,12 +151,9 @@ func (f *Fetcher) fetchChefServer(ctx context.Context, name, version, dest strin
 // subdirectory) into dest, omitting the .git directory. It shells out to the
 // `git` binary, which must be installed.
 func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL, dest string) error {
-	revision := stringOption(lock.SourceOptions, "revision")
+	revision := lock.GitRef()
 	if revision == "" {
-		revision = stringOption(lock.SourceOptions, "branch")
-	}
-	if revision == "" {
-		return fmt.Errorf("git source has no revision or branch to check out")
+		return fmt.Errorf("git source has no revision, ref, tag or branch to check out")
 	}
 	// repoURL and revision come from the (potentially untrusted) lock. Reject
 	// values that begin with "-" so they cannot be smuggled in as git flags
@@ -188,15 +185,9 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 
 	root := clone
 	// chef (cookbook-omnifetch) records a cookbook in a subdirectory of its
-	// repository as "rel". "path" is accepted too, though a lock carrying it
-	// is classified as a path source before it gets here.
-	key := "rel"
-	sub := stringOption(lock.SourceOptions, key)
-	if sub == "" {
-		key = "path"
-		sub = stringOption(lock.SourceOptions, key)
-	}
-	if sub != "" {
+	// repository as "rel". A lock that also carries "path" never gets here:
+	// CookbookLock.Origin classifies it as a path source first.
+	if sub := lock.GitSubdir(); sub != "" {
 		// The subdirectory comes from the untrusted lock, so it has to stay
 		// inside the clone. Nested paths are legitimate (the
 		// "cookbooks/<name>" monorepo layout), so this is a containment
@@ -204,7 +195,7 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 		// names like cache keys.
 		root = filepath.Join(clone, sub)
 		if !withinDir(clone, root) {
-			return fmt.Errorf("refusing git source %s %q: it escapes the repository", key, sub)
+			return fmt.Errorf("refusing git source rel %q: it escapes the repository", sub)
 		}
 	}
 	if !hasCookbookMetadata(root) {
@@ -279,13 +270,6 @@ func hasCookbookMetadata(dir string) bool {
 		}
 	}
 	return false
-}
-
-func stringOption(opts map[string]any, key string) string {
-	if v, ok := opts[key].(string); ok {
-		return v
-	}
-	return ""
 }
 
 func baseURL(raw string) (string, error) {

@@ -10,24 +10,16 @@ import (
 	cinc "github.com/cinc-project/cinc-api"
 )
 
-func TestLatestCookbookVersion(t *testing.T) {
-	versions := []cinc.CookbookVersion{{Version: "1.0.0"}, {Version: "1.2.0"}, {Version: "1.1.5"}}
-	if got := latestCookbookVersion(versions); got != "1.2.0" {
-		t.Errorf("latestCookbookVersion = %q, want 1.2.0", got)
-	}
-	if got := latestCookbookVersion(nil); got != "" {
-		t.Errorf("latestCookbookVersion(nil) = %q, want empty", got)
-	}
-}
-
 // A cookbook shows its version count and newest version on hover, plus the
 // latest version's identity metadata so you needn't drill in to see it.
+// "Latest" is the highest version by Chef's numeric ordering, so 1.10.0
+// beats 1.9.0 whatever order the server lists them in.
 func TestCookbookKindSummary(t *testing.T) {
 	mux := http.NewServeMux()
-	jsonHandler(mux, "/organizations/acme/cookbooks",
-		`{"nginx":{"versions":[{"version":"1.0.0"},{"version":"1.2.0"}]}}`)
-	jsonHandler(mux, "/organizations/acme/cookbooks/nginx/1.2.0",
-		`{"cookbook_name":"nginx","version":"1.2.0",
+	jsonHandler(mux, "/organizations/acme/cookbooks/nginx",
+		`{"nginx":{"versions":[{"version":"1.9.0"},{"version":"1.10.0"},{"version":"1.0.0"}]}}`)
+	jsonHandler(mux, "/organizations/acme/cookbooks/nginx/1.10.0",
+		`{"cookbook_name":"nginx","version":"1.10.0",
 		  "metadata":{"description":"Installs and configures nginx","maintainer":"Sous Chefs","license":"Apache-2.0",
 		    "dependencies":{"apt":">= 7.0"}}}`)
 	srv := httptest.NewServer(mux)
@@ -42,8 +34,8 @@ func TestCookbookKindSummary(t *testing.T) {
 		got[f.Label] = f.Value
 	}
 	want := map[string]string{
-		"Versions":     "2",
-		"Latest":       "1.2.0",
+		"Versions":     "3",
+		"Latest":       "1.10.0",
 		"Description":  "Installs and configures nginx",
 		"Maintainer":   "Sous Chefs",
 		"License":      "Apache-2.0",

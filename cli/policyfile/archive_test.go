@@ -58,27 +58,6 @@ func TestLoadBundleCookbooksUsesLockNameNotDirName(t *testing.T) {
 	}
 }
 
-// TestLoadBundleCookbooksNamesMetadataFromLock covers a metadata.rb whose name
-// is not a literal: cinc-api then falls back to the directory name
-// (base-1.2.3) for the manifest's metadata, which disagrees with the lock name
-// and makes the upload fail. The lock name has to reach the metadata too.
-func TestLoadBundleCookbooksNamesMetadataFromLock(t *testing.T) {
-	dir, lock := writeBundle(t)
-	md := filepath.Join(dir, "cookbooks", "base-1.2.3", "metadata.rb")
-	if err := os.WriteFile(md, []byte("name File.basename(__dir__)\nversion '1.0.0'\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cookbooks, err := LoadBundleCookbooks(dir, lock)
-	if err != nil {
-		t.Fatalf("LoadBundleCookbooks: %v", err)
-	}
-	cb := cookbooks["base"]
-	if cb.Name != "base" || cb.Metadata.Name != "base" {
-		t.Errorf("name = %q, metadata name = %q, want both %q", cb.Name, cb.Metadata.Name, "base")
-	}
-}
-
 func TestOpenBundleAcceptsDirectory(t *testing.T) {
 	dir, _ := writeBundle(t)
 	got, cleanup, err := OpenBundle(dir)

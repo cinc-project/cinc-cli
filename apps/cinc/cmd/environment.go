@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -47,12 +45,8 @@ cinc environment edit prod`,
 
 			var updated cinc.Environment
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.Environment](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := c.Environments.Get(cmd.Context(), name)
@@ -132,12 +126,8 @@ cinc environment create prod`,
 			}
 			env := cinc.Environment{Name: args[0]}
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &env); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if env, err = readJSONFile[cinc.Environment](inputFile); err != nil {
+					return err
 				}
 				env.Name = args[0]
 			}

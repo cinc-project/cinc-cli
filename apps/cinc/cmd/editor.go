@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 
 	cinc "github.com/cinc-project/cinc-api"
 
@@ -62,8 +63,10 @@ func openObjectJSONEditor[T any](in *T) (*T, error) {
 }
 
 // editDataBagItem opens a data bag item in the shared JSON editor.
-// Validation rejects malformed JSON and items missing an "id" key. It
-// is a package variable so tests can stub it.
+// Validation rejects malformed JSON, and an item whose "id" is missing or
+// no longer the one it opened with (the id names the item, so changing it
+// would rename or overwrite another). It is a package variable so tests can
+// stub it.
 var editDataBagItem = openDataBagItemJSONEditor
 
 func openDataBagItemJSONEditor(in cinc.DataBagItem) (cinc.DataBagItem, error) {
@@ -71,7 +74,7 @@ func openDataBagItemJSONEditor(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	edited, err := jsoneditor.Run(initial, validateDataBagItem)
+	edited, err := jsoneditor.Run(initial, dataBagItemValidator(in.ID()))
 	if err != nil {
 		return nil, err
 	}
@@ -80,4 +83,20 @@ func openDataBagItemJSONEditor(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// dataBagItemValidator returns the editor's save check for the item id: the
+// saved JSON must be an item (see cinc.DataBagItem.Validate) that still
+// carries that id.
+func dataBagItemValidator(id string) func([]byte) error {
+	return func(b []byte) error {
+		var item cinc.DataBagItem
+		if err := json.Unmarshal(b, &item); err != nil {
+			return err
+		}
+		if item.Validate() != nil || item.ID() != id {
+			return fmt.Errorf("the item's \"id\" has to stay %q, since it names the item", id)
+		}
+		return nil
+	}
 }

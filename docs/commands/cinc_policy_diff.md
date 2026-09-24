@@ -16,10 +16,16 @@ cinc policy diff <name> <ref1> <ref2> [flags]
 
 ### Examples
 
-Compare two revisions of a policy.
+Compare the appserver revisions active in the staging and production groups.
 
 ```bash
-cinc policy diff appserver 1.0.0 1.1.0
+cinc policy diff appserver staging production
+```
+
+Compare two revisions by their revision ids.
+
+```bash
+cinc policy diff appserver --revisions 1a2b3c4d 5e6f7a8b
 ```
 
 ### Options

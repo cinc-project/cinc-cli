@@ -113,6 +113,29 @@ client_key      = %q
 	}
 }
 
+// TestPolicyShowHumanListsRevisionIDs pins the human form: the revision IDs,
+// sorted, one per line, rather than the {"revisions":{id:{}}} wire shape.
+func TestPolicyShowHumanListsRevisionIDs(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/policies/appserver", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"revisions":{"bbb222":{},"aaa111":{}}}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	root := newRootCmd()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"policy", "show", "appserver", "--config", writePolicyConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc policy show: %v", err)
+	}
+	if got, want := buf.String(), "aaa111\nbbb222\n"; got != want {
+		t.Errorf("policy show = %q, want %q", got, want)
+	}
+}
+
 func TestPolicyDeleteCommandEndToEnd(t *testing.T) {
 	var deleted string
 	mux := http.NewServeMux()
