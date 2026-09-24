@@ -2,10 +2,15 @@ package resolver
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+
+	cinc "github.com/cinc-project/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/policyfile/rubyeval"
 )
@@ -74,52 +79,34 @@ func loadPathCookbook(ctx context.Context, eng *rubyeval.Engine, policyfileDir, 
 }
 
 // readCookbookMetadata loads a cookbook's metadata from dir. metadata.json wins
-// when present (chef reads it directly); otherwise metadata.rb is evaluated in
-// the embedded CRuby engine. Dependency constraints come back Semverse-
-// normalized either way.
+// when present (chef reads it directly, and so does cinc-api); otherwise
+// metadata.rb is evaluated in the embedded CRuby engine. Dependency
+// constraints come back Semverse-normalized either way.
 func readCookbookMetadata(ctx context.Context, eng *rubyeval.Engine, dir string) (*rubyeval.Metadata, error) {
 	jsonPath := filepath.Join(dir, "metadata.json")
-	if _, err := os.Stat(jsonPath); err == nil {
-		return readMetadataJSON(jsonPath)
+	data, err := os.ReadFile(jsonPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		rbPath := filepath.Join(dir, "metadata.rb")
+		if _, err := os.Stat(rbPath); err == nil {
+			return eng.EvaluateMetadataFile(ctx, rbPath)
+		}
+		return nil, fmt.Errorf("no metadata.rb or metadata.json found in %s", dir)
 	}
-	rbPath := filepath.Join(dir, "metadata.rb")
-	if _, err := os.Stat(rbPath); err == nil {
-		return eng.EvaluateMetadataFile(ctx, rbPath)
-	}
-	return nil, fmt.Errorf("no metadata.rb or metadata.json found in %s", dir)
-}
-
-// metadataJSONFile is the subset of a cookbook's metadata.json the resolver
-// reads. dependencies is an object of name => constraint string.
-type metadataJSONFile struct {
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Dependencies map[string]string `json:"dependencies"`
-}
-
-// readMetadataJSON parses a cookbook metadata.json, normalizing each dependency
-// constraint through the same Semverse semantics chef applies so the lock's
-// solution_dependencies match. Dependency order from a JSON object is not
-// guaranteed, so it is sorted by name for determinism.
-func readMetadataJSON(path string) (*rubyeval.Metadata, error) {
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var mj metadataJSONFile
-	if err := json.Unmarshal(data, &mj); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	mj, err := cinc.ParseMetadataJSON(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", jsonPath, err)
 	}
+	// Normalize each dependency constraint through the same Semverse semantics
+	// chef applies, so the lock's solution_dependencies match. A JSON object
+	// has no order, so dependencies are sorted by name.
 	md := &rubyeval.Metadata{Name: mj.Name, Version: mj.Version}
-	names := make([]string, 0, len(mj.Dependencies))
-	for n := range mj.Dependencies {
-		names = append(names, n)
-	}
-	sortStrings(names)
-	for _, n := range names {
+	for _, n := range slices.Sorted(maps.Keys(mj.Dependencies)) {
 		c, err := ParseConstraint(mj.Dependencies[n])
 		if err != nil {
-			return nil, fmt.Errorf("%s: dependency %q: %w", path, n, err)
+			return nil, fmt.Errorf("%s: dependency %q: %w", jsonPath, n, err)
 		}
 		md.Dependencies = append(md.Dependencies, rubyeval.Dependency{Name: n, Constraint: normalizeConstraint(c)})
 	}
