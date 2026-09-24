@@ -113,6 +113,13 @@ func run(m *testing.M) int {
 			"keys/client-edit-partial":            "key PUT drops fields the body omits: https://github.com/cinc-project/cinc-server-ng/issues/163",
 			"keys/client-edit-rename":             "key PUT ignores a new name: https://github.com/cinc-project/cinc-server-ng/issues/163",
 			"keys/client-edit-create-key":         "key PUT stores create_key instead of regenerating the key: https://github.com/cinc-project/cinc-server-ng/issues/174",
+
+			"groups/edit-missing":   "PUT on a missing group creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+			"groups/member-unknown": "group PUT stores members that do not exist, which erchef drops: https://github.com/cinc-project/cinc-server-ng/issues/186",
+			"groups/invalid-name":   "POST /groups accepts names erchef rejects with a 400: https://github.com/cinc-project/cinc-server-ng/issues/171",
+			"acls/org":              "the org ACL is served at /organizations/O/_acl, not erchef's /organizations/O/organizations/_acl: https://github.com/cinc-project/cinc-server-ng/issues/161",
+			"acls/missing-object":   "the _acl of a missing object answers with a default ACL instead of 404: https://github.com/cinc-project/cinc-server-ng/issues/169",
+			"acls/unknown-member":   "ACL PUT stores actors and groups that do not exist instead of a 400: https://github.com/cinc-project/cinc-server-ng/issues/170",
 		},
 	}
 	return m.Run()
