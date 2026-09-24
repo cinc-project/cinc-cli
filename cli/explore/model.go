@@ -370,27 +370,18 @@ func searchCmd(ctx context.Context, c *cinc.Client, kind Kind, index, query stri
 	}
 }
 
-// searchRowIdentity pulls a search hit's list identity: its name, or its
-// id for objects keyed by id (data bag items). The server returns a data bag
-// item from a full search wrapped as a Chef::DataBagItem, named
-// "data_bag_item_<bag>_<id>" with the item under raw_data; the identity is
-// the wrapped item's id, which is what the item list is keyed by.
+// searchRowIdentity pulls a search hit's list identity: its name, or its id
+// for objects keyed by id (data bag items). The row is unwrapped first, so a
+// data bag item a full search returns inside a Chef::DataBagItem envelope is
+// identified by its own id, which is what the item list is keyed by, not by
+// the envelope's data_bag_item_<bag>_<id> name.
 func searchRowIdentity(raw json.RawMessage) string {
 	var o struct {
-		Name      string `json:"name"`
-		ID        string `json:"id"`
-		ChefType  string `json:"chef_type"`
-		JSONClass string `json:"json_class"`
-		RawData   *struct {
-			ID string `json:"id"`
-		} `json:"raw_data"`
+		Name string `json:"name"`
+		ID   string `json:"id"`
 	}
-	if err := json.Unmarshal(raw, &o); err != nil {
+	if err := json.Unmarshal(cinc.UnwrapSearchRow(raw), &o); err != nil {
 		return ""
-	}
-	wrapped := o.ChefType == "data_bag_item" || o.JSONClass == "Chef::DataBagItem"
-	if wrapped && o.RawData != nil {
-		return o.RawData.ID
 	}
 	if o.Name != "" {
 		return o.Name
