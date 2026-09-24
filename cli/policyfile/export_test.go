@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -14,11 +15,9 @@ import (
 // filepath.Walk stats with Lstat, so a symlink is neither a directory nor
 // skipped by default: opening it follows the link and copies whatever it
 // points at. For a cookbook fetched from a repository that means a link such
-// as "files/creds -> ~/.ssh/id_rsa" lands in the export bundle as a real file
-// and is pushed to the server. A dangling link fails the export outright.
-//
-// cli/cookbook's archiveEntries already skips non-regular files; the export
-// path should agree.
+// as "files/creds -> ~/.ssh/id_rsa" lands in the cookbook cache as a real
+// file, and from there in an export bundle pushed to the server. A dangling
+// link fails the fetch outright.
 func TestCopyTreeSkipsSymlinks(t *testing.T) {
 	root := t.TempDir()
 
@@ -181,5 +180,65 @@ func TestClientRBDoesNotInterpolatePolicyName(t *testing.T) {
 	want := `policy_name 'web#{system("id")}\'x'`
 	if !contains(got, want) {
 		t.Errorf("clientRB = %q, want it to contain %q", got, want)
+	}
+}
+
+// TestExportCopiesTheFilesAnUploadSends pins an exported cookbook to the
+// files `cinc cookbook upload` and `cinc policy push` would send for it:
+// chefignored files and root dot-directories stay out, and a symlink to a
+// file inside the cookbook arrives as that file's content.
+func TestExportCopiesTheFilesAnUploadSends(t *testing.T) {
+	lockDir := t.TempDir()
+	cb := filepath.Join(lockDir, "mycb")
+	for rel, body := range map[string]string{
+		"metadata.rb":         "name 'mycb'\nversion '0.1.0'\n",
+		"chefignore":          "*.bak\n",
+		"recipes/default.rb":  "log 'hi'\n",
+		"recipes/default.bak": "old\n",
+		".kitchen/state.yml":  "state\n",
+	} {
+		p := filepath.Join(cb, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("default.rb", filepath.Join(cb, "recipes", "alias.rb")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	lock := &cinc.PolicyRevision{
+		Name: "p", RevisionID: "r",
+		CookbookLocks: map[string]cinc.CookbookLock{
+			"mycb": {Version: "0.1.0", Identifier: "abc", SourceOptions: map[string]any{"path": "mycb"}},
+		},
+	}
+	lockJSON, _ := json.Marshal(lock)
+	dest := filepath.Join(t.TempDir(), "out")
+	f := &Fetcher{CacheRoot: t.TempDir(), LockDir: lockDir}
+	if _, err := Export(context.Background(), f, lock, lockJSON, dest, false); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	exported := filepath.Join(dest, "cookbooks", "mycb-abc")
+	var got []string
+	err := filepath.WalkDir(exported, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(exported, p)
+		got = append(got, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"chefignore", "metadata.rb", "recipes/alias.rb", "recipes/default.rb"}
+	if !slices.Equal(got, want) {
+		t.Errorf("exported files = %v, want %v", got, want)
+	}
+	if body, _ := os.ReadFile(filepath.Join(exported, "recipes", "alias.rb")); string(body) != "log 'hi'\n" {
+		t.Errorf("alias.rb = %q, want the linked file's content", body)
 	}
 }

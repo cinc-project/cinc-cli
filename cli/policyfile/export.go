@@ -50,7 +50,7 @@ func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lo
 		if err != nil {
 			return ExportResult{}, fmt.Errorf("policyfile: cookbook %q: %w", name, err)
 		}
-		if err := copyTree(src, dst); err != nil {
+		if err := copyCookbook(src, dst, cl.Version); err != nil {
 			return ExportResult{}, fmt.Errorf("policyfile: copy cookbook %q: %w", name, err)
 		}
 	}
@@ -103,16 +103,35 @@ func sortedLockNames(m map[string]cinc.CookbookLock) []string {
 	return names
 }
 
+// copyCookbook copies the cookbook in src to dst: exactly the files an upload
+// of it sends, as cinc-api picks them (chefignore applied, root
+// dot-directories left out, a symlink to a file inside the cookbook copied as
+// that file), with modes clamped. version is the locked version, which
+// stands in for a metadata.rb that computes its own.
+func copyCookbook(src, dst, version string) error {
+	cb, err := cinc.LocalCookbookFromDir(src, version)
+	if err != nil {
+		return err
+	}
+	for _, f := range cb.Files() {
+		if err := copyFile(f.DiskPath, filepath.Join(dst, filepath.FromSlash(f.Path))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // copyTree recursively copies the directory src into dst, clamping file modes
-// and skipping any .git directory.
+// and skipping any .git directory. It copies a source tree as fetched (into
+// the cookbook cache), so it applies none of the cookbook file rules;
+// copyCookbook does, when a cookbook leaves the cache.
 //
 // Only regular files are copied. filepath.Walk reports symlinks via Lstat, so
 // without an explicit check a link would be opened, following it and writing
 // the contents of whatever it points at into the destination: a cookbook
-// carrying "files/creds -> ~/.ssh/id_rsa" would put that key in an export
-// bundle bound for the server. Skipping them also keeps a dangling link, which
-// cookbooks legitimately carry, from failing the whole copy. This matches how
-// cli/cookbook's archiveEntries builds an upload.
+// carrying "files/creds -> ~/.ssh/id_rsa" would put that key in the cache.
+// Skipping them also keeps a dangling link, which cookbooks legitimately
+// carry, from failing the whole copy.
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -132,25 +151,30 @@ func copyTree(src, dst string) error {
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		if err := os.MkdirAll(filepath.Dir(target), extractDirMode); err != nil {
-			return err
-		}
-		in, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = in.Close() }() // read handle
-		// Clamp to a safe mode rather than trusting the source file's bits.
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, in); err != nil {
-			_ = out.Close() // already returning an error
-			return err
-		}
-		return out.Close()
+		return copyFile(path, target)
 	})
+}
+
+// copyFile copies the file at src (following a symlink) to dst, creating
+// dst's directory, with the mode clamped rather than copied from src.
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), extractDirMode); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }() // read handle
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close() // already returning an error
+		return err
+	}
+	return out.Close()
 }
 
 // tarGzDir writes dir as a gzip-compressed tarball at archivePath, with entries
