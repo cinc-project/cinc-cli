@@ -47,5 +47,3 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-replace github.com/cinc-project/cinc-api => /Users/tsmith/dev/oss/cinc-api/.claude/worktrees/combined
