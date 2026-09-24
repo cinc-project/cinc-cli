@@ -19,8 +19,7 @@ import (
 // ruby/ruby.wasm WASI build) under wazero. We deliberately do NOT commit the
 // multi-megabyte wasm blob to git. Instead we download a PINNED release the
 // first time the engine runs, verify its SHA-256 against the constant below,
-// and cache the extracted tree under the OS cache dir — mirroring how
-// test/acceptance/helpers_test.go caches a pinned cinc-zero.
+// and cache the extracted tree under the OS cache dir.
 //
 // Productionizing this would vendor the blob (go:embed of an LFS/release
 // artifact) so an offline build still works; the download-cache is the

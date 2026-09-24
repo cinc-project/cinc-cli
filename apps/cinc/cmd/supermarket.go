@@ -346,11 +346,11 @@ cinc supermarket download nginx`,
 // the cookbook anonymously from Supermarket and then uploads it to the
 // configured Cinc Server, so it resolves an authenticated client.
 //
-// There is no acceptance test for this command: cinc-zero simulates a
-// Chef Infra Server but does not serve the Supermarket API, so the
-// download half can't be exercised end-to-end. Coverage lives in the
-// unit test, which fakes both halves (the same gap that already excludes
-// every other `cinc supermarket` command).
+// There is no integration suite case for this command: the suite's
+// servers are Chef Infra Server implementations and none serves the
+// Supermarket API, so the download half can't be exercised end-to-end.
+// Coverage lives in the unit test, which fakes both halves (the same gap
+// that exempts every other `cinc supermarket` command).
 func newSupermarketInstallCmd() *cobra.Command {
 	var site string
 	cmd := &cobra.Command{

@@ -68,8 +68,9 @@ This tool is for **cinc**. Treat chef as a compatibility target, not the focus:
 - `make docs` — regenerate the per-command Markdown reference under
   `docs/commands/` from the live cobra tree. Needed whenever a command, its
   help strings, or its flags change.
-- `make test-acceptance` — the real binary against a live `cinc-zero` server,
-  gated behind the `acceptance` build tag. See the `acceptance-tests` skill.
+- `make test-integration` — the real binary against an in-process
+  cinc-server-ng (its own Go module under `integration/`). See the
+  `integration-tests` skill.
 
 While iterating, scope `go test` to the packages you touched (e.g.
 `go test ./cli/supermarket/ ./apps/cinc/cmd/`). A full `go test ./...`
@@ -98,10 +99,10 @@ those when you're changing policyfile code.
   a conventional table notation rather than prose.
 - **Test-driven development.** Write a failing test first, watch it fail for the
   expected reason, then write the minimal code to pass.
-- **Every command needs both a unit and an acceptance test**, plus an entry in
-  `test/acceptance/coverage_manifest.toml`. A meta-test walks the live cobra
-  tree and fails CI if a shipped leaf command is missing from the manifest.
-  Use the `adding-a-command` skill.
+- **Every command needs both a unit test and an integration suite case.**
+  The suite's coverage guard (`integration/suite/coverage_test.go`) walks the
+  live cobra tree and fails CI if a shipped leaf command is neither covered by
+  a case nor exempt with a reason. Use the `adding-a-command` skill.
 - **Tests must not touch the network.** An httptest server is the only
   acceptable endpoint.
 - **Test seams are swappable package-level vars**, each documented at its
@@ -116,7 +117,7 @@ a skill is invoked or when you open a file in that directory:
 | Topic | Where |
 |-------|-------|
 | Adding a `cinc <noun> <verb>` command | `adding-a-command` skill |
-| cinc-zero harness, seed data, version pinning | `acceptance-tests` skill |
+| Integration suite: cases, helpers, gaps, erchef runs | `integration-tests` skill |
 | Command tree, test seams, environment isolation | `apps/cinc/cmd/CLAUDE.md` |
 | Cookbook file rules, extraction caps | `cli/cookbook/CLAUDE.md` |
 | Lock origins, export bundles, Ruby test speed | `cli/policyfile/CLAUDE.md` |

@@ -2,9 +2,9 @@
 // bubbletea-driven cookbook browser over the anonymous read endpoints of
 // Chef Supermarket.
 //
-// Testing strategy: cinc-zero, the acceptance harness for the rest of
-// the CLI, simulates a Chef Infra Server — it does not serve the
-// Supermarket API. There is therefore no acceptance test for this
+// Testing strategy: the integration suite runs the rest of the CLI
+// against Chef Infra Server implementations, none of which serves the
+// Supermarket API. There is therefore no integration case for this
 // command. Coverage lives entirely in unit tests:
 //
 //   - realClient is exercised against httptest servers that mimic

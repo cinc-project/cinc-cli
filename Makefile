@@ -15,7 +15,7 @@ LDFLAGS := -X $(LDFLAGS_PKG).version=$(VERSION) \
            -X $(LDFLAGS_PKG).commit=$(COMMIT) \
            -X $(LDFLAGS_PKG).buildDate=$(BUILD_DATE)
 
-.PHONY: all build dist install test test-acceptance test-integration vet lint fmt tidy clean run docs help
+.PHONY: all build dist install test test-integration vet lint fmt tidy clean run docs help
 
 all: build
 
@@ -50,10 +50,6 @@ install:
 ## test: run the test suite
 test:
 	go test ./...
-
-## test-acceptance: run acceptance tests against cinc-zero (auto-downloads the cinc-zero binary; set CINC_ZERO_BIN to override)
-test-acceptance:
-	go test -tags acceptance -count=1 ./test/...
 
 ## test-integration: run the shared integration suite against an in-process cinc-server-ng
 test-integration:
