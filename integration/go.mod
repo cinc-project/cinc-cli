@@ -61,5 +61,3 @@ require (
 )
 
 replace github.com/cinc-project/cinc-cli => ../
-
-replace github.com/cinc-project/cinc-api => /Users/tsmith/dev/oss/cinc-api/.claude/worktrees/combined
