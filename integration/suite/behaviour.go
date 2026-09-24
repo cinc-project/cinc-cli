@@ -53,6 +53,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/first-run-never-offered", []string{"config create", "config validate", "node list"}, testFirstRunNeverOffered},
 	{"cli/first-run-gate-eof", []string{"node list"}, testFirstRunGateEOF},
 	{"cli/first-run-location-tilde", []string{"node list"}, testFirstRunLocationTilde},
+	{"cli/first-run-accept-defaults", []string{"node list"}, testFirstRunAcceptDefaults},
 	{"cli/chef-credentials-in-place", []string{"node list", "node create"}, testChefCredentialsInPlace},
 	{"cli/chef-server-url-key", []string{"node list"}, testChefServerURLKey},
 	{"cli/profile-precedence", []string{"node list"}, testProfilePrecedence},

@@ -147,10 +147,21 @@ func resolveClient(cmd *cobra.Command) (*cinc.Client, error) {
 		return nil, err
 	}
 	c, err := client.New(profile)
+	if errors.Is(err, config.ErrMissingServerURL) {
+		return nil, missingServerURLError(cmd)
+	}
 	if err != nil {
 		return nil, friendlyKeyFileError(cmd, profile, err)
 	}
 	return c, nil
+}
+
+// missingServerURLError explains a profile with no server to talk to,
+// which is what pressing Enter through every first-run prompt writes. It
+// names the profile and the file, and how to add the missing URL.
+func missingServerURLError(cmd *cobra.Command) error {
+	return fmt.Errorf("your %q profile in %s doesn't say which server to use yet. Run `%s config create` to add one, or set cinc_server_url to your server's URL, like https://cinc.example.com/organizations/<org>.",
+		profileNameForCommand(cmd), resolveConfigPath(cmd), progname.Get())
 }
 
 // friendlyKeyFileError rewrites a "client key file missing/unreadable"

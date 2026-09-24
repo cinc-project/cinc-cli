@@ -464,3 +464,30 @@ func TestFirstRunTreatsEndOfInputAsDecline(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveClientExplainsMissingServerURL uses a profile with no server,
+// which is what pressing Enter through first-run setup writes. The error
+// names the profile and how to add a server, not just the missing key.
+func TestResolveClientExplainsMissingServerURL(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgPath := filepath.Join(home, ".cinc", "credentials")
+	_ = os.MkdirAll(filepath.Dir(cfgPath), 0o700)
+	if err := os.WriteFile(cfgPath, []byte(`[default]
+supermarket_site = "https://supermarket.chef.io"
+client_name = "tim"
+client_key = "/k/t.pem"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := resolveClient(fakeCmd("", "", "", new(bytes.Buffer)))
+	if err == nil {
+		t.Fatal("resolveClient succeeded for a profile with no server")
+	}
+	for _, want := range []string{`"default"`, cfgPath, "cinc_server_url", "cinc config create"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
+	}
+}

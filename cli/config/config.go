@@ -85,6 +85,11 @@ func (rp rawProfile) serverURL() string {
 	return rp.ChefServerURL
 }
 
+// ErrMissingServerURL is Validate's error for a profile that names no
+// server, such as a Supermarket-only profile or the one first-run setup
+// writes when every prompt is left at its default.
+var ErrMissingServerURL = errors.New("config: profile is missing cinc_server_url (or chef_server_url)")
+
 // Validate reports whether the profile has every field required to open a
 // server connection.
 func (p Profile) Validate() error {
@@ -97,9 +102,9 @@ func (p Profile) Validate() error {
 		if _, _, err := cinc.ParseServerURL(p.RawServerURL); err != nil {
 			return fmt.Errorf("config: %w", err)
 		}
-		return fmt.Errorf("config: profile is missing cinc_server_url (or chef_server_url)")
+		return ErrMissingServerURL
 	case p.ServerURL == "":
-		return fmt.Errorf("config: profile is missing cinc_server_url (or chef_server_url)")
+		return ErrMissingServerURL
 	case p.Org == "":
 		return fmt.Errorf("config: profile is missing the /organizations/<org> segment in its server URL")
 	}
