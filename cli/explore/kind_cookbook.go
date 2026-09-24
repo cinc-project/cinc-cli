@@ -18,6 +18,8 @@ func (cookbookKind) Title() string     { return "Cookbooks" }
 func (cookbookKind) Columns() []string { return []string{"NAME", "VERSIONS"} }
 
 func (cookbookKind) List(ctx context.Context, c *cinc.Client) ([]Row, error) {
+	// A bare List returns only each cookbook's latest version on erchef, so
+	// ask for all of them to count them.
 	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
 	if err != nil {
 		return nil, err
@@ -41,16 +43,15 @@ func (cookbookKind) Child(parent string) Kind { return cookbookVersionsKind{name
 // metadata lives on the per-version manifest, so we fetch the latest version to
 // read it; the JSON carried along for the detail view is that same manifest.
 func (cookbookKind) Summary(ctx context.Context, c *cinc.Client, name string) (summaryView, error) {
-	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
+	entry, _, err := c.Cookbooks.GetVersions(ctx, name, "all")
 	if err != nil {
 		return summaryView{}, err
 	}
-	entry, ok := index[name]
-	if !ok {
-		return summaryView{}, fmt.Errorf("cookbook %q not found", name)
-	}
 	versions := len(entry.Versions)
-	latest := latestCookbookVersion(entry.Versions)
+	latest := ""
+	if versions > 0 {
+		latest = entry.Versions[0].Version // newest-first
+	}
 
 	return summarize(ctx, c, latest,
 		func(ctx context.Context, c *cinc.Client, v string) (*cinc.Cookbook, error) {
@@ -71,19 +72,6 @@ func (cookbookKind) Summary(ctx context.Context, c *cinc.Client, name string) (s
 		})
 }
 
-// latestCookbookVersion returns the newest version string, picking the
-// greatest by string comparison to match the newest-first ordering the
-// version list itself uses.
-func latestCookbookVersion(versions []cinc.CookbookVersion) string {
-	latest := ""
-	for _, v := range versions {
-		if v.Version > latest {
-			latest = v.Version
-		}
-	}
-	return latest
-}
-
 // cookbookVersionsKind lists the versions of one cookbook. A version
 // can be viewed (its manifest), downloaded, or deleted.
 type cookbookVersionsKind struct{ name string }
@@ -92,20 +80,15 @@ func (k cookbookVersionsKind) Title() string   { return k.name }
 func (cookbookVersionsKind) Columns() []string { return []string{"VERSION"} }
 
 func (k cookbookVersionsKind) List(ctx context.Context, c *cinc.Client) ([]Row, error) {
-	index, _, err := c.Cookbooks.ListVersions(ctx, "all")
+	entry, _, err := c.Cookbooks.GetVersions(ctx, k.name, "all")
 	if err != nil {
 		return nil, err
 	}
-	entry, ok := index[k.name]
-	if !ok {
-		return nil, fmt.Errorf("cookbook %q not found", k.name)
-	}
+	// The versions come newest-first, so the latest is at the top.
 	rows := make([]Row, 0, len(entry.Versions))
 	for _, v := range entry.Versions {
 		rows = append(rows, Row{Name: v.Version, Cells: []string{v.Version}})
 	}
-	// Versions sort newest-first so the latest is at the top.
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Name > rows[j].Name })
 	return rows, nil
 }
 

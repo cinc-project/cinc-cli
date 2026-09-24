@@ -16,8 +16,8 @@ import (
 // bodies, since cinc-api verifies every download. The manifest's file URLs point back at this
 // same server, mirroring how the real server hands out bookshelf URLs.
 // requestedVersions records, in order, the version segments the manifest was
-// fetched under, so tests can assert "_latest" resolution (the command fetches
-// once to resolve the concrete version, then the download re-fetches it).
+// fetched under, so tests can assert "_latest" resolution and that the
+// manifest is fetched only once.
 func cookbookDownloadServer(t *testing.T, requestedVersions *[]string) *httptest.Server {
 	t.Helper()
 	var base string
@@ -63,10 +63,11 @@ func TestCookbookDownloadWritesFilesUnderNameVersionDir(t *testing.T) {
 		t.Fatalf("cinc cookbook download: %v", err)
 	}
 
-	// No explicit version => the first fetch resolves the "_latest" sentinel
-	// server-side, and "_latest" never appears in the destination dir name.
-	if len(requested) == 0 || requested[0] != "_latest" {
-		t.Errorf("first manifest fetch under %v, want it to start with _latest", requested)
+	// No explicit version => one fetch resolves the "_latest" sentinel
+	// server-side, the files come from that same manifest, and "_latest"
+	// never appears in the destination dir name.
+	if len(requested) != 1 || requested[0] != "_latest" {
+		t.Errorf("manifest fetched under %v, want exactly one fetch, of _latest", requested)
 	}
 
 	cbDir := filepath.Join(destParent, "nginx-1.2.0")
@@ -97,10 +98,8 @@ func TestCookbookDownloadAcceptsExplicitVersion(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("cinc cookbook download nginx 1.2.0: %v", err)
 	}
-	for _, v := range requested {
-		if v != "1.2.0" {
-			t.Errorf("manifest fetched under version %q, want only 1.2.0", v)
-		}
+	if len(requested) != 1 || requested[0] != "1.2.0" {
+		t.Errorf("manifest fetched under %v, want exactly one fetch, of 1.2.0", requested)
 	}
 	if _, err := os.Stat(filepath.Join(destParent, "nginx-1.2.0", "metadata.rb")); err != nil {
 		t.Errorf("expected cookbook downloaded to nginx-1.2.0/: %v", err)

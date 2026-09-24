@@ -28,8 +28,8 @@ func newCookbookCmd() *cobra.Command {
 }
 
 // newCookbookDownloadCmd builds the `cinc cookbook download <name> [version]`
-// command. With no version it resolves the "_latest" sentinel the Chef Server
-// exposes for the highest semver. Every file in the version's manifest is
+// command. With no version it asks the server for cinc.LatestVersion, which
+// resolves to the highest version. Every file in the version's manifest is
 // written under <dir>/<name>-<version>/ (recreating the cookbook layout),
 // where <dir> defaults to the current directory and is overridable with
 // --dir, matching knife's `cookbook download`.
@@ -49,18 +49,19 @@ cinc cookbook download nginx 1.2.0 --dir ./cookbooks`,
 				return err
 			}
 			name := args[0]
-			version := "_latest"
+			version := cinc.LatestVersion
 			if len(args) == 2 {
 				version = args[1]
 			}
-			// Resolve the concrete version first so "_latest" never leaks into
-			// the destination directory name.
+			// Fetch the manifest first so the directory is named after the
+			// concrete version, never "_latest", then download from that same
+			// manifest.
 			cb, _, err := c.Cookbooks.Get(cmd.Context(), name, version)
 			if err != nil {
 				return err
 			}
 			destDir := filepath.Join(dir, name+"-"+cb.Version)
-			if err := c.Cookbooks.Download(cmd.Context(), name, cb.Version, destDir); err != nil {
+			if err := c.Cookbooks.DownloadFiles(cmd.Context(), cb, destDir); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Downloaded cookbook %q version %s to %s\n", name, cb.Version, destDir)
@@ -72,8 +73,8 @@ cinc cookbook download nginx 1.2.0 --dir ./cookbooks`,
 }
 
 // newCookbookShowCmd builds the `cinc cookbook show <name> [version]`
-// command. With no version the command resolves the special "_latest"
-// sentinel that the Chef Server exposes for the highest semver.
+// command. With no version it shows cinc.LatestVersion, which the server
+// resolves to the highest version.
 func newCookbookShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <name> [version]",
@@ -92,7 +93,7 @@ cinc cookbook show nginx 1.2.0`,
 			if err != nil {
 				return err
 			}
-			version := "_latest"
+			version := cinc.LatestVersion
 			if len(args) == 2 {
 				version = args[1]
 			}
