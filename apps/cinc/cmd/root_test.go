@@ -267,3 +267,36 @@ client_key = %q
 		}
 	}
 }
+
+// TestBareCincWithConfigSkipsFirstRun runs bare cinc with --config naming a
+// credentials file. The user has said which file to use, so the missing
+// default file is no reason to offer setup, as it isn't for any other
+// command given --config.
+func TestBareCincWithConfigSkipsFirstRun(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	swapTTY(t, true)
+	swapConfigure(t, func(*cobra.Command, string) error {
+		t.Error("first-run setup must not run when --config is given")
+		return nil
+	})
+	cfg := filepath.Join(t.TempDir(), "credentials")
+	if err := os.WriteFile(cfg, []byte("[default]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetIn(strings.NewReader("y\n"))
+	root.SetArgs([]string{"--config", cfg})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bare cinc --config: %v", err)
+	}
+	if strings.Contains(stderr.String(), "Welcome to") {
+		t.Errorf("did not expect the first-run welcome, got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Cinc is a unified") {
+		t.Errorf("expected help text on stdout, got:\n%s", stdout.String())
+	}
+}

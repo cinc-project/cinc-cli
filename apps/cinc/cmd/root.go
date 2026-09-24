@@ -167,6 +167,11 @@ func NewRootCmd() *cobra.Command {
 // be set up, so dumping help on them would be noise. First-run
 // failures are surfaced but do not block help.
 func rootRunE(cmd *cobra.Command, _ []string) error {
+	// --config names the credentials file to use, so a missing default file
+	// is no reason to offer setup, as it isn't for any other command.
+	if cfgPath, _ := cmd.Flags().GetString("config"); cfgPath != "" {
+		return cmd.Help()
+	}
 	cincPath, err := config.DefaultPath()
 	if err == nil {
 		if _, err := os.Stat(cincPath); errors.Is(err, fs.ErrNotExist) {
