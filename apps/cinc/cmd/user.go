@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -316,25 +314,11 @@ cinc user list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchUserNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.Users.List)
 			if err != nil {
 				return err
 			}
 			return printer.New(cmd.OutOrStdout(), format).List(names)
 		},
 	}
-}
-
-// fetchUserNames returns the sorted names of every user on the server.
-func fetchUserNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.Users.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }

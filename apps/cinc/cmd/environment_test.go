@@ -49,13 +49,13 @@ func TestFetchEnvironmentNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchEnvironmentNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Environments.List)
 	if err != nil {
-		t.Fatalf("fetchEnvironmentNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"_default", "prod", "staging"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchEnvironmentNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

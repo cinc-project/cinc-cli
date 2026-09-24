@@ -49,13 +49,13 @@ func TestFetchGroupNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchGroupNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Groups.List)
 	if err != nil {
-		t.Fatalf("fetchGroupNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"admins", "clients", "users"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchGroupNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"sort"
@@ -216,8 +215,7 @@ var profileChecks = []profileCheck{
 				// A 403 means the server answered and accepted the
 				// signature; the actor just may not list clients, as a
 				// node's own client may not on erchef. That is reachable.
-				var resp *cinc.ErrorResponse
-				if errors.As(err, &resp) && resp.StatusCode == http.StatusForbidden {
+				if errors.Is(err, cinc.ErrForbidden) {
 					return passNote(fmt.Sprintf("the server accepted %s; it isn't allowed to list clients, which is fine for this check", p.ClientName))
 				}
 				return fail(cliclient.Explain(err).Error())

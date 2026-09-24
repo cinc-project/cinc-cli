@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -154,7 +155,7 @@ func diffCookbooks(a, b map[string]cinc.CookbookLock) []cookbookDelta {
 			deltas = append(deltas, cookbookDelta{Name: n, From: la.Identifier, To: lb.Identifier})
 		}
 	}
-	slices.SortFunc(deltas, func(x, y cookbookDelta) int { return cmpString(x.Name, y.Name) })
+	slices.SortFunc(deltas, func(x, y cookbookDelta) int { return strings.Compare(x.Name, y.Name) })
 	return deltas
 }
 
@@ -223,7 +224,7 @@ func diffAttributes(a, b *cinc.PolicyRevision) []attrDelta {
 		}
 		deltas = append(deltas, d)
 	}
-	slices.SortFunc(deltas, func(x, y attrDelta) int { return cmpString(x.Path, y.Path) })
+	slices.SortFunc(deltas, func(x, y attrDelta) int { return strings.Compare(x.Path, y.Path) })
 	return deltas
 }
 
@@ -237,17 +238,6 @@ func flattenAttrs(prefix string, v map[string]any, out map[string]any) {
 			continue
 		}
 		out[path] = val
-	}
-}
-
-func cmpString(a, b string) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	default:
-		return 0
 	}
 }
 
@@ -563,10 +553,10 @@ func orphanedArtifacts(ctx context.Context, c *cinc.Client, referenced map[strin
 		}
 	}
 	slices.SortFunc(orphans, func(a, b cookbookArtifactRef) int {
-		if n := cmpString(a.Name, b.Name); n != 0 {
+		if n := strings.Compare(a.Name, b.Name); n != 0 {
 			return n
 		}
-		return cmpString(a.Identifier, b.Identifier)
+		return strings.Compare(a.Identifier, b.Identifier)
 	})
 	return orphans, nil
 }

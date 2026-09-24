@@ -24,37 +24,16 @@ func strictJSON[T any]() func([]byte) error {
 	}
 }
 
-// editClient presents the supplied client as pretty-printed JSON in the
-// shared JSON editor and returns the parsed result. It is a package
-// variable so tests can override it without spawning a TUI.
-var editClient = openClientJSONEditor
-
-func openClientJSONEditor(in *cinc.APIClient) (*cinc.APIClient, error) {
-	initial, err := json.MarshalIndent(in, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	edited, err := jsoneditor.Run(initial, strictJSON[cinc.APIClient]())
-	if err != nil {
-		return nil, err
-	}
-	var out cinc.APIClient
-	if err := json.Unmarshal(edited, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// editRole, editEnvironment, editUser, and editGroup present the supplied
-// object as pretty-printed JSON in the shared editor and return the parsed
-// result. Each is a package variable so tests can override it without
-// spawning a TUI, mirroring editClient.
 // editNodeForm presents a node in the dedicated node-edit form (human
 // fields plus a JSON attributes editor) and reports whether it changed. It
 // is a package variable so tests can override it without spawning a TUI.
 var editNodeForm = nodeedit.Run
 
+// editClient, editRole, and the rest present the supplied object as
+// pretty-printed JSON in the shared editor and return the parsed result. Each
+// is a package variable so tests can override it without spawning a TUI.
 var (
+	editClient      = openObjectJSONEditor[cinc.APIClient]
 	editRole        = openObjectJSONEditor[cinc.Role]
 	editEnvironment = openObjectJSONEditor[cinc.Environment]
 	editUser        = openObjectJSONEditor[cinc.User]

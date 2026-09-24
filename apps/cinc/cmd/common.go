@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -263,14 +266,8 @@ func resolveSupermarketSite(cmd *cobra.Command, siteFlag string) string {
 // settings: an explicit --profile or environment profile wins, otherwise the
 // conventional [supermarket] section, falling back to [default].
 func selectSupermarketProfile(cmd *cobra.Command, cfg *config.Config) (config.Profile, error) {
-	if profileName, _ := cmd.Flags().GetString("profile"); profileName != "" {
-		return cfg.Profile(profileName)
-	}
-	if profileName := os.Getenv("CINC_PROFILE"); profileName != "" {
-		return cfg.Profile(profileName)
-	}
-	if profileName := os.Getenv("CHEF_PROFILE"); profileName != "" {
-		return cfg.Profile(profileName)
+	if name := explicitProfile(cmd); name != "" {
+		return cfg.Profile(name)
 	}
 	if profile, err := cfg.Profile("supermarket"); err == nil {
 		return profile, nil
@@ -469,10 +466,10 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 	}
 	// Expand ~ the way `config create` does, or a typed ~/work/credentials
 	// lands in a directory named ~ under wherever the command ran.
-	if answers.ConfigPath, err = expandHome(answers.ConfigPath); err != nil {
+	if answers.ConfigPath, err = config.ExpandHome(answers.ConfigPath); err != nil {
 		return err
 	}
-	if answers.ClientKey, err = expandHome(answers.ClientKey); err != nil {
+	if answers.ClientKey, err = config.ExpandHome(answers.ClientKey); err != nil {
 		return err
 	}
 	if answers.ReplaceFile {
@@ -526,4 +523,15 @@ func unchanged(before, after any) bool {
 	a, errA := json.Marshal(before)
 	b, errB := json.Marshal(after)
 	return errA == nil && errB == nil && bytes.Equal(a, b)
+}
+
+// listNames returns the sorted names from a collection's name->URL index,
+// for the list verbs and their pickers. list is a service's List method,
+// e.g. c.Nodes.List.
+func listNames[V any](ctx context.Context, list func(context.Context) (map[string]V, *cinc.Response, error)) ([]string, error) {
+	index, _, err := list(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Sorted(maps.Keys(index)), nil
 }

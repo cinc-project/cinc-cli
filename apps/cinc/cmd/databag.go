@@ -101,7 +101,7 @@ cinc databag create passwords mysql`,
 				}
 			}
 
-			bagErr := bagCreateOrPropagate(cmd, c, bag)
+			_, bagErr := c.DataBags.Create(cmd.Context(), bag)
 			if len(args) == 1 {
 				if bagErr != nil {
 					return bagErr
@@ -130,14 +130,6 @@ cinc databag create passwords mysql`,
 	}
 	cmd.Flags().StringVar(&inputFile, "file", "", "read the new item JSON from this file instead of launching the editor (2-arg form only)")
 	return cmd
-}
-
-// bagCreateOrPropagate POSTs the bag and returns the error from the
-// server unchanged. Conflict (409) is returned as a normal error so
-// the caller can decide whether to surface or swallow it.
-func bagCreateOrPropagate(cmd *cobra.Command, c *cinc.Client, bag string) error {
-	_, err := c.DataBags.Create(cmd.Context(), bag)
-	return err
 }
 
 // loadOrEditNewItem produces a DataBagItem either by reading the
@@ -422,26 +414,11 @@ cinc databag list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchDataBagNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.DataBags.List)
 			if err != nil {
 				return err
 			}
 			return printer.New(cmd.OutOrStdout(), format).List(names)
 		},
 	}
-}
-
-// fetchDataBagNames returns the sorted names of every data bag on the
-// server.
-func fetchDataBagNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.DataBags.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }

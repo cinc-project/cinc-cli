@@ -102,9 +102,6 @@ cinc node run-list set web01 'recipe[base],role[web]'`,
 			case "set":
 				node.RunList = items
 			}
-			if node.RunList == nil {
-				node.RunList = []string{}
-			}
 			node.Name = name
 			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
 				return err
