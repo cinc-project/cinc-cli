@@ -93,9 +93,16 @@ cinc policy export Policyfile.lock.json ./bundle --archive`,
 				destDir = args[1]
 			}
 
-			// Export only needs the server for chef_server cookbook sources, so
-			// a missing/unusable config is tolerated here (nil Chef client).
-			chef, _ := resolveClient(cmd)
+			// Export only needs the server for chef_server cookbook sources.
+			// Without one it works offline and never reads the config (which
+			// could otherwise start first-run setup); with one, a config
+			// problem is reported as itself.
+			var chef *cinc.Client
+			if lockNeedsServer(lock) {
+				if chef, err = resolveClient(cmd); err != nil {
+					return err
+				}
+			}
 			fetcher, err := newFetcher(filepath.Dir(lockPath), chef)
 			if err != nil {
 				return err
@@ -206,6 +213,17 @@ func resolvePushArchivePath(arg string) (string, error) {
 // newFetcher builds a policyfile.Fetcher rooted at the default cinc cookbook
 // cache, resolving path sources relative to lockDir and using chef for
 // chef_server sources.
+// lockNeedsServer reports whether any cookbook the lock pins is fetched from
+// the Cinc/Chef server rather than a path, git, or artifact source.
+func lockNeedsServer(lock *cinc.PolicyRevision) bool {
+	for _, cl := range lock.CookbookLocks {
+		if kind, _, err := cl.Origin(); err == nil && kind == cinc.SourceChefServer {
+			return true
+		}
+	}
+	return false
+}
+
 func newFetcher(lockDir string, chef *cinc.Client) (*policyfile.Fetcher, error) {
 	cacheRoot, err := policyfile.DefaultCacheRoot()
 	if err != nil {

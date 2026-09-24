@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -71,7 +70,7 @@ cinc user edit alice`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "User %q unchanged\n", name)
 					return nil
 				}

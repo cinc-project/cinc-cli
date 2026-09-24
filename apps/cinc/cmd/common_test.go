@@ -2,13 +2,18 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
@@ -533,5 +538,83 @@ func TestFirstRunConfiguresWhenChefFileUnusable(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "Want us to migrate") {
 		t.Errorf("an unusable file should not be offered for migration:\n%s", stderr.String())
+	}
+}
+
+// editorRoundTrip is what the real JSON editor does when the user saves
+// without changing anything: marshal the object, then unmarshal it again.
+func editorRoundTrip[T any](t *testing.T) func(*T) (*T, error) {
+	return func(in *T) (*T, error) {
+		b, err := json.Marshal(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out T
+		if err := json.Unmarshal(b, &out); err != nil {
+			t.Fatal(err)
+		}
+		return &out, nil
+	}
+}
+
+// rawObjectServer answers GET on path with body verbatim (so empty maps the
+// server sends survive, unlike re-encoding a Go struct with omitempty) and
+// records whether a PUT arrived.
+func rawObjectServer(t *testing.T, path, body string, put *bool) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			return
+		}
+		if r.Method == http.MethodPut {
+			*put = true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestEditWithoutChangesSendsNothing(t *testing.T) {
+	for _, tc := range []struct {
+		noun, path, body string
+		stub             func(t *testing.T)
+	}{
+		{
+			noun: "role", path: "/organizations/acme/roles/web",
+			body: `{"name":"web","description":"","json_class":"Chef::Role","chef_type":"role","run_list":[],"default_attributes":{},"override_attributes":{},"env_run_lists":{}}`,
+			stub: func(t *testing.T) { withStubRoleEditor(t, editorRoundTrip[cinc.Role](t)) },
+		},
+		{
+			noun: "environment", path: "/organizations/acme/environments/web",
+			body: `{"name":"web","description":"","json_class":"Chef::Environment","chef_type":"environment","cookbook_versions":{},"default_attributes":{},"override_attributes":{}}`,
+			stub: func(t *testing.T) { withStubEnvironmentEditor(t, editorRoundTrip[cinc.Environment](t)) },
+		},
+	} {
+		t.Run(tc.noun, func(t *testing.T) {
+			var put bool
+			srv := rawObjectServer(t, tc.path, tc.body, &put)
+			tc.stub(t)
+			cfgPath := filepath.Join(t.TempDir(), "credentials")
+			cfg := fmt.Sprintf("[default]\ncinc_server_url = \"%s/organizations/acme\"\nclient_name = \"tim\"\nclient_key = %q\n", srv.URL, writeTestKey(t))
+			if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			root := newRootCmd()
+			var buf bytes.Buffer
+			root.SetOut(&buf)
+			root.SetArgs([]string{tc.noun, "edit", "web", "--config", cfgPath})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("cinc %s edit: %v", tc.noun, err)
+			}
+			if put {
+				t.Errorf("an unedited save sent a PUT; output %q", buf.String())
+			}
+			if !strings.Contains(buf.String(), "unchanged") {
+				t.Errorf("output = %q, want it to say the %s is unchanged", buf.String(), tc.noun)
+			}
+		})
 	}
 }

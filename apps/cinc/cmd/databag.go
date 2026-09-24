@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -351,7 +350,7 @@ cinc databag item edit passwords mysql`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(current, edited) {
+				if unchanged(current, edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Item %q in bag %q unchanged\n", id, bag)
 					return nil
 				}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -514,4 +515,15 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 
 func missingCredentialsError(cincPath string) error {
 	return fmt.Errorf("no credentials yet at %s — run `%s config create` to set one up", cincPath, progname.Get())
+}
+
+// unchanged reports whether an edited object would send the same JSON as the
+// original. The comparison is on the encoding rather than the Go values: the
+// server sends empty attribute maps as {}, the editor's round trip through
+// omitempty turns them into nil, and reflect.DeepEqual calls those different,
+// so an edit that changed nothing would still be PUT and reported as updated.
+func unchanged(before, after any) bool {
+	a, errA := json.Marshal(before)
+	b, errB := json.Marshal(after)
+	return errA == nil && errB == nil && bytes.Equal(a, b)
 }

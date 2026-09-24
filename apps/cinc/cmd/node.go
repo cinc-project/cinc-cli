@@ -606,24 +606,23 @@ func expandNodeSSHQuery(query string) string {
 	return "tags:*" + query + "* OR roles:*" + query + "* OR fqdn:*" + query + "* OR addresses:*" + query + "*"
 }
 
+// searchRowAttribute reads the SSH host attribute from one node search row.
+// The lookup follows Chef's read precedence (automatic, override, normal,
+// default) and accepts dotted paths such as cloud.public_hostname, the way
+// node[...] does in a recipe. "name" is the node's own name, which isn't an
+// attribute.
 func searchRowAttribute(row json.RawMessage, attr string) (string, error) {
-	var data any
-	if err := json.Unmarshal(row, &data); err != nil {
+	var node cinc.Node
+	if err := json.Unmarshal(row, &node); err != nil {
 		return "", err
 	}
-	for _, path := range candidateAttributePaths(attr) {
-		if value, ok := lookupAttribute(data, path); ok {
-			return attributeString(value), nil
-		}
+	if attr == "name" {
+		return node.Name, nil
 	}
-	return "", fmt.Errorf("search row missing SSH attribute %q", attr)
-}
-
-func candidateAttributePaths(attr string) [][]string {
-	if strings.Contains(attr, ".") {
-		return [][]string{strings.Split(attr, ".")}
+	if _, ok := node.Attribute(attr); !ok {
+		return "", fmt.Errorf("search row missing SSH attribute %q", attr)
 	}
-	return [][]string{{attr}, {"automatic", attr}, {"normal", attr}, {"default", attr}, {"override", attr}}
+	return node.AttributeString(attr), nil
 }
 
 func lookupAttribute(data any, path []string) (any, bool) {

@@ -244,3 +244,56 @@ func TestPolicyExportCommandEndToEnd(t *testing.T) {
 		t.Errorf("output = %q", out)
 	}
 }
+
+// Export needs the server only for chef_server cookbook sources. A lock
+// without one exports offline whatever state the config is in; a lock with
+// one surfaces the config problem instead of a vague "requires a configured
+// server connection" from deep inside the fetch.
+func TestPolicyExportResolvesTheServerOnlyWhenTheLockNeedsIt(t *testing.T) {
+	broken := filepath.Join(t.TempDir(), "credentials")
+	if err := os.WriteFile(broken, []byte("[default\nnot toml"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("path sources ignore the config", func(t *testing.T) {
+		lockPath := writePolicyLockFixture(t, "0000000000000000000000000000000000000003")
+		root := newRootCmd()
+		root.SetOut(io.Discard)
+		root.SetArgs([]string{"policy", "export", lockPath, filepath.Join(t.TempDir(), "bundle"), "--config", broken})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("cinc policy export of a path-sourced lock: %v", err)
+		}
+	})
+
+	t.Run("chef_server sources report the config error", func(t *testing.T) {
+		lockPath := writePolicyLockFixture(t, "0000000000000000000000000000000000000004")
+		data, err := os.ReadFile(lockPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lock map[string]any
+		if err := json.Unmarshal(data, &lock); err != nil {
+			t.Fatal(err)
+		}
+		base := lock["cookbook_locks"].(map[string]any)["base"].(map[string]any)
+		base["source_options"] = map[string]any{"chef_server": "https://chef.example.test/organizations/acme"}
+		base["cache_key"] = "base-1.0.0-chef.example.test"
+		if data, err = json.Marshal(lock); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(lockPath, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		root := newRootCmd()
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs([]string{"policy", "export", lockPath, filepath.Join(t.TempDir(), "bundle"), "--config", broken})
+		err = root.Execute()
+		if err == nil {
+			t.Fatal("want an error: the lock needs the server and the config is unreadable")
+		}
+		if strings.Contains(err.Error(), "requires a configured server connection") || !strings.Contains(err.Error(), broken) {
+			t.Errorf("error = %q, want the config problem naming %s", err, broken)
+		}
+	})
+}
