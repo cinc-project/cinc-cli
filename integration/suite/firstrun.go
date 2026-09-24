@@ -209,3 +209,43 @@ func testFirstRunLocationTilde(t *testing.T, tgt Target, c *cli) {
 	}
 	b.run("--config", "~/work/credentials", "node", "list")
 }
+
+// testFirstRunAcceptDefaults presses Enter at every first-run prompt, the
+// fastest way through setup. Enter at the gate means yes, and the defaults
+// write a [default] profile for $USER with no server. The next server
+// command has to say which setting is missing and how to add it, not fail
+// on a URL the user never typed.
+func testFirstRunAcceptDefaults(t *testing.T, _ Target, c *cli) {
+	b := behBareCLI(c)
+	b.env = []string{"USER=newuser"}
+
+	r := b.execTTY(lines("", "", "", "", "", "", "", ""), "node", "list")
+	if r.exitCode != 0 {
+		t.Fatalf("pressing Enter through first-run setup failed: %s", r)
+	}
+	if !strings.Contains(r.stdout, `Wrote credentials profile "default"`) {
+		t.Errorf("first-run setup should report the profile it wrote: %s", r)
+	}
+	written := behReadFile(t, b.credentialsPath())
+	for _, want := range []string{
+		"[default]",
+		`client_name = "newuser"`,
+		fmt.Sprintf("client_key = %q", filepath.Join(b.home, ".cinc", "newuser.pem")),
+		`supermarket_site = "https://supermarket.chef.io"`,
+	} {
+		if !strings.Contains(written, want) {
+			t.Errorf("accepting every default should write %s:\n%s", want, written)
+		}
+	}
+	if strings.Contains(written, "server_url") {
+		t.Errorf("no server was given, so none should be written:\n%s", written)
+	}
+
+	r = b.fail("node", "list")
+	line := behStderrLine(t, r)
+	for _, want := range []string{"cinc_server_url", `"default"`, behProgName(b) + " config create"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("a profile with no server should name %s in its error: %s", want, r)
+		}
+	}
+}
