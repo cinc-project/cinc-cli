@@ -2,13 +2,17 @@ package suite
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	cinc "github.com/cinc-project/cinc-api"
 )
@@ -1139,7 +1143,29 @@ func behRenamedCLI(c *cli, name string) *cli {
 	if err := os.WriteFile(b.bin, data, 0o755); err != nil {
 		c.t.Fatal(err)
 	}
+	waitUntilExecutable(c.t, b.bin)
 	return b
+}
+
+// waitUntilExecutable returns once a freshly written binary can be run.
+// Cases run in parallel, so another case can fork while the copy above
+// still has the file open for writing. The forked child holds that
+// descriptor until it execs, and on Linux running the file meanwhile
+// fails with "text file busy". The window closes on its own, and no new
+// writer can open, so retrying until the error stops is enough.
+func waitUntilExecutable(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err := exec.Command(path, "version").Run()
+		if !errors.Is(err, syscall.ETXTBSY) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s stayed busy: %v", path, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // testRenamedBinary checks that a renamed install names itself everywhere
