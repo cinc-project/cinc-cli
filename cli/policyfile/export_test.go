@@ -111,8 +111,8 @@ func TestExportAssemblesChefCompatibleTree(t *testing.T) {
 	}
 	// Generated client config selects the policy.
 	clientRB, err := os.ReadFile(filepath.Join(dest, "client.rb"))
-	if err != nil || !contains(string(clientRB), `policy_name "web"`) {
-		t.Errorf("client.rb = %q (err %v), want policy_name \"web\"", clientRB, err)
+	if err != nil || !contains(string(clientRB), `policy_name 'web'`) {
+		t.Errorf("client.rb = %q (err %v), want policy_name 'web'", clientRB, err)
 	}
 	// Archive written.
 	if result.Archive == "" {
@@ -170,5 +170,16 @@ func TestExportUsesIdentifierWhenNoDottedDecimal(t *testing.T) {
 	// Falls back to the plain identifier for the directory name.
 	if _, err := os.Stat(filepath.Join(dest, "cookbooks", "cb-deadbeef")); err != nil {
 		t.Errorf("expected cookbooks/cb-deadbeef: %v", err)
+	}
+}
+
+// A lock is untrusted input, and client.rb is Ruby that cinc-client
+// evaluates, so the policy name must land in a literal Ruby can't
+// interpolate: in a double-quoted string, #{...} would run as code.
+func TestClientRBDoesNotInterpolatePolicyName(t *testing.T) {
+	got := clientRB(`web#{system("id")}'x`)
+	want := `policy_name 'web#{system("id")}\'x'`
+	if !contains(got, want) {
+		t.Errorf("clientRB = %q, want it to contain %q", got, want)
 	}
 }

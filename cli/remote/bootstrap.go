@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/cinc-project/cinc-cli/cli/rubylit"
 )
 
 const DefaultBootstrapURL = "https://omnitruck.cinc.sh/install.sh"
@@ -33,7 +35,7 @@ func BootstrapCommand(opts BootstrapOptions) (string, error) {
 	if opts.ClientKeyPEM == "" {
 		return "", fmt.Errorf("client key is required")
 	}
-	// rubyQuote keeps these out of Ruby's reach, but the client.rb it builds
+	// rubylit.Quote keeps these out of Ruby's reach, but the client.rb it builds
 	// is delivered inside a shell heredoc one layer down. A newline can close
 	// that heredoc early and turn the remainder into commands run through
 	// sudo on the target, so reject it here rather than try to escape it.
@@ -131,18 +133,7 @@ func firstBootJSON(opts BootstrapOptions) ([]byte, error) {
 
 func clientRB(opts BootstrapOptions) string {
 	return fmt.Sprintf("chef_server_url %s\nnode_name %s\nclient_key %s\n",
-		rubyQuote(opts.ServerURL), rubyQuote(opts.NodeName), rubyQuote("/etc/cinc/client.pem"))
-}
-
-// rubyQuote renders s as a single-quoted Ruby string literal. Ruby single
-// quotes do not interpolate #{...} (unlike double quotes and unlike Go's %q),
-// so this prevents a node name or server URL from injecting Ruby code into the
-// client.rb that cinc-client evaluates on the target. Only backslash and the
-// single quote itself are special inside a single-quoted Ruby literal.
-func rubyQuote(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `'`, `\'`)
-	return "'" + s + "'"
+		rubylit.Quote(opts.ServerURL), rubylit.Quote(opts.NodeName), rubylit.Quote("/etc/cinc/client.pem"))
 }
 
 // heredocDelimiter terminates every file the bootstrap script writes. A line
