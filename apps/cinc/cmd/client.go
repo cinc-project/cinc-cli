@@ -54,8 +54,7 @@ cinc client reregister worker-01 --key-file worker-01.pem`,
 			if key.PrivateKey == "" {
 				return fmt.Errorf("cinc: server returned no private key when reregistering %q", name)
 			}
-			fileMsg := fmt.Sprintf("Reregistered client %q (key written to %s)", name, keyFile)
-			return writePrivateKey(cmd.OutOrStdout(), key.PrivateKey, keyFile, fileMsg)
+			return emitPrivateKey(cmd, fmt.Sprintf("Reregistered client %q", name), "key", key.PrivateKey, keyFile)
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "key-file", "f", "", "write the new private key to this file instead of stdout")
@@ -190,30 +189,13 @@ cinc client create worker-01 --public-key worker-01.pub`,
 			if err != nil {
 				return err
 			}
-			return emitClientCreateResult(cmd, req.Name, created, keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created client %q", req.Name), "key", created.ChefKey.PrivateKey, keyFile)
 		},
 	}
 	cmd.Flags().BoolVar(&validator, "validator", false, "create a validator client")
 	cmd.Flags().StringVarP(&keyFile, "key-file", "f", "", "write the generated private key to this file instead of stdout")
 	cmd.Flags().StringVar(&publicKeyFile, "public-key", "", "path to a PEM public key; the server will not generate a key pair")
 	return cmd
-}
-
-// emitClientCreateResult renders the response from a successful client
-// create. When the server returns a private key, it is written to
-// keyFile if given, otherwise streamed to stdout (with a trailing
-// newline if the PEM does not already end in one). When no private key
-// is returned — the BYO public key path — the command prints a single
-// confirmation line.
-func emitClientCreateResult(cmd *cobra.Command, name string, created *cinc.APIClient, keyFile string) error {
-	out := cmd.OutOrStdout()
-	priv := created.ChefKey.PrivateKey
-	if priv == "" {
-		fmt.Fprintf(out, "Created client %q\n", name)
-		return nil
-	}
-	fileMsg := fmt.Sprintf("Created client %q (key written to %s)", name, keyFile)
-	return writePrivateKey(out, priv, keyFile, fileMsg)
 }
 
 // newClientDeleteCmd builds the `cinc client delete <name>` command.

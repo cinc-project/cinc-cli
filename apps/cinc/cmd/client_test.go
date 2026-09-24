@@ -532,3 +532,25 @@ func TestClientListCommandReportsConfigError(t *testing.T) {
 		t.Error("expected an error when the config file is missing")
 	}
 }
+
+// Every command that streams a server-generated private key to stdout warns
+// on stderr that it is the only copy, as org create always has. stdout stays
+// the bare key, so it can still be piped to a file.
+func TestClientCreateStreamedKeyWarnsOnStderr(t *testing.T) {
+	const privKey = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJ...\n-----END RSA PRIVATE KEY-----\n"
+	var gotBody []byte
+	srv := clientCreateServer(t, &gotBody,
+		fmt.Sprintf(`{"uri":"http://x/clients/worker-01","chef_key":{"private_key":%q}}`, privKey))
+
+	out, errOut, err := runRoot(t, "client", "create", "worker-01", "--config", writeCreateConfig(t, srv.URL))
+	if err != nil {
+		t.Fatalf("cinc client create: %v", err)
+	}
+	if out != privKey {
+		t.Errorf("stdout = %q, want only the private key", out)
+	}
+	want := "Created client \"worker-01\". Save this key now. The server won't show it to you again:\n"
+	if errOut != want {
+		t.Errorf("stderr = %q, want %q", errOut, want)
+	}
+}

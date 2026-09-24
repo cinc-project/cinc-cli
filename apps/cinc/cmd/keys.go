@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -116,7 +115,7 @@ cinc %[1]s key show %[2]s default`, owner.noun, owner.sample),
 // and returns the private key, which is streamed to stdout or written to
 // `--key-file`. `--public-key` supplies an existing public key instead, in
 // which case the server returns no private key. `--expires` sets the
-// expiration date (default "infinity").
+// expiration date; left unset, the library sends "infinity".
 func newKeyCreateCmd(owner keyOwner) *cobra.Command {
 	var (
 		keyFile       string
@@ -141,6 +140,8 @@ cinc %[1]s key create %[2]s temp --expires 2030-01-01T00:00:00Z`, owner.noun, ow
 				return err
 			}
 			ownerName, keyName := args[0], args[1]
+			// With no public key, the library asks the server to generate
+			// the pair.
 			k := &cinc.Key{Name: keyName, ExpirationDate: expires}
 			if publicKeyFile != "" {
 				pem, err := os.ReadFile(publicKeyFile)
@@ -148,24 +149,18 @@ cinc %[1]s key create %[2]s temp --expires 2030-01-01T00:00:00Z`, owner.noun, ow
 					return fmt.Errorf("cinc: read public key: %w", err)
 				}
 				k.PublicKey = string(pem)
-			} else {
-				k.CreateKey = true
 			}
 			created, _, err := owner.scope(c, ownerName).Create(cmd.Context(), k)
 			if err != nil {
 				return err
 			}
-			if created.PrivateKey == "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Added key %q to %s %q\n", keyName, owner.noun, ownerName)
-				return nil
-			}
-			fileMsg := fmt.Sprintf("Added key %q to %s %q (key written to %s)", keyName, owner.noun, ownerName, keyFile)
-			return writePrivateKey(cmd.OutOrStdout(), created.PrivateKey, keyFile, fileMsg)
+			return emitPrivateKey(cmd, fmt.Sprintf("Added key %q to %s %q", keyName, owner.noun, ownerName),
+				"key", created.PrivateKey, keyFile)
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "key-file", "f", "", "write the generated private key to this file instead of stdout")
 	cmd.Flags().StringVar(&publicKeyFile, "public-key", "", "path to a PEM public key; the server will not generate a key pair")
-	cmd.Flags().StringVar(&expires, "expires", "infinity", "expiration date (ISO-8601 UTC) or 'infinity'")
+	cmd.Flags().StringVar(&expires, "expires", "", "expiration date (ISO-8601 UTC) or 'infinity', the default")
 	return cmd
 }
 
@@ -233,12 +228,12 @@ cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pe
 			}
 			// An edit with "create_key": true has the server regenerate the
 			// key; the response carries the only copy of the new private key.
-			if result != nil && result.PrivateKey != "" {
-				fileMsg := fmt.Sprintf("Updated key %q on %s %q (key written to %s)", keyName, owner.noun, ownerName, keyFile)
-				return writePrivateKey(cmd.OutOrStdout(), result.PrivateKey, keyFile, fileMsg)
+			var priv string
+			if result != nil {
+				priv = result.PrivateKey
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Updated key %q on %s %q\n", keyName, owner.noun, ownerName)
-			return nil
+			return emitPrivateKey(cmd, fmt.Sprintf("Updated key %q on %s %q", keyName, owner.noun, ownerName),
+				"key", priv, keyFile)
 		},
 	}
 	cmd.Flags().StringVar(&inputFile, "file", "", "read the updated key JSON from this file instead of launching the editor")
@@ -271,41 +266,60 @@ cinc %[1]s key delete %[2]s rotation`, owner.noun, owner.sample),
 	}
 }
 
-// writePrivateKey streams a server-generated private key to stdout (adding a
-// trailing newline when the PEM lacks one) or, when keyFile is set, writes it
-// 0600 and prints fileMsg. Callers handle the no-key (bring-your-own-public-
-// key) case themselves. Shared by client/user create, key create, and client
-// reregister.
-func writePrivateKey(out io.Writer, priv, keyFile, fileMsg string) error {
-	if keyFile != "" {
-		// Open with O_TRUNC (not O_EXCL) so reregister and friends can
-		// overwrite an existing key, then force 0600 explicitly: a
-		// pre-existing file would otherwise keep its looser mode, and the
-		// create mode is masked by umask. A private key must never be
-		// group- or world-readable.
-		f, err := os.OpenFile(keyFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-		if err != nil {
-			return fmt.Errorf("cinc: write key file: %w", err)
-		}
-		if err := f.Chmod(0o600); err != nil {
-			_ = f.Close() // already returning an error
-			return fmt.Errorf("cinc: write key file: %w", err)
-		}
-		if _, err := f.WriteString(priv); err != nil {
-			_ = f.Close() // already returning an error
-			return fmt.Errorf("cinc: write key file: %w", err)
-		}
-		if err := f.Close(); err != nil {
-			return fmt.Errorf("cinc: write key file: %w", err)
-		}
-		fmt.Fprintln(out, fileMsg)
+// emitPrivateKey reports a finished create, rotate or reregister, done
+// (e.g. `Created client "web"`), along with the private key the server
+// generated for it, the only copy there will be. label names the key in
+// messages ("key", "validator key").
+//
+// With keyFile set, the key is written there, 0600, and done is printed
+// with where it went. Otherwise the key alone goes to stdout (with a trailing
+// newline when the PEM lacks one), so it can be piped, and done plus a
+// warning that it won't be shown again goes to stderr. A priv of "" means
+// the server generated nothing (the caller supplied a public key), so only
+// done is printed.
+func emitPrivateKey(cmd *cobra.Command, done, label, priv, keyFile string) error {
+	out := cmd.OutOrStdout()
+	if priv == "" {
+		fmt.Fprintln(out, done)
 		return nil
 	}
+	if keyFile != "" {
+		if err := writeKeyFile(keyFile, priv); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s (%s written to %s)\n", done, label, keyFile)
+		return nil
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s. Save this %s now. The server won't show it to you again:\n", done, label)
 	if _, err := fmt.Fprint(out, priv); err != nil {
 		return err
 	}
 	if !strings.HasSuffix(priv, "\n") {
 		fmt.Fprintln(out)
+	}
+	return nil
+}
+
+// writeKeyFile writes a private key to path, mode 0600. It opens with
+// O_TRUNC (not O_EXCL) so reregister and friends can overwrite an existing
+// key, then forces 0600 explicitly: a pre-existing file would otherwise keep
+// its looser mode, and the create mode is masked by umask. A private key
+// must never be group- or world-readable.
+func writeKeyFile(path, priv string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("cinc: write key file: %w", err)
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close() // already returning an error
+		return fmt.Errorf("cinc: write key file: %w", err)
+	}
+	if _, err := f.WriteString(priv); err != nil {
+		_ = f.Close() // already returning an error
+		return fmt.Errorf("cinc: write key file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("cinc: write key file: %w", err)
 	}
 	return nil
 }

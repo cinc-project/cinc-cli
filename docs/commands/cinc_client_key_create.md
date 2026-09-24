@@ -29,7 +29,7 @@ cinc client key create worker-01 temp --expires 2030-01-01T00:00:00Z
 ### Options
 
 ```
-      --expires string      expiration date (ISO-8601 UTC) or 'infinity' (default "infinity")
+      --expires string      expiration date (ISO-8601 UTC) or 'infinity', the default
   -h, --help                help for create
   -f, --key-file string     write the generated private key to this file instead of stdout
       --public-key string   path to a PEM public key; the server will not generate a key pair

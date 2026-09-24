@@ -420,19 +420,18 @@ func TestKeyEditWritesRegeneratedPrivateKeyToFile(t *testing.T) {
 	}
 }
 
-// TestWritePrivateKeyForces0600 confirms the written key is mode 0600 even
+// TestWriteKeyFileForces0600 confirms the written key is mode 0600 even
 // when a looser-permissioned file already exists at the path (the
 // os.WriteFile-with-mode approach would have preserved the old 0644).
-func TestWritePrivateKeyForces0600(t *testing.T) {
+func TestWriteKeyFileForces0600(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "client.pem")
 	// Pre-create a world/group-readable file at the destination.
 	if err := os.WriteFile(path, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	var out bytes.Buffer
-	if err := writePrivateKey(&out, "-----BEGIN KEY-----\nabc\n-----END KEY-----\n", path, "wrote it"); err != nil {
-		t.Fatalf("writePrivateKey: %v", err)
+	if err := writeKeyFile(path, "-----BEGIN KEY-----\nabc\n-----END KEY-----\n"); err != nil {
+		t.Fatalf("writeKeyFile: %v", err)
 	}
 
 	info, err := os.Stat(path)

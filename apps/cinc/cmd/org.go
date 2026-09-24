@@ -92,11 +92,8 @@ cinc org list`,
 // user (a client has no such endpoint), it returns forbidden, the server's
 // original refusal.
 func fetchMemberOrgNames(cmd *cobra.Command, c *cinc.Client, forbidden error) ([]string, error) {
-	profile, err := resolveProfile(cmd)
-	if err != nil || profile.ClientName == "" {
-		return nil, forbidden
-	}
-	orgs, _, err := c.Associations.ListUserOrgs(cmd.Context(), profile.ClientName)
+	name := c.ClientName()
+	orgs, _, err := c.Associations.ListUserOrgs(cmd.Context(), name)
 	if err != nil {
 		return nil, forbidden
 	}
@@ -106,7 +103,7 @@ func fetchMemberOrgNames(cmd *cobra.Command, c *cinc.Client, forbidden error) ([
 	}
 	slices.Sort(names)
 	fmt.Fprintf(cmd.ErrOrStderr(),
-		"You can't list every organization on this server, so here are the ones %q belongs to.\n", profile.ClientName)
+		"You can't list every organization on this server, so here are the ones %q belongs to.\n", name)
 	return names, nil
 }
 
@@ -175,29 +172,11 @@ cinc org create acme "Acme Corporation"`,
 			if err != nil {
 				return err
 			}
-			return emitOrgCreateResult(cmd, args[0], created, keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created organization %q", args[0]), "validator key", created.PrivateKey, keyFile)
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "filename", "f", "", "write the generated validator private key to this file instead of stdout")
 	return cmd
-}
-
-// emitOrgCreateResult renders a successful org create. A validator private key
-// is written to keyFile if given, otherwise streamed to stdout after a
-// stderr heads-up that it won't be shown again — keeping stdout pipeable.
-func emitOrgCreateResult(cmd *cobra.Command, name string, created *cinc.OrgCreateResult, keyFile string) error {
-	out := cmd.OutOrStdout()
-	priv := created.PrivateKey
-	if priv == "" {
-		fmt.Fprintf(out, "Created organization %q\n", name)
-		return nil
-	}
-	if keyFile == "" {
-		fmt.Fprintf(cmd.ErrOrStderr(),
-			"Created organization %q. Save this validator private key now — the server won't show it to you again:\n", name)
-	}
-	fileMsg := fmt.Sprintf("Created organization %q (validator key written to %s)", name, keyFile)
-	return writePrivateKey(out, priv, keyFile, fileMsg)
 }
 
 // newOrgEditCmd builds the `cinc org edit <org>` command. It fetches the org,
@@ -356,7 +335,7 @@ cinc org member add alice`,
 			if _, err := c.Associations.AddMember(cmd.Context(), user); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Added %q to organization %q\n", user, orgName(cmd))
+			fmt.Fprintf(cmd.OutOrStdout(), "Added %q to organization %q\n", user, c.Org())
 			return nil
 		},
 	}
@@ -379,7 +358,7 @@ cinc org member remove alice`,
 			if _, _, err := c.Associations.RemoveMember(cmd.Context(), user); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Removed %q from organization %q\n", user, orgName(cmd))
+			fmt.Fprintf(cmd.OutOrStdout(), "Removed %q from organization %q\n", user, c.Org())
 			return nil
 		},
 	}
@@ -452,7 +431,7 @@ cinc org invite create carol`,
 			if _, _, err := c.Associations.Invite(cmd.Context(), user); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Invited %q to organization %q\n", user, orgName(cmd))
+			fmt.Fprintf(cmd.OutOrStdout(), "Invited %q to organization %q\n", user, c.Org())
 			return nil
 		},
 	}
@@ -483,15 +462,4 @@ cinc org invite rescind acme-carol`,
 			return nil
 		},
 	}
-}
-
-// orgName returns the org the current profile points at, for confirmation
-// messages. It falls back to "the current org" when the profile can't be
-// resolved — the command has already succeeded by the time this is called, so
-// a missing name shouldn't manufacture an error.
-func orgName(cmd *cobra.Command) string {
-	if p, err := resolveProfile(cmd); err == nil && p.Org != "" {
-		return p.Org
-	}
-	return "the current org"
 }
