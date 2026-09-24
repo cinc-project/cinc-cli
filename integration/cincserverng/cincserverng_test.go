@@ -75,7 +75,6 @@ func run(m *testing.M) int {
 		Gaps: map[string]string{
 			"databags/edit-missing":            "PUT on a missing data bag item creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
 			"databags/invalid-names":           "data bag names and item ids are not validated, erchef answers 400 (https://github.com/cinc-project/cinc-server-ng/issues/167), and a percent-escaped path fails signature verification (https://github.com/cinc-project/cinc-server-ng/issues/168)",
-			"nodes/edit-missing":               "PUT on a missing node creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
 			"cookbooks/invalid-name":           "cookbook version PUT accepts a name erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/181",
 			"cookbooks/escaped-name-not-found": "the signature is checked over the decoded path, so a percent-escaped path gets a 401: https://github.com/cinc-project/cinc-server-ng/issues/168",
 			"users/edit-missing":               "PUT on a missing user creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
@@ -92,6 +91,15 @@ func run(m *testing.M) int {
 			"orgs/member-remove-forbidden":     "any member may remove another member: https://github.com/cinc-project/cinc-server-ng/issues/179",
 			"orgs/invite-create-forbidden":     "any member may invite a user: https://github.com/cinc-project/cinc-server-ng/issues/179",
 			"orgs/invite-rescind-forbidden":    "any member may rescind an invitation: https://github.com/cinc-project/cinc-server-ng/issues/179",
+			"nodes/edit-missing":               "PUT on a missing node creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+
+			"roles/edit-missing":                       "PUT on a missing role creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+			"roles/invalid-name":                       "role create accepts names erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
+			"roles/invalid-run-list":                   "role create and update accept run lists erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
+			"environments/edit-missing":                "PUT on a missing environment creates it instead of returning 404: https://github.com/cinc-project/cinc-server-ng/issues/166",
+			"environments/invalid-name":                "environment create accepts names erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
+			"environments/invalid-cookbook-constraint": "environment create and update accept cookbook constraints erchef rejects: https://github.com/cinc-project/cinc-server-ng/issues/184",
+			"search/escaped-query":                     "search queries do not support Lucene backslash escapes: https://github.com/cinc-project/cinc-server-ng/issues/185",
 		},
 	}
 	return m.Run()
