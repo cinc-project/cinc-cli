@@ -922,3 +922,21 @@ func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
 		t.Errorf("node ssh error = %v, want the decode failure", err)
 	}
 }
+
+// An attribute that holds an object can't be a host to connect to. Before,
+// its Go map text ("map[...]") went to SSH as the host name.
+func TestNodeSSHHostRejectsNonScalarAttribute(t *testing.T) {
+	node := &cinc.Node{Name: "web01", Automatic: cinc.Attributes{"cloud": map[string]any{"public_hostname": "web01.cloud.test"}}}
+	_, err := nodeSSHHost(node, "cloud")
+	if err == nil {
+		t.Fatal("want an error for an attribute that holds an object")
+	}
+	for _, want := range []string{"web01", `"cloud"`, "cloud.public_hostname"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "map[") {
+		t.Errorf("error %q leaks Go map formatting", err)
+	}
+}
