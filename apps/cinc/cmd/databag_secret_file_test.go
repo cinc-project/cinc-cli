@@ -143,3 +143,46 @@ func writeItemFile(t *testing.T, item cinc.DataBagItem) string {
 	}
 	return path
 }
+
+// TestDataBagSecretCreateRefusesEncryptedItem covers feeding `secret create`
+// an item copied from the server, already encrypted. Encrypting it again
+// would store an item that decrypts to ciphertext, so it's refused before
+// anything is sent, with a pointer at what to do instead.
+func TestDataBagSecretCreateRefusesEncryptedItem(t *testing.T) {
+	srv := databagNoRequestServer(t)
+	enc := encryptedItem(t, cinc.DataBagItem{"id": "mysql", "password": "p"}, "s3cr3t")
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"databag", "secret", "create", "passwords", "mysql",
+		"--file", writeItemFile(t, enc),
+		"--secret-file", writeSecretFile(t, "s3cr3t"), "--config", writeDataBagConfig(t, srv.URL)})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected an already-encrypted item to be refused")
+	}
+	if !strings.Contains(err.Error(), "already holds encrypted values") || !strings.Contains(err.Error(), "plaintext") {
+		t.Errorf("error should explain the item is already encrypted: %v", err)
+	}
+}
+
+// TestDataBagSecretFileRejectsInvalidUTF8 follows Chef, which reads a secret
+// file as UTF-8 text and can't use one that isn't, so knife and chef-client
+// could never decrypt what such a secret encrypted.
+func TestDataBagSecretFileRejectsInvalidUTF8(t *testing.T) {
+	srv := databagNoRequestServer(t)
+	secretPath := writeSecretFile(t, "\xff\xfesecret")
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"databag", "secret", "create", "passwords", "mysql",
+		"--file", writeItemFile(t, cinc.DataBagItem{"id": "mysql", "password": "p"}),
+		"--secret-file", secretPath, "--config", writeDataBagConfig(t, srv.URL)})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected a non-UTF-8 secret file to be refused")
+	}
+	if !strings.Contains(err.Error(), secretPath) || !strings.Contains(err.Error(), "UTF-8") {
+		t.Errorf("error should name the secret file and say it isn't UTF-8: %v", err)
+	}
+}

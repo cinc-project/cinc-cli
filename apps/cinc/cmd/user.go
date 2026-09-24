@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -52,12 +51,8 @@ cinc user edit alice`,
 
 			var updated cinc.User
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.User](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := c.Users.Get(cmd.Context(), name)

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -111,12 +110,8 @@ cinc client edit worker-01`,
 
 			var updated cinc.APIClient
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.APIClient](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := c.Clients.Get(cmd.Context(), name)

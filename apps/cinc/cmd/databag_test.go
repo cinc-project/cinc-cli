@@ -273,7 +273,7 @@ func TestDataBagCreateCommandWithItemReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "item.json")
-	body, _ := json.Marshal(cinc.DataBagItem{"id": "ignored-in-file", "password": "from-file"})
+	body, _ := json.Marshal(cinc.DataBagItem{"id": "db-password", "password": "from-file"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestDataBagCreateCommandWithItemReadsFromFile(t *testing.T) {
 		t.Fatalf("cinc databag create --file: %v", err)
 	}
 	if gotItem["id"] != "db-password" {
-		t.Errorf("PUT body id = %v, want db-password (path arg must win over file)", gotItem["id"])
+		t.Errorf("PUT body id = %v, want db-password", gotItem["id"])
 	}
 	if gotItem["password"] != "from-file" {
 		t.Errorf("PUT body password = %v, want from-file", gotItem["password"])
@@ -511,7 +511,7 @@ func TestDataBagItemEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "item.json")
-	body, err := json.Marshal(cinc.DataBagItem{"id": "ignored-in-file", "role": "editor"})
+	body, err := json.Marshal(cinc.DataBagItem{"id": "alice", "role": "editor"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestDataBagItemEditCommandReadsFromFile(t *testing.T) {
 		t.Errorf("PUT body role = %v, want editor", gotPut["role"])
 	}
 	if gotPut["id"] != "alice" {
-		t.Errorf("PUT body id = %v, want alice (path arg must win over file)", gotPut["id"])
+		t.Errorf("PUT body id = %v, want alice", gotPut["id"])
 	}
 }
 
@@ -688,7 +688,7 @@ func TestDataBagItemCreateCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "item.json")
-	body, _ := json.Marshal(cinc.DataBagItem{"id": "ignored-in-file", "password": "from-file"})
+	body, _ := json.Marshal(cinc.DataBagItem{"id": "db-password", "password": "from-file"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -701,7 +701,7 @@ func TestDataBagItemCreateCommandReadsFromFile(t *testing.T) {
 		t.Fatalf("cinc databag item create --file: %v", err)
 	}
 	if gotItem["id"] != "db-password" {
-		t.Errorf("POST body id = %v, want db-password (path arg must win over file)", gotItem["id"])
+		t.Errorf("POST body id = %v, want db-password", gotItem["id"])
 	}
 	if gotItem["password"] != "from-file" {
 		t.Errorf("POST body password = %v, want from-file", gotItem["password"])

@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -54,6 +52,25 @@ func addSecretFlags(cmd *cobra.Command) {
 	cmd.Flags().String("secret", "", "the encrypted data bag secret as a literal string (mutually exclusive with --secret-file)")
 }
 
+// resolveSecretClient resolves the profile once and returns both the data
+// bag secret and a server client for it. The secret comes first, so a
+// missing or unusable secret fails before anything talks to the server.
+func resolveSecretClient(cmd *cobra.Command) ([]byte, *cinc.Client, error) {
+	profile, err := resolveProfile(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	secret, err := resolveSecret(cmd, profile)
+	if err != nil {
+		return nil, nil, err
+	}
+	c, err := clientForProfile(cmd, profile)
+	if err != nil {
+		return nil, nil, err
+	}
+	return secret, c, nil
+}
+
 // newDataBagSecretCreateCmd builds `cinc databag secret create <bag> <id>`.
 // The bag must already exist (use `cinc databag create`). Without --file
 // the built-in JSON editor opens on a stub carrying just the id; every
@@ -67,15 +84,7 @@ func newDataBagSecretCreateCmd() *cobra.Command {
 cinc databag secret create passwords mysql --secret-file ~/.cinc/secret`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			profile, err := resolveProfile(cmd)
-			if err != nil {
-				return err
-			}
-			secret, err := resolveSecret(cmd, profile)
-			if err != nil {
-				return err
-			}
-			c, err := resolveClient(cmd)
+			secret, c, err := resolveSecretClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -84,13 +93,8 @@ cinc databag secret create passwords mysql --secret-file ~/.cinc/secret`,
 			if err != nil {
 				return err
 			}
-			item["id"] = id
-			encrypted, err := item.Encrypt(secret)
-			if err != nil {
-				return err
-			}
-			if _, _, err := c.DataBags.Items(bag).Create(cmd.Context(), encrypted); err != nil {
-				return err
+			if _, _, err := c.DataBags.Items(bag).CreateEncrypted(cmd.Context(), item, secret); err != nil {
+				return encryptItemError(err, bag, id)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created encrypted item %q in data bag %q\n", id, bag)
 			return nil
@@ -117,24 +121,12 @@ cinc databag secret show passwords mysql --secret-file ~/.cinc/secret`,
 			if err != nil {
 				return err
 			}
-			profile, err := resolveProfile(cmd)
-			if err != nil {
-				return err
-			}
-			secret, err := resolveSecret(cmd, profile)
-			if err != nil {
-				return err
-			}
-			c, err := resolveClient(cmd)
+			secret, c, err := resolveSecretClient(cmd)
 			if err != nil {
 				return err
 			}
 			bag, id := args[0], args[1]
-			item, _, err := c.DataBags.Items(bag).Get(cmd.Context(), id)
-			if err != nil {
-				return err
-			}
-			plain, err := item.Decrypt(secret)
+			plain, _, err := c.DataBags.Items(bag).GetDecrypted(cmd.Context(), id, secret)
 			if err != nil {
 				return decryptItemError(err, bag, id)
 			}
@@ -149,7 +141,8 @@ cinc databag secret show passwords mysql --secret-file ~/.cinc/secret`,
 // fetches and decrypts the item, opens its plaintext in the built-in JSON
 // editor (same engine as `cinc databag item edit`), re-encrypts the saved
 // result, and PUTs it back. `--file` reads the updated plaintext JSON from
-// disk for scripted use. The path arg's id pins the identifier.
+// disk for scripted use; like `databag item edit`, a file or edit naming a
+// different id is refused.
 func newDataBagSecretEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -159,15 +152,7 @@ func newDataBagSecretEditCmd() *cobra.Command {
 cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			profile, err := resolveProfile(cmd)
-			if err != nil {
-				return err
-			}
-			secret, err := resolveSecret(cmd, profile)
-			if err != nil {
-				return err
-			}
-			c, err := resolveClient(cmd)
+			secret, c, err := resolveSecretClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -176,22 +161,11 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 
 			var updated cinc.DataBagItem
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := validateDataBagItem(data); err != nil {
+				if updated, err = readDataBagItemFile(inputFile, id); err != nil {
 					return err
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
 				}
 			} else {
-				current, _, err := items.Get(cmd.Context(), id)
-				if err != nil {
-					return err
-				}
-				plain, err := current.Decrypt(secret)
+				plain, _, err := items.GetDecrypted(cmd.Context(), id, secret)
 				if err != nil {
 					return decryptItemError(err, bag, id)
 				}
@@ -205,13 +179,8 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 				}
 				updated = edited
 			}
-			updated["id"] = id
-			encrypted, err := updated.Encrypt(secret)
-			if err != nil {
-				return err
-			}
-			if _, _, err := items.Update(cmd.Context(), encrypted); err != nil {
-				return err
+			if _, _, err := items.UpdateEncrypted(cmd.Context(), updated, secret); err != nil {
+				return encryptItemError(err, bag, id)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated encrypted item %q in bag %q\n", id, bag)
 			return nil
@@ -220,6 +189,18 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 	cmd.Flags().StringVar(&inputFile, "file", "", "read the updated item JSON from this file instead of launching the editor")
 	addSecretFlags(cmd)
 	return cmd
+}
+
+// encryptItemError explains an item that is already encrypted, which is
+// what you get by handing `databag secret create` or `edit` an item copied
+// from the server rather than its plaintext. Encrypting it again would
+// store ciphertext that decrypts to more ciphertext. Anything else passes
+// through unchanged.
+func encryptItemError(err error, bag, id string) error {
+	if errors.Is(err, cinc.ErrAlreadyEncrypted) {
+		return fmt.Errorf("item %q for data bag %q already holds encrypted values, and encrypting them again would make it unreadable. Give us the plaintext values instead (`cinc databag secret show %s %s` prints them), or store the encrypted item as-is with `cinc databag item create` or `edit`.", id, bag, bag, id)
+	}
+	return err
 }
 
 // decryptItemError turns a Decrypt failure into a conversational message.

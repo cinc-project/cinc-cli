@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -48,12 +46,8 @@ cinc role create webserver`,
 			}
 			role := cinc.Role{Name: args[0]}
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &role); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if role, err = readJSONFile[cinc.Role](inputFile); err != nil {
+					return err
 				}
 				role.Name = args[0]
 			}
@@ -93,12 +87,8 @@ cinc role edit webserver`,
 
 			var updated cinc.Role
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
+				if updated, err = readJSONFile[cinc.Role](inputFile); err != nil {
+					return err
 				}
 			} else {
 				current, _, err := c.Roles.Get(cmd.Context(), name)

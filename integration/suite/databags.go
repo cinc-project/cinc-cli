@@ -18,7 +18,7 @@ var databagFamily = family{cases: []testCase{
 	{"databags/create-with-item", []string{"databag create", "databag item show"}, testDatabagCreateWithItem},
 	{"databags/create-with-item-bad-file", []string{"databag create", "databag list"}, testDatabagCreateWithItemBadFile},
 	{"databags/item-show-exact", []string{"databag item create", "databag item show", "databag item edit"}, testDatabagItemShowExact},
-	{"databags/item-id-from-argument", []string{"databag item create", "databag item edit", "databag item list"}, testDatabagItemIDFromArgument},
+	{"databags/item-id-mismatch", []string{"databag item create", "databag item edit", "databag item list"}, testDatabagItemIDMismatch},
 	{"databags/special-names", []string{"databag create", "databag item create", "databag item show", "databag item delete"}, testDatabagSpecialNames},
 	{"databags/invalid-names", []string{"databag create", "databag item create"}, testDatabagInvalidNames},
 	{"databags/already-exists", []string{"databag create", "databag item create", "databag secret create"}, testDatabagAlreadyExists},
@@ -194,21 +194,19 @@ func testDatabagItemShowExact(t *testing.T, _ Target, c *cli) {
 	}
 }
 
-// testDatabagItemIDFromArgument checks that the id argument names the item,
-// whatever id the file carries: create stores it under the argument, and
-// edit updates the argument's item rather than creating or renaming one.
-func testDatabagItemIDFromArgument(t *testing.T, _ Target, c *cli) {
+// testDatabagItemIDMismatch checks that a --file naming another item is
+// refused, naming both ids: create stores nothing, and edit leaves the
+// argument's item as it was rather than overwriting it with the file.
+func testDatabagItemIDMismatch(t *testing.T, _ Target, c *cli) {
 	bag := databagNew(c)
-	c.run("databag", "item", "create", bag, "foo", "--file", writeJSON(t, map[string]any{"id": "bar", "v": "1"}))
-	wantSlice(t, "items after create", databagItemIDs(c, bag), []string{"foo"})
-	if got := databagItemShow(c, bag, "foo"); !reflect.DeepEqual(got, map[string]any{"id": "foo", "v": "1"}) {
-		t.Errorf("created item = %v, want id foo", got)
-	}
+	databagWantStderr(t, c.fail("databag", "item", "create", bag, "foo", "--file", writeJSON(t, map[string]any{"id": "bar", "v": "1"})), `"bar"`, `"foo"`)
+	wantSlice(t, "items after a refused create", databagItemIDs(c, bag), []string{})
 
-	c.run("databag", "item", "edit", bag, "foo", "--file", writeJSON(t, map[string]any{"id": "baz", "v": "2"}))
-	wantSlice(t, "items after edit", databagItemIDs(c, bag), []string{"foo"})
-	if got := databagItemShow(c, bag, "foo"); !reflect.DeepEqual(got, map[string]any{"id": "foo", "v": "2"}) {
-		t.Errorf("edited item = %v, want id foo", got)
+	databagItemCreate(c, bag, map[string]any{"id": "foo", "v": "1"})
+	databagWantStderr(t, c.fail("databag", "item", "edit", bag, "foo", "--file", writeJSON(t, map[string]any{"id": "baz", "v": "2"})), `"baz"`, `"foo"`)
+	wantSlice(t, "items after a refused edit", databagItemIDs(c, bag), []string{"foo"})
+	if got := databagItemShow(c, bag, "foo"); !reflect.DeepEqual(got, map[string]any{"id": "foo", "v": "1"}) {
+		t.Errorf("item after a refused edit = %v, want it unchanged", got)
 	}
 }
 
@@ -550,11 +548,11 @@ func testDatabagSecretEdit(t *testing.T, _ Target, c *cli) {
 		}
 	}
 
-	// The id argument pins the item, whatever the file says.
-	c.run("databag", "secret", "edit", bag, "api-key",
-		"--file", writeJSON(t, map[string]any{"id": "other", "token": "v3"}), "--secret-file", secret)
+	// A file naming another item is refused, and the item is left alone.
+	databagWantStderr(t, c.fail("databag", "secret", "edit", bag, "api-key",
+		"--file", writeJSON(t, map[string]any{"id": "other", "token": "v3"}), "--secret-file", secret), `"other"`, `"api-key"`)
 	wantSlice(t, "items", databagItemIDs(c, bag), []string{"api-key"})
-	wantEqual(t, "token", databagSecretShow(c, nil, bag, "api-key", "--secret-file", secret)["token"], any("v3"))
+	wantEqual(t, "token", databagSecretShow(c, nil, bag, "api-key", "--secret-file", secret)["token"], any("v2-rotated"))
 }
 
 // testDatabagSecretWrongSecret checks that the wrong secret gives a clear
