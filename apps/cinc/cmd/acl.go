@@ -282,8 +282,10 @@ func explainACLChangeError(err error, grant bool, target, members string, groups
 // error itself when it isn't a server response.
 func serverMessage(err error) string {
 	var resp *cinc.ErrorResponse
-	if errors.As(err, &resp) && len(resp.Messages) > 0 {
-		return strings.Join(resp.Messages, "; ")
+	if errors.As(err, &resp) {
+		if msg := resp.ServerMessage(); msg != "" {
+			return msg
+		}
 	}
 	return err.Error()
 }

@@ -3,6 +3,8 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -581,10 +583,33 @@ func nodeSSHHost(node *cinc.Node, attr string) (string, error) {
 	if attr == "name" {
 		return node.Name, nil
 	}
-	if _, ok := node.Attribute(attr); !ok {
+	value, ok := node.Attribute(attr)
+	if !ok {
 		return "", fmt.Errorf("node %q has no %q attribute to connect to. Pick another with --attribute, or pass --attribute name to use the node name", node.Name, attr)
 	}
-	return node.AttributeString(attr), nil
+	host, ok := node.AttributeScalar(attr)
+	if !ok {
+		return "", fmt.Errorf("node %q's %q attribute isn't a single value we can connect to%s", node.Name, attr, nestedAttributeHint(attr, value))
+	}
+	return host, nil
+}
+
+// nestedAttributeHint suggests dotted paths into an attribute that holds an
+// object, e.g. "; try --attribute cloud.public_hostname".
+func nestedAttributeHint(attr string, value any) string {
+	m, ok := value.(map[string]any)
+	if !ok || len(m) == 0 {
+		return ""
+	}
+	keys := slices.Sorted(maps.Keys(m))
+	if len(keys) > 3 {
+		keys = keys[:3]
+	}
+	paths := make([]string, len(keys))
+	for i, k := range keys {
+		paths[i] = attr + "." + k
+	}
+	return "; it holds an object, so name a key inside it, such as --attribute " + strings.Join(paths, " or ")
 }
 
 func remoteOptions(flags nodeSSHFlags) remote.SSHOptions {
