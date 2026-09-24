@@ -64,7 +64,7 @@ func (c *Client) Install(ctx context.Context, server *cinc.Client, opts InstallO
 		return InstallResult{}, fmt.Errorf("supermarket: unpack %s: %w", opts.Cookbook, err)
 	}
 
-	cb, err := localcookbook.UploadableFromDir(cookbookDir, version)
+	cb, err := cinc.LocalCookbookFromDir(cookbookDir, version)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("supermarket: read %s: %w", opts.Cookbook, err)
 	}

@@ -12,7 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
+
+	cinc "github.com/cinc-project/cinc-api"
 
 	sm "github.com/cinc-project/cinc-supermarket-api"
 
@@ -136,31 +139,39 @@ func packageCookbook(opts ShareOptions, category string, includeFiles bool) (Sha
 	if err != nil {
 		return ShareResult{}, localcookbook.Archive{}, err
 	}
-	metadata, err := localcookbook.LoadMetadata(dir)
+	cb, err := localcookbook.Load(dir, opts.SkipChefignore)
 	if err != nil {
 		return ShareResult{}, localcookbook.Archive{}, err
 	}
-	md := metadata.Metadata
-	if md.Name != opts.Cookbook {
-		return ShareResult{}, localcookbook.Archive{}, fmt.Errorf("metadata name %q does not match requested cookbook %q", md.Name, opts.Cookbook)
+	if cb.Name != opts.Cookbook {
+		return ShareResult{}, localcookbook.Archive{}, fmt.Errorf("metadata name %q does not match requested cookbook %q", cb.Name, opts.Cookbook)
 	}
 	if category == "" {
 		category = "Other"
 	}
-
-	archive, err := localcookbook.BuildArchiveWithOptions(dir, opts.Cookbook, localcookbook.ArchiveOptions{
-		MetadataJSON:   metadata.JSON,
-		IncludeFiles:   includeFiles,
-		SkipChefignore: opts.SkipChefignore,
-	})
+	// Supermarket reads a cookbook's metadata.json, so the tarball needs one:
+	// the cookbook's own when it ships one, otherwise compiled from
+	// metadata.rb the way knife does.
+	var overlay map[string][]byte
+	if !slices.ContainsFunc(cb.Files(), func(f cinc.LocalCookbookFile) bool { return f.Path == "metadata.json" }) {
+		compiled, err := cb.Metadata.CompiledJSON()
+		if err != nil {
+			return ShareResult{}, localcookbook.Archive{}, err
+		}
+		overlay = map[string][]byte{"metadata.json": compiled}
+	}
+	archive, err := localcookbook.BuildArchive(cb, overlay)
 	if err != nil {
 		return ShareResult{}, localcookbook.Archive{}, err
 	}
-	return ShareResult{
-		Cookbook: opts.Cookbook, Version: md.Version, Category: category,
-		Uploaded: false, Status: 0, Tarball: archive.Name,
-		TarballSize: len(archive.Bytes), Files: archive.Files,
-	}, archive, nil
+	result := ShareResult{
+		Cookbook: cb.Name, Version: cb.Version, Category: category,
+		Tarball: archive.Name, TarballSize: len(archive.Bytes),
+	}
+	if includeFiles {
+		result.Files = archive.Files
+	}
+	return result, archive, nil
 }
 
 func (c *Client) lookupCategory(ctx context.Context, cookbook string) (string, error) {

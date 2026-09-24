@@ -26,10 +26,7 @@ func TestExtractArchiveRoundTripsBuiltArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archive, err := BuildArchive(src, "nginx")
-	if err != nil {
-		t.Fatalf("BuildArchive: %v", err)
-	}
+	archive := loadArchive(t, src, false, nil)
 
 	dest := t.TempDir()
 	cookbookDir, err := ExtractArchive(bytes.NewReader(archive.Bytes), dest)

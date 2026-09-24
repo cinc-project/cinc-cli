@@ -113,7 +113,11 @@ func buildCookbookTarball(t *testing.T, name, version string) []byte {
 	if err := os.WriteFile(filepath.Join(dir, "recipes", "default.rb"), []byte("package '"+name+"'\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	archive, err := localcookbook.BuildArchive(dir, name)
+	cb, err := localcookbook.Load(dir, false)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	archive, err := localcookbook.BuildArchive(cb, nil)
 	if err != nil {
 		t.Fatalf("BuildArchive: %v", err)
 	}

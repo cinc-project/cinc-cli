@@ -130,15 +130,10 @@ cinc cookbook upload nginx`,
 				if err != nil {
 					return err
 				}
-				// ReadVersion only guards against a version computed in Ruby,
-				// which would otherwise upload as Chef's default 0.0.0. The
-				// name and version uploaded are the ones cinc-api reads from
-				// the metadata, normalized as Chef does ("1.2" is 1.2.0), and
-				// the name is the metadata's, not the directory's.
-				if _, err := localcookbook.ReadVersion(dir); err != nil {
-					return err
-				}
-				cb, err := localcookbook.UploadableFromDir(dir, "")
+				// The name and version uploaded are the ones the metadata
+				// declares, normalized as Chef does ("1.2" is 1.2.0), and the
+				// name is the metadata's, not the directory's.
+				cb, err := localcookbook.Load(dir, false)
 				if err != nil {
 					return err
 				}

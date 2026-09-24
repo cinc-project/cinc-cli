@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -297,11 +298,49 @@ func TestCookbookUploadRequiresLiteralVersion(t *testing.T) {
 	root.SetOut(io.Discard)
 	root.SetErr(io.Discard)
 	root.SetArgs([]string{"cookbook", "upload", "nginx", "--cookbook-path", dir, "--config", cfgPath})
-	if err := root.Execute(); err == nil {
+	err := root.Execute()
+	if err == nil {
 		t.Fatal("upload of a cookbook with a computed version succeeded, want an error")
+	}
+	if !strings.Contains(err.Error(), "metadata.json") || !strings.Contains(err.Error(), "version '1.2.3'") {
+		t.Errorf("error = %q, want it to suggest a literal version or a metadata.json", err)
 	}
 	if len(manifests) != 0 {
 		t.Errorf("manifest PUTs = %v, want none", manifests)
+	}
+}
+
+// TestCookbookUploadFromInsideTheCookbook uploads the cookbook the user is
+// standing in, whose metadata.rb sets no name. Like knife, it goes up under
+// the directory's name.
+func TestCookbookUploadFromInsideTheCookbook(t *testing.T) {
+	cbDir := filepath.Join(t.TempDir(), "nginx")
+	if err := os.MkdirAll(filepath.Join(cbDir, "recipes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cbDir, "metadata.rb"), []byte("version '1.0.0'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cbDir, "recipes", "default.rb"), []byte("package 'nginx'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var manifests []string
+	srv := uploadAnythingServer(t, &manifests)
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf("[default]\ncinc_server_url = \"%s/organizations/acme\"\nclient_name = \"tim\"\nclient_key = %q\n",
+		srv.URL, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cbDir)
+	root := newRootCmd()
+	root.SetOut(io.Discard)
+	root.SetArgs([]string{"cookbook", "upload", "nginx", "--config", cfgPath})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc cookbook upload: %v", err)
+	}
+	if want := []string{"/organizations/acme/cookbooks/nginx/1.0.0"}; !slices.Equal(manifests, want) {
+		t.Errorf("manifest PUTs = %v, want %v", manifests, want)
 	}
 }
 
