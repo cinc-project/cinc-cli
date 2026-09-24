@@ -175,21 +175,3 @@ func TestLoadTrustedCertsRejectsAFile(t *testing.T) {
 		t.Fatal("expected an error when trusted_certs_dir is a file")
 	}
 }
-
-func TestTrustedHTTPClientKeepsTimeout(t *testing.T) {
-	tc, err := LoadTrustedCerts(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	hc := trustedHTTPClient(tc.Pool)
-	if hc.Timeout != defaultHTTPTimeout {
-		t.Errorf("Timeout = %v, want %v", hc.Timeout, defaultHTTPTimeout)
-	}
-	tr, ok := hc.Transport.(*http.Transport)
-	if !ok || tr.TLSClientConfig == nil || tr.TLSClientConfig.RootCAs != tc.Pool {
-		t.Fatalf("transport should carry the trusted pool, got %#v", hc.Transport)
-	}
-	if tr.Proxy == nil {
-		t.Error("transport should keep the default proxy-from-environment behavior")
-	}
-}

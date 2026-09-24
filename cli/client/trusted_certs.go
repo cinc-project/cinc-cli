@@ -1,24 +1,15 @@
 package client
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
 )
-
-// defaultHTTPTimeout mirrors cinc-api's own default client timeout. Trusting
-// extra certificates means handing cinc-api a custom *http.Client, which
-// replaces its default one wholesale, so the timeout has to be carried over
-// here or requests against a hung server would wait forever.
-const defaultHTTPTimeout = 30 * time.Second
 
 // TrustedCerts is the result of loading a trusted_certs_dir: the cert pool to
 // verify servers against, plus which files contributed to it.
@@ -99,14 +90,4 @@ func TrustedCertsFor(p config.Profile) (*TrustedCerts, error) {
 		return nil, nil
 	}
 	return LoadTrustedCerts(dir)
-}
-
-// trustedHTTPClient builds the *http.Client handed to cinc-api when extra
-// certificates are trusted. It clones http.DefaultTransport, so proxy support,
-// HTTP/2 and connection pooling match what cinc-api would otherwise use, and
-// sets only RootCAs. cinc-api still applies ssl_verify_mode on top of it.
-func trustedHTTPClient(pool *x509.CertPool) *http.Client {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = &tls.Config{RootCAs: pool}
-	return &http.Client{Timeout: defaultHTTPTimeout, Transport: tr}
 }
