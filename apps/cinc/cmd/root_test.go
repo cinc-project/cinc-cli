@@ -72,7 +72,7 @@ func TestBareCincOffersMigrationWhenChefCredentialsPresent(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".chef"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("placeholder"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	swapTTY(t, true)
@@ -151,7 +151,7 @@ func TestBareCincSkipsMigrationWhenCincCredentialsExist(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(home, ".cinc"), 0o700)
 	_ = os.WriteFile(filepath.Join(home, ".cinc", "credentials"), []byte("[default]\n"), 0o600)
 	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("placeholder"), 0o600)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 	swapTTY(t, true)
 	swapMigrate(t, func(_, _ string) (int, error) {
 		t.Error("migrateChef should not run when cinc credentials already exist")
@@ -177,7 +177,7 @@ func TestBareCincExitsWithoutHelpWhenSetupDeclined(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("placeholder"), 0o600)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 	swapTTY(t, true)
 	swapMigrate(t, func(_, _ string) (int, error) {
 		t.Error("migrateChef should not run when the user declines")

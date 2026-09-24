@@ -217,3 +217,41 @@ func testMigrationOrglessServerURL(t *testing.T, tgt Target, c *cli) {
 		t.Errorf("a server URL with no organization should be explained: %s", r)
 	}
 }
+
+// testMigrationUnusableChefFile starts from a ~/.chef/credentials that
+// cannot be migrated: one with no profiles, one that is not TOML, and a
+// directory where the file should be. First run says so and goes on to set
+// up a new profile, instead of failing on every run or reporting that it
+// migrated nothing.
+func testMigrationUnusableChefFile(t *testing.T, tgt Target, c *cli) {
+	for _, tc := range []struct {
+		what  string
+		setup func(path string)
+	}{
+		{"no profiles", func(path string) { writeFile(t, path, "# knife credentials\n") }},
+		{"not TOML", func(path string) { writeFile(t, path, "[default\nchef_server_url = \n") }},
+		{"a directory", func(path string) {
+			if err := os.MkdirAll(path, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		b := behBareCLI(c)
+		trustTargetCA(t, b)
+		chefPath := filepath.Join(b.home, ".chef", "credentials")
+		tc.setup(chefPath)
+
+		r := b.execTTY(lines(append([]string{"y"}, configureAnswers(tgt, "", tgt.KeyPath)...)...), "node", "list")
+		if r.exitCode != 0 {
+			t.Errorf("first run with a knife file that has %s should go on to set up a profile: %s", tc.what, r)
+			continue
+		}
+		if strings.Contains(r.stderr, "Want us to migrate") || strings.Contains(r.stderr, "Wrote 0") {
+			t.Errorf("a knife file with %s should not be offered for migration: %s", tc.what, r)
+		}
+		if !strings.Contains(r.stderr, chefPath) || !strings.Contains(r.stderr, "can't migrate it") {
+			t.Errorf("first run should say why the knife file with %s was not migrated: %s", tc.what, r)
+		}
+		b.run("node", "list")
+	}
+}

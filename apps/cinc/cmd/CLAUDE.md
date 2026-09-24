@@ -30,7 +30,7 @@ restructuring, and restore it with `t.Cleanup`:
 
 | Seam | Declared in |
 |------|-------------|
-| `stdinIsTTY`, `migrateChef`, `runFirstRunConfigure` | `common.go` |
+| `stdinIsTTY`, `migrateChef`, `checkChef`, `runFirstRunConfigure` | `common.go` |
 | `resolveHost` | `config_checks.go` |
 | the editor hooks | `editor.go` |
 | `nodeRemoteRunner` | `node.go` |

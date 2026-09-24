@@ -14,6 +14,14 @@ import (
 	"github.com/cinc-project/cinc-cli/cli/config"
 )
 
+// testChefCredentials is a knife credentials file first-run setup can
+// migrate, for tests that need ~/.chef/credentials to exist.
+const testChefCredentials = `[default]
+chef_server_url = "https://x.example.com/organizations/acme"
+client_name     = "tim"
+client_key      = "/k/t.pem"
+`
+
 // fakeCmd builds a cobra command with the same flags resolveProfile
 // reads, plus a stdin/stderr wired to the provided buffers so tests
 // can drive the interactive prompts.
@@ -147,7 +155,7 @@ func TestResolveProfileRunsMigrationWhenDefaultMissingAndChefExists(t *testing.T
 	if err := os.MkdirAll(filepath.Join(home, ".chef"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("placeholder"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	swapTTY(t, true)
@@ -185,7 +193,7 @@ func TestResolveProfileAcceptsBlankAnswerAsYes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("x"), 0o600)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 	swapTTY(t, true)
 
 	called := false
@@ -213,7 +221,7 @@ func TestResolveProfileDeclinedMigrationPointsAtConfigure(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("x"), 0o600)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 	swapTTY(t, true)
 
 	swapMigrate(t, func(_, _ string) (int, error) {
@@ -337,7 +345,7 @@ func TestResolveProfilePointsAtConfigureWhenStdinNotTTY(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("x"), 0o600)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 	swapTTY(t, false)
 	swapMigrate(t, func(_, _ string) (int, error) {
 		t.Error("migrateChef should not be called when stdin is not a TTY")
@@ -441,7 +449,7 @@ func TestFirstRunTreatsEndOfInputAsDecline(t *testing.T) {
 			t.Setenv("HOME", home)
 			if tc.chef {
 				_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
-				_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("x"), 0o600)
+				_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte(testChefCredentials), 0o600)
 			}
 			swapTTY(t, true)
 			swapMigrate(t, func(_, _ string) (int, error) {
@@ -489,5 +497,41 @@ client_key = "/k/t.pem"
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should mention %s", err, want)
 		}
+	}
+}
+
+// TestFirstRunConfiguresWhenChefFileUnusable finds a ~/.chef/credentials
+// that cannot be migrated. Offering to migrate it would only fail, or
+// "migrate" nothing, so first run says why and sets up a new profile.
+func TestFirstRunConfiguresWhenChefFileUnusable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
+	_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("# knife credentials\n"), 0o600)
+	swapTTY(t, true)
+	swapMigrate(t, func(_, _ string) (int, error) {
+		t.Error("migrateChef must not run for a file with no profiles")
+		return 0, nil
+	})
+	called := false
+	swapConfigure(t, func(cmd *cobra.Command, cincPath string) error {
+		called = true
+		return fakeConfigure(t)(cmd, cincPath)
+	})
+
+	stderr := new(bytes.Buffer)
+	if _, err := resolveProfile(fakeCmd("", "", "\n", stderr)); !errors.Is(err, errFirstRunCompleted) {
+		t.Fatalf("resolveProfile = %v, want errFirstRunCompleted", err)
+	}
+	if !called {
+		t.Error("expected the configure prompts in place of the migration")
+	}
+	for _, want := range []string{"can't migrate it", "no profiles"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr should say %q, got:\n%s", want, stderr.String())
+		}
+	}
+	if strings.Contains(stderr.String(), "Want us to migrate") {
+		t.Errorf("an unusable file should not be offered for migration:\n%s", stderr.String())
 	}
 }

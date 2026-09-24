@@ -6,7 +6,9 @@
 package setup
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/BurntSushi/toml"
@@ -32,6 +34,33 @@ type chefRawProfile struct {
 	TrustedCertsDir       string `toml:"trusted_certs_dir"`
 }
 
+// CheckChef reports why the knife credentials file at chefPath cannot be
+// migrated, or nil if MigrateChef can migrate it. First-run setup asks
+// this before offering the migration, so it never offers one that can only
+// fail or migrate nothing. The reason is phrased to follow "we can't
+// migrate it: ".
+func CheckChef(chefPath string) error {
+	info, err := os.Stat(chefPath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return errors.New("it's a directory, not a file")
+	}
+	var raw map[string]chefRawProfile
+	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
+		return fmt.Errorf("we couldn't read it (%w)", err)
+	}
+	if len(raw) == 0 {
+		return errNoProfiles
+	}
+	return nil
+}
+
+// errNoProfiles is CheckChef's and MigrateChef's error for a knife file
+// with no profiles in it.
+var errNoProfiles = errors.New("it has no profiles")
+
 // MigrateChef reads chefPath and writes the equivalent credentials
 // file to cincPath. Each profile is built via config.NewProfile (which
 // validates client name, key path, and either a Chef server URL or a
@@ -45,11 +74,15 @@ type chefRawProfile struct {
 // before any of them is written. A half-migrated file would be worse than
 // none at all, because the first-run flow only offers to migrate while
 // ~/.cinc/credentials is still absent, so a partial write would strand the
-// user with some profiles missing and no prompt to finish.
+// user with some profiles missing and no prompt to finish. For the same
+// reason a file with no profiles is an error, not a migration of nothing.
 func MigrateChef(chefPath, cincPath string) (int, error) {
 	var raw map[string]chefRawProfile
 	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
 		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
+	}
+	if len(raw) == 0 {
+		return 0, fmt.Errorf("setup: %s: %w", chefPath, errNoProfiles)
 	}
 	// Decode again without a schema, so the keys chefRawProfile does not model
 	// (knife's node_name, validation_key, a knife table, ...) are copied across
