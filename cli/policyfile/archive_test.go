@@ -122,35 +122,3 @@ func TestOpenBundleRejectsPathTraversal(t *testing.T) {
 		t.Error("path-traversal entry escaped the extraction directory")
 	}
 }
-
-// TestOpenBundleRejectsOversizedEntry confirms an over-cap entry is refused
-// rather than expanded onto disk (zip-bomb / disk-fill guard).
-func TestOpenBundleRejectsOversizedEntry(t *testing.T) {
-	defer func(f, a int64) { maxExtractedFileBytes, maxExtractedArchiveBytes = f, a }(maxExtractedFileBytes, maxExtractedArchiveBytes)
-	maxExtractedFileBytes, maxExtractedArchiveBytes = 16, 64
-
-	archive := filepath.Join(t.TempDir(), "big.tar.gz")
-	f, err := os.Create(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gz := gzip.NewWriter(f)
-	tw := tar.NewWriter(gz)
-	body := []byte("this body is definitely longer than sixteen bytes")
-	if err := tw.WriteHeader(&tar.Header{Name: "Policyfile.lock.json", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []interface{ Close() error }{tw, gz, f} {
-		if err := c.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if _, cleanup, err := OpenBundle(archive); err == nil {
-		cleanup()
-		t.Fatal("expected OpenBundle to reject an over-cap archive entry")
-	}
-}

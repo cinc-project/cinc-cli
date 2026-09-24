@@ -7,8 +7,9 @@
 // out, and it reproduces chef exactly in three places that must interoperate
 // with a Chef Infra Server:
 //
-//   - Cookbook identifiers (identifier.go): the SHA1 content identifier and its
-//     dotted-decimal reinterpretation, matching CookbookProfiler::Identifiers.
+//   - Cookbook identifiers (identifier.go, computed by cinc-api): the SHA1
+//     content identifier and its dotted-decimal reinterpretation, matching
+//     CookbookProfiler::Identifiers.
 //   - Version/dependency solving (solver.go): a deterministic backtracking
 //     solver over cookbook metadata `depends` and the Policyfile's per-cookbook
 //     constraints, selecting the same versions chef's Molinillo-based solver
@@ -202,7 +203,7 @@ func buildLock(eval *rubyeval.EvaluatedPolicy, rawEval []byte, cookbooks map[str
 	summaries := make([]CookbookSummary, 0, len(solutionNames))
 	for _, name := range solutionNames {
 		info := cookbooks[name]
-		id, err := ComputeIdentifier(info.dir)
+		id, err := ComputeIdentifier(info.dir, info.verStr)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cinc: cookbook %q: %w", name, err)
 		}

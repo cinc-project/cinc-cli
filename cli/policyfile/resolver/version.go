@@ -3,7 +3,6 @@ package resolver
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -177,8 +176,6 @@ func normalizeConstraint(c Constraint) string {
 	}
 	return out
 }
-
-func sortStrings(s []string) { sort.Strings(s) }
 
 // Satisfies reports whether target meets the constraint, following
 // Semverse::Constraint#satisfies?.

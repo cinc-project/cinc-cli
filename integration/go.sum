@@ -28,8 +28,8 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
-github.com/cinc-project/cinc-api v0.15.0 h1:LRZyI0Xn3fZ4/WsZQ3lyrLimr9wq3S1fJ1GfH3DmV/4=
-github.com/cinc-project/cinc-api v0.15.0/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
+github.com/cinc-project/cinc-api v0.15.1 h1:fYN+f/QQGtYujtdC2sEGEIMiH+QTEVcYd7uqFmogCO0=
+github.com/cinc-project/cinc-api v0.15.1/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
 github.com/cinc-project/cinc-server-ng v0.14.0 h1:DMmb22PQPTH0MtJJTbbyd0lC6wE6zzV4bsMCnw0UHMU=
 github.com/cinc-project/cinc-server-ng v0.14.0/go.mod h1:+TLa5LlEnZEVM1GtnY1hRiPnaK8lle/W69182ZmBEOw=
 github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=
@@ -51,8 +51,6 @@ github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 h1:LMLX+LgTNWpfvCBdFe
 github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3/go.mod h1:jl5iWTm0/hd5PjEYEOuwAJ57L/CibdZfrqZ5XA5GrCk=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/goruby/goruby v0.0.0-20210827060341-983436007185 h1:GedMqwfSDl/8KBSbE99/eO04ktF1TpT/O0tSoOkaqsM=
-github.com/goruby/goruby v0.0.0-20210827060341-983436007185/go.mod h1:eoncWkzp2aZ8fX/wbB29hl1N4eCQMfrR4rZOZ/ztecs=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
@@ -77,8 +75,6 @@ github.com/muesli/termenv v0.16.0 h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc
 github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
-github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=

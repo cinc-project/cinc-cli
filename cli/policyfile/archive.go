@@ -1,15 +1,13 @@
 package policyfile
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
 	cinc "github.com/cinc-project/cinc-api"
 
+	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
 	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
@@ -74,58 +72,18 @@ func LoadBundleCookbooks(dir string, lock *cinc.PolicyRevision) (map[string]*cin
 	return cookbooks, nil
 }
 
-// extractBundleTarball reads a gzip-compressed tar stream at archivePath and
-// writes its entries under dest, preserving the directory structure. Paths that
-// would escape dest are rejected.
+// extractBundleTarball extracts the gzip-compressed tarball at archivePath
+// under dest, guarded as tarball.Extract describes.
 func extractBundleTarball(archivePath, dest string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }() // read handle
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return fmt.Errorf("policyfile: open archive %s: %w", archivePath, err)
+	if err := tarball.Extract(f, dest, tarball.Options{}); err != nil {
+		return fmt.Errorf("policyfile: extract %s: %w", archivePath, err)
 	}
-	defer func() { _ = gz.Close() }() // read handle
-
-	tr := tar.NewReader(gz)
-	var total int64
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("policyfile: read archive %s: %w", archivePath, err)
-		}
-		rel := filepath.Clean(filepath.FromSlash(hdr.Name))
-		target := filepath.Join(dest, rel)
-		if !withinDir(dest, target) {
-			return fmt.Errorf("policyfile: unsafe path in archive: %q", hdr.Name)
-		}
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, extractDirMode); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), extractDirMode); err != nil {
-				return err
-			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
-			if err != nil {
-				return err
-			}
-			if err := boundedCopy(out, tr, hdr.Name, &total); err != nil {
-				_ = out.Close() // already returning an error
-				return fmt.Errorf("policyfile: %w", err)
-			}
-			if err := out.Close(); err != nil {
-				return err
-			}
-		}
-	}
+	return nil
 }
 
 // bundleRoot returns the directory holding the bundle's Policyfile.lock.json. An

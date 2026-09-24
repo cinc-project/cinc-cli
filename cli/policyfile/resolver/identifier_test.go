@@ -1,6 +1,10 @@
 package resolver
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // TestComputeIdentifierGoldenValues pins cinc's cookbook identifier computation
 // to the exact content/dotted-decimal identifiers real `chef install` produced
@@ -37,7 +41,7 @@ func TestComputeIdentifierGoldenValues(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.dir, func(t *testing.T) {
-			id, err := ComputeIdentifier(tc.dir)
+			id, err := ComputeIdentifier(tc.dir, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,28 +55,43 @@ func TestComputeIdentifierGoldenValues(t *testing.T) {
 	}
 }
 
-// TestChefignoreExcludesIgnoredFiles confirms the identifier file set drops
-// chefignored paths (so an ignored scratch file cannot change the identifier).
-func TestChefignoreExcludesIgnoredFiles(t *testing.T) {
-	files, err := cookbookFiles("testdata/chefignore_cookbook/cookbooks/widget")
+// TestIdentifierFollowsSymlinksInsideTheCookbook checks that a symlink to a
+// file inside the cookbook counts as that file, as Chef's loader reads it:
+// the cookbook's identifier matches the same cookbook with a plain copy.
+func TestIdentifierFollowsSymlinksInsideTheCookbook(t *testing.T) {
+	write := func(dir string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "recipes"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for rel, body := range map[string]string{
+			"metadata.rb":        "name 'widget'\nversion '1.0.0'\n",
+			"recipes/default.rb": "log 'hi'\n",
+		} {
+			if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	linked, copied := filepath.Join(t.TempDir(), "widget"), filepath.Join(t.TempDir(), "widget")
+	write(linked)
+	write(copied)
+	if err := os.Symlink("default.rb", filepath.Join(linked, "recipes", "alias.rb")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(copied, "recipes", "alias.rb"), []byte("log 'hi'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ComputeIdentifier(linked, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
-		if f.Path == "recipes/default.rb.bak" || f.Path == "notes.tmp" {
-			t.Errorf("chefignored file %q was included in the identifier set", f.Path)
-		}
+	want, err := ComputeIdentifier(copied, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// The chefignore file itself and the real cookbook files remain.
-	want := map[string]bool{"metadata.rb": false, "recipes/default.rb": false, "chefignore": false}
-	for _, f := range files {
-		if _, ok := want[f.Path]; ok {
-			want[f.Path] = true
-		}
-	}
-	for path, found := range want {
-		if !found {
-			t.Errorf("expected file %q in identifier set, missing", path)
-		}
+	if got != want {
+		t.Errorf("identifier with a symlink = %+v, want %+v (as with a copy)", got, want)
 	}
 }

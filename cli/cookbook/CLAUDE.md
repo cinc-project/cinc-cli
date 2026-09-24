@@ -2,14 +2,21 @@
 
 ## Gotchas
 
-- **Two places decide what counts as a cookbook file.** `archiveEntries` here
-  (for uploads) and `copyTree` in `cli/policyfile` (for export bundles) walk a
-  cookbook independently. Changing the rules in one without the other makes
-  `cinc cookbook upload` and `cinc policyfile export` disagree about the same
-  directory. Change both, and test both.
+- **cinc-api decides what a cookbook is, in one place.** Which files belong
+  to a cookbook (Chef's loader rules: chefignore, root dot-directories,
+  chef-zero's sentinel, symlinks) and what its metadata says come from
+  `cinc.LocalCookbookFromDir`, its `Files()` and `Identifiers()`, and
+  `cinc.LoadCookbookMetadata`. `cinc cookbook upload`, `cinc supermarket
+  share`, `cinc policy export`/`push` and the resolver's identifiers all use
+  them, so they agree about the same directory. Don't walk a cookbook
+  directory or parse metadata.rb here; if the rules are wrong, fix cinc-api.
+- **Load cookbooks through `Load`.** It passes an absolute path, so a cookbook
+  whose metadata sets no name is named after its directory rather than `.`
+  when the user is standing in it, and it turns a computed metadata.rb
+  version into a message the user can act on.
 
 ## Test seams
 
-`maxExtractedFileBytes` and `maxExtractedArchiveBytes` in `extract.go` are the
-extraction caps. Tests shrink them rather than building giant fixtures; restore
-them with `t.Cleanup` or a deferred restore.
+Tarball extraction lives in `cli/internal/tarball`, which owns the extraction
+caps (`maxFileBytes`, `maxArchiveBytes`). Its tests shrink them; callers'
+tests don't need to.

@@ -1,3 +1,8 @@
+// Package policyfile deploys an existing Policyfile.lock.json to a Cinc/Chef
+// Server. It fetches and caches the cookbooks the lock pins (from the sources
+// the lock records), then drives the server-side push via cinc-api, and
+// assembles a standalone export bundle. It owns the local, multi-source
+// concerns; every server call goes through cinc-api or cinc-supermarket.
 package policyfile
 
 import (
@@ -13,6 +18,8 @@ import (
 
 	cinc "github.com/cinc-project/cinc-api"
 	sm "github.com/cinc-project/cinc-supermarket-api"
+
+	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
 )
 
 // Fetcher locates the cookbooks a Policyfile lock pins, fetching them from the
@@ -131,7 +138,12 @@ func (f *Fetcher) fetchArtifactserver(ctx context.Context, name, artifactURL, ve
 		return fmt.Errorf("download from %s: %w", base, err)
 	}
 	defer body.Close()
-	return extractCookbookTarball(body, dest)
+	// Supermarket wraps the cookbook in a <name>/ directory; the cache entry
+	// is the cookbook root itself.
+	if err := tarball.Extract(body, dest, tarball.Options{StripTopLevel: true}); err != nil {
+		return fmt.Errorf("unpack the download from %s: %w", base, err)
+	}
+	return nil
 }
 
 // fetchChefServer downloads a cookbook from the Cinc/Chef server via cinc-api,
@@ -194,7 +206,7 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 		// check rather than the stricter safeJoin used for single-segment
 		// names like cache keys.
 		root = filepath.Join(clone, sub)
-		if !withinDir(clone, root) {
+		if !tarball.Within(clone, root) {
 			return fmt.Errorf("refusing git source rel %q: it escapes the repository", sub)
 		}
 	}
@@ -257,7 +269,7 @@ func safeJoin(base string, components ...string) (string, error) {
 		}
 	}
 	joined := filepath.Join(append([]string{base}, components...)...)
-	if !withinDir(base, joined) {
+	if !tarball.Within(base, joined) {
 		return "", fmt.Errorf("path %q escapes %q", joined, base)
 	}
 	return joined, nil
