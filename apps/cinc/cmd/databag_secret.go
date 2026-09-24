@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -200,7 +199,7 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(plain, edited) {
+				if unchanged(plain, edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Encrypted item %q in bag %q unchanged\n", id, bag)
 					return nil
 				}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -131,7 +130,7 @@ cinc client edit worker-01`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Client %q unchanged\n", name)
 					return nil
 				}

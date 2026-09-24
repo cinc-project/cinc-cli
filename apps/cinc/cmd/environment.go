@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -66,7 +65,7 @@ cinc environment edit prod`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Environment %q unchanged\n", name)
 					return nil
 				}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -115,7 +114,7 @@ cinc role edit webserver`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Role %q unchanged\n", name)
 					return nil
 				}

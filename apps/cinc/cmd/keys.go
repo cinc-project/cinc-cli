@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -214,7 +213,7 @@ cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pe
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Key %q on %s %q unchanged\n", keyName, owner.noun, ownerName)
 					return nil
 				}

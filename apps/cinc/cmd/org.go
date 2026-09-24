@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -259,7 +258,7 @@ cinc org edit acme`,
 				if err != nil {
 					return err
 				}
-				if reflect.DeepEqual(*current, *edited) {
+				if unchanged(*current, *edited) {
 					fmt.Fprintf(cmd.OutOrStdout(), "Organization %q unchanged\n", name)
 					return nil
 				}

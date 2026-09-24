@@ -871,3 +871,23 @@ func TestNodeEditCommandReadsFromFile(t *testing.T) {
 		t.Errorf("PUT body = %+v, want name=web01 environment=qa", gotPut)
 	}
 }
+
+func TestSearchRowAttributeFollowsChefPrecedence(t *testing.T) {
+	for _, tc := range []struct{ name, row, attr, want string }{
+		{"dotted path under automatic", `{"automatic":{"cloud":{"public_hostname":"web01.cloud.test"}}}`, "cloud.public_hostname", "web01.cloud.test"},
+		{"override beats default", `{"default":{"ipaddress":"10.0.0.1"},"override":{"ipaddress":"10.0.0.2"}}`, "ipaddress", "10.0.0.2"},
+		{"automatic beats normal", `{"normal":{"fqdn":"n.test"},"automatic":{"fqdn":"a.test"}}`, "fqdn", "a.test"},
+		{"first element of an array", `{"automatic":{"addresses":["10.0.0.3","10.0.0.4"]}}`, "addresses", "10.0.0.3"},
+		{"node name", `{"name":"web01","automatic":{}}`, "name", "web01"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := searchRowAttribute(json.RawMessage(tc.row), tc.attr)
+			if err != nil || got != tc.want {
+				t.Errorf("searchRowAttribute(%s, %q) = %q, %v; want %q", tc.row, tc.attr, got, err, tc.want)
+			}
+		})
+	}
+	if _, err := searchRowAttribute(json.RawMessage(`{"automatic":{}}`), "cloud.public_hostname"); err == nil {
+		t.Error("want an error when the attribute is missing")
+	}
+}
