@@ -1,9 +1,7 @@
 package rubyeval
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
 )
 
 // The Policyfile evaluator runs CRuby compiled to WebAssembly (the official
@@ -302,8 +302,8 @@ func materializeFrom(dir string, fetch fetcher, url, wantSHA string, usable func
 	}
 	defer os.RemoveAll(staging)
 
-	if err := extractTarGz(archive, staging); err != nil {
-		return err
+	if err := tarball.Extract(bytes.NewReader(archive), staging, tarball.Options{}); err != nil {
+		return fmt.Errorf("policyfile: extract ruby.wasm release: %w", err)
 	}
 	if usable() {
 		return nil // another process finished while this one downloaded
@@ -382,69 +382,6 @@ func verifyFileSHA256(path, wantHex string) error {
 	return nil
 }
 
-// extractTarGz unpacks a .tar.gz archive under dest. It guards against path
-// traversal (a "../" entry escaping dest is rejected) and writes through an
-// os.Root handle, so the kernel refuses an escape the lexical check cannot
-// see (a symlink already sitting in dest, say).
-func extractTarGz(archive []byte, dest string) error {
-	root, err := os.OpenRoot(dest)
-	if err != nil {
-		return fmt.Errorf("policyfile: open extraction dir %s: %w", dest, err)
-	}
-	defer func() { _ = root.Close() }()
-
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return err
-	}
-	defer func() { _ = gz.Close() }() // read handle
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dest, hdr.Name)
-		if !withinDir(dest, target) {
-			return fmt.Errorf("policyfile: archive entry %q escapes extraction dir", hdr.Name)
-		}
-		rel, err := filepath.Rel(dest, target)
-		if err != nil {
-			return fmt.Errorf("policyfile: archive entry %q escapes extraction dir", hdr.Name)
-		}
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := root.MkdirAll(rel, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if dir := filepath.Dir(rel); dir != "." {
-				if err := root.MkdirAll(dir, 0o755); err != nil {
-					return err
-				}
-			}
-			f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode)&0o777)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // pinned, checksum-verified archive
-				_ = f.Close() // already returning an error
-				return err
-			}
-			if err := f.Close(); err != nil {
-				return err
-			}
-		case tar.TypeSymlink, tar.TypeLink:
-			// The ruby.wasm release has no links; skip rather than risk an
-			// unsafe link target.
-			continue
-		}
-	}
-}
-
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
@@ -453,17 +390,4 @@ func fileExists(p string) bool {
 func dirExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
-}
-
-// withinDir reports whether target is base itself or lies beneath it.
-func withinDir(base, target string) bool {
-	rel, err := filepath.Rel(base, target)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !hasDotDotPrefix(rel))
-}
-
-func hasDotDotPrefix(rel string) bool {
-	return len(rel) >= 3 && rel[0] == '.' && rel[1] == '.' && (rel[2] == filepath.Separator)
 }

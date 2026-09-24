@@ -102,115 +102,31 @@ func TestExtractArchiveHandlesDotSlashAndDirEntries(t *testing.T) {
 	}
 }
 
-// TestExtractArchiveRejectsPathTraversal makes sure a malicious tarball
-// whose entries escape destDir is refused, with nothing written outside.
-func TestExtractArchiveRejectsPathTraversal(t *testing.T) {
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	body := []byte("pwned")
-	if err := tw.WriteHeader(&tar.Header{
-		Name: "../escape.txt",
-		Mode: 0o644,
-		Size: int64(len(body)),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	dest := t.TempDir()
-	if _, err := ExtractArchive(bytes.NewReader(buf.Bytes()), dest); err == nil {
-		t.Fatal("expected ExtractArchive to reject a path-traversal entry")
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(dest), "escape.txt")); err == nil {
-		t.Fatal("path-traversal entry escaped destDir")
-	}
-}
-
-// buildCookbookTarball gzips a tarball from the given entries (name -> body).
-func buildCookbookTarball(t *testing.T, files map[string]string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, body := range files {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o777, Typeflag: tar.TypeReg, Size: int64(len(body))}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(body)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
-}
-
-// TestExtractArchiveRejectsOversizedEntry confirms an entry larger than the
-// per-file cap is refused rather than written wholesale to disk.
-func TestExtractArchiveRejectsOversizedEntry(t *testing.T) {
-	// Shrink the caps so we don't have to materialize 512 MiB in a test.
-	defer func(f, a int64) { maxExtractedFileBytes, maxExtractedArchiveBytes = f, a }(maxExtractedFileBytes, maxExtractedArchiveBytes)
-	maxExtractedFileBytes, maxExtractedArchiveBytes = 16, 64
-
-	archive := buildCookbookTarball(t, map[string]string{
-		"nginx/metadata.rb": "this body is definitely longer than sixteen bytes",
-	})
-	dest := t.TempDir()
-	if _, err := ExtractArchive(bytes.NewReader(archive), dest); err == nil {
-		t.Fatal("expected ExtractArchive to reject an over-cap entry")
-	}
-}
-
-// TestExtractArchiveClampsFileMode confirms extracted files land at 0640 even
-// when the tar entry advertised world-writable/exec bits.
-func TestExtractArchiveClampsFileMode(t *testing.T) {
-	archive := buildCookbookTarball(t, map[string]string{
-		"nginx/metadata.rb": "name 'nginx'\n",
-	})
-	dest := t.TempDir()
-	if _, err := ExtractArchive(bytes.NewReader(archive), dest); err != nil {
-		t.Fatalf("ExtractArchive: %v", err)
-	}
-	info, err := os.Stat(filepath.Join(dest, "nginx", "metadata.rb"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := info.Mode().Perm(); got != extractFileMode {
-		t.Errorf("extracted file mode = %o, want %o", got, extractFileMode)
-	}
-}
-
-// TestExtractArchiveDoesNotFollowSymlinkOutOfDest covers the hole a purely
-// lexical containment check leaves open. "nginx/metadata.rb" is inside destDir
-// by every string comparison, so safeJoin passes it; if destDir already holds
-// a "nginx" symlink pointing elsewhere, the create still lands on the far side
-// of that link. Containment has to be enforced when the file is opened, not
-// when its name is computed.
-func TestExtractArchiveDoesNotFollowSymlinkOutOfDest(t *testing.T) {
-	dest := t.TempDir()
-	outside := t.TempDir()
-	if err := os.Symlink(outside, filepath.Join(dest, "nginx")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
-	}
-
-	archive := buildCookbookTarball(t, map[string]string{"nginx/metadata.rb": "pwned"})
-	if _, err := ExtractArchive(bytes.NewReader(archive), dest); err == nil {
-		t.Error("ExtractArchive wrote through a symlink in destDir without complaint")
-	}
-	if _, err := os.Stat(filepath.Join(outside, "metadata.rb")); err == nil {
-		t.Fatal("archive entry escaped destDir through a pre-existing symlink")
+// TestExtractArchiveWantsOneTopLevelDirectory refuses a tarball that isn't
+// a single cookbook directory, since there'd be no telling which to upload.
+func TestExtractArchiveWantsOneTopLevelDirectory(t *testing.T) {
+	for name, files := range map[string][]string{
+		"two directories": {"nginx/metadata.rb", "apache/metadata.rb"},
+		"a loose file":    {"metadata.rb"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			gz := gzip.NewWriter(&buf)
+			tw := tar.NewWriter(gz)
+			for _, f := range files {
+				if err := tw.WriteHeader(&tar.Header{Name: f, Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := gz.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ExtractArchive(bytes.NewReader(buf.Bytes()), t.TempDir()); err == nil {
+				t.Error("ExtractArchive accepted an archive without exactly one top-level directory")
+			}
+		})
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	cinc "github.com/cinc-project/cinc-api"
 
+	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
 	"github.com/cinc-project/cinc-cli/cli/rubylit"
 )
 
@@ -30,10 +31,10 @@ type ExportResult struct {
 // also written as <dir>.tar.gz. Cookbooks are sourced through the fetcher
 // (cache or fresh fetch).
 func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lockJSON []byte, destDir string, archive bool) (ExportResult, error) {
-	if err := os.MkdirAll(filepath.Join(destDir, "cookbooks"), extractDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Join(destDir, "cookbooks"), tarball.DirMode); err != nil {
 		return ExportResult{}, err
 	}
-	if err := os.MkdirAll(filepath.Join(destDir, "policies"), extractDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Join(destDir, "policies"), tarball.DirMode); err != nil {
 		return ExportResult{}, err
 	}
 
@@ -63,13 +64,13 @@ func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lo
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("policyfile: %w", err)
 	}
-	if err := os.WriteFile(policyFile, lockJSON, extractFileMode); err != nil {
+	if err := os.WriteFile(policyFile, lockJSON, tarball.FileMode); err != nil {
 		return ExportResult{}, err
 	}
-	if err := os.WriteFile(filepath.Join(destDir, "Policyfile.lock.json"), lockJSON, extractFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(destDir, "Policyfile.lock.json"), lockJSON, tarball.FileMode); err != nil {
 		return ExportResult{}, err
 	}
-	if err := os.WriteFile(filepath.Join(destDir, "client.rb"), []byte(clientRB(lock.Name)), extractFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(destDir, "client.rb"), []byte(clientRB(lock.Name)), tarball.FileMode); err != nil {
 		return ExportResult{}, err
 	}
 
@@ -146,7 +147,7 @@ func copyTree(src, dst string) error {
 		}
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {
-			return os.MkdirAll(target, extractDirMode)
+			return os.MkdirAll(target, tarball.DirMode)
 		}
 		if !info.Mode().IsRegular() {
 			return nil
@@ -158,7 +159,7 @@ func copyTree(src, dst string) error {
 // copyFile copies the file at src (following a symlink) to dst, creating
 // dst's directory, with the mode clamped rather than copied from src.
 func copyFile(src, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), extractDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), tarball.DirMode); err != nil {
 		return err
 	}
 	in, err := os.Open(src)
@@ -166,7 +167,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() { _ = in.Close() }() // read handle
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, extractFileMode)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, tarball.FileMode)
 	if err != nil {
 		return err
 	}
