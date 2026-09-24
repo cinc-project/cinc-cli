@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"text/tabwriter"
 	"time"
 
+	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
@@ -54,14 +54,13 @@ cinc node status 'role:web'`,
 			if len(args) == 1 && args[0] != "" {
 				query = args[0]
 			}
-			rows, err := c.Search.SearchAll(cmd.Context(), "node", query)
-			if err != nil {
-				return err
-			}
 			now := nodeStatusClock()
-			statuses := make([]nodeStatus, 0, len(rows))
-			for _, row := range rows {
-				statuses = append(statuses, nodeStatusFromRow(row, now))
+			statuses := []nodeStatus{}
+			for node, err := range c.Search.Nodes(cmd.Context(), query) {
+				if err != nil {
+					return err
+				}
+				statuses = append(statuses, nodeStatusOf(node, now))
 			}
 			// Most recently checked-in nodes first; nodes that never checked in
 			// (ohai_time 0) sort to the end.
@@ -76,40 +75,33 @@ cinc node status 'role:web'`,
 	}
 }
 
-// nodeStatusFromRow extracts a node's status from one search result row.
-func nodeStatusFromRow(row json.RawMessage, now time.Time) nodeStatus {
-	var data any
-	_ = json.Unmarshal(row, &data)
-	get := func(path ...string) string {
-		if v, ok := lookupAttribute(data, path); ok {
-			return attributeString(v)
-		}
-		return ""
+// nodeStatusOf summarizes one node's check-in and host facts. The facts are
+// read with Chef attribute precedence, the way node[...] reads them.
+func nodeStatusOf(node *cinc.Node, now time.Time) nodeStatus {
+	status := nodeStatus{
+		Name:            node.Name,
+		Platform:        node.AttributeString("platform"),
+		PlatformVersion: node.AttributeString("platform_version"),
+		FQDN:            node.AttributeString("fqdn"),
+		IPAddress:       node.AttributeString("ipaddress"),
 	}
-	var ohai float64
-	if v, ok := lookupAttribute(data, []string{"automatic", "ohai_time"}); ok {
-		if f, ok := v.(float64); ok {
-			ohai = f
-		}
+	// LastCheckin reports the zero time for a node that never checked in,
+	// which relativeCheckin renders as "never".
+	last, ok := node.LastCheckin()
+	if ok {
+		status.OhaiTime = float64(last.UnixNano()) / 1e9
 	}
-	return nodeStatus{
-		Name:            get("name"),
-		CheckinAgo:      relativeCheckin(ohai, now),
-		Platform:        get("automatic", "platform"),
-		PlatformVersion: get("automatic", "platform_version"),
-		FQDN:            get("automatic", "fqdn"),
-		IPAddress:       get("automatic", "ipaddress"),
-		OhaiTime:        ohai,
-	}
+	status.CheckinAgo = relativeCheckin(last, now)
+	return status
 }
 
-// relativeCheckin renders how long ago a node checked in, given its ohai_time
-// (a Unix timestamp in seconds). It returns "never" when there is no check-in.
-func relativeCheckin(ohaiUnix float64, now time.Time) string {
-	if ohaiUnix == 0 {
+// relativeCheckin renders how long ago a node last checked in. It returns
+// "never" for the zero time, meaning the node has no check-in.
+func relativeCheckin(last, now time.Time) string {
+	if last.IsZero() {
 		return "never"
 	}
-	d := now.Sub(time.Unix(int64(ohaiUnix), 0))
+	d := now.Sub(last)
 	if d < 0 {
 		d = 0
 	}

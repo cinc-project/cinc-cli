@@ -344,3 +344,78 @@ func TestSearchDataBagTableShowsItemKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestSearchPartialProjectsNameAndID checks that -a always asks for name and
+// id alongside the requested attributes, so every row stays identifiable
+// whatever the index keys its objects by.
+func TestSearchPartialProjectsNameAndID(t *testing.T) {
+	var gotPartial map[string][]string
+	srv := searchServer(t, "node", 0, []any{}, &gotPartial)
+
+	if out, err := runSearchCmd(t, srv.URL, "node", "*:*", "-a", "kernel.release"); err != nil {
+		t.Fatalf("cinc search -a: %v\n%s", err, out)
+	}
+	want := map[string][]string{"name": {"name"}, "id": {"id"}, "kernel.release": {"kernel", "release"}}
+	if fmt.Sprint(gotPartial) != fmt.Sprint(want) {
+		t.Errorf("partial projection = %v, want %v", gotPartial, want)
+	}
+}
+
+// TestSearchJSONUnwrapsRows checks that --format json emits the objects the
+// table shows: a partial row's projection rather than its {url, data}
+// envelope, and a data bag item rather than its Chef::DataBagItem wrapper.
+func TestSearchJSONUnwrapsRows(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		index string
+		row   any
+		args  []string
+		want  string
+	}{
+		{"partial row", "node",
+			map[string]any{"url": "https://x/nodes/web01", "data": map[string]any{"name": "web01", "fqdn": "web01.test"}},
+			[]string{"-a", "fqdn"}, `{"fqdn":"web01.test","name":"web01"}`},
+		{"data bag item", "users",
+			wrappedItem("users", map[string]any{"id": "alice", "shell": "zsh"}),
+			nil, `{"id":"alice","shell":"zsh"}`},
+		{"full node", "node",
+			map[string]any{"name": "web01", "chef_environment": "prod"},
+			nil, `{"chef_environment":"prod","name":"web01"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := searchServer(t, tc.index, 1, []any{tc.row}, nil)
+			out, err := runSearchCmd(t, srv.URL, append([]string{tc.index, "*:*", "--format", "json"}, tc.args...)...)
+			if err != nil {
+				t.Fatalf("cinc search --format json: %v\n%s", err, out)
+			}
+			var got struct {
+				Rows []map[string]any `json:"rows"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("json output not valid: %v\n%s", err, out)
+			}
+			if len(got.Rows) != 1 {
+				t.Fatalf("rows = %v, want one", got.Rows)
+			}
+			if row, _ := json.Marshal(got.Rows[0]); string(row) != tc.want {
+				t.Errorf("row = %s, want %s", row, tc.want)
+			}
+		})
+	}
+}
+
+// TestSearchNodePlatformFollowsAttributePrecedence checks the PLATFORM
+// column reads the node's merged attributes, not just automatic.
+func TestSearchNodePlatformFollowsAttributePrecedence(t *testing.T) {
+	rows := []any{
+		map[string]any{"name": "web01", "override": map[string]any{"platform": "debian", "platform_version": "12"}},
+	}
+	srv := searchServer(t, "node", 1, rows, nil)
+	out, err := runSearchCmd(t, srv.URL, "node", "*:*")
+	if err != nil {
+		t.Fatalf("cinc search node: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "debian 12") {
+		t.Errorf("table missing the override platform:\n%s", out)
+	}
+}

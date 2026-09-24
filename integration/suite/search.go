@@ -158,8 +158,9 @@ func testSearchNodeAttributes(t *testing.T, _ Target, c *cli) {
 	}
 }
 
-// testSearchPartial projects attributes with -a: the JSON rows carry just
-// the requested keys under "data", and the table turns them into columns.
+// testSearchPartial projects attributes with -a: the JSON rows are just the
+// requested keys (the server's {url, data} envelope unwrapped), and the table
+// turns them into columns.
 func testSearchPartial(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "node")
 	file := writeJSON(t, map[string]any{
@@ -172,17 +173,17 @@ func testSearchPartial(t *testing.T, _ Target, c *cli) {
 	query := "name:" + name
 
 	got := c.awaitSearch(1, "node", query, "-a", "app.port", "--attribute", "app.tier")
-	var row struct {
-		Data map[string]any `json:"data"`
-	}
+	var row map[string]any
 	if err := json.Unmarshal(got.Rows[0], &row); err != nil {
 		t.Fatal(err)
 	}
-	wantEqual(t, "data.name", fmt.Sprint(row.Data["name"]), name)
-	wantEqual(t, "data[app.port]", fmt.Sprint(row.Data["app.port"]), "8080")
-	wantEqual(t, "data[app.tier]", fmt.Sprint(row.Data["app.tier"]), "web")
-	if _, ok := row.Data["chef_environment"]; ok {
-		t.Errorf("partial row carries unrequested chef_environment: %v", row.Data)
+	wantEqual(t, "row name", fmt.Sprint(row["name"]), name)
+	wantEqual(t, "row[app.port]", fmt.Sprint(row["app.port"]), "8080")
+	wantEqual(t, "row[app.tier]", fmt.Sprint(row["app.tier"]), "web")
+	for _, envelope := range []string{"url", "data", "chef_environment"} {
+		if _, ok := row[envelope]; ok {
+			t.Errorf("partial row carries %q, want only the projected keys: %v", envelope, row)
+		}
 	}
 
 	table := c.run("search", "node", query, "-a", "app.port")
@@ -270,8 +271,8 @@ func createSearchBag(c *cli, items map[string]map[string]any) string {
 
 // testSearchDataBag searches a data bag's items. erchef returns each item
 // wrapped (name "data_bag_item_<bag>_<id>", the item under raw_data); the
-// CLI must still identify rows by the item's id and summarize the item's own
-// keys, not the wrapper's.
+// CLI must emit the item itself, identify rows by the item's id and
+// summarize the item's own keys, not the wrapper's.
 func testSearchDataBag(t *testing.T, _ Target, c *cli) {
 	bag := createSearchBag(c, map[string]map[string]any{
 		"alice": {"role": "admin", "shell": "zsh"},
@@ -284,11 +285,10 @@ func testSearchDataBag(t *testing.T, _ Target, c *cli) {
 	if err := json.Unmarshal(got.Rows[0], &row); err != nil {
 		t.Fatal(err)
 	}
-	item, _ := row["raw_data"].(map[string]any)
-	if item == nil {
-		item = row
+	wantEqual(t, "matched item id", fmt.Sprint(row["id"]), "alice")
+	if _, ok := row["raw_data"]; ok {
+		t.Errorf("json row is the search wrapper rather than the item: %v", row)
 	}
-	wantEqual(t, "matched item id", fmt.Sprint(item["id"]), "alice")
 
 	wantLines(t, "search -i", c.run("search", bag, "*:*", "-i"), "alice", "bob")
 	table := c.run("search", bag, "role:admin")
@@ -304,14 +304,12 @@ func testSearchDataBagPartial(t *testing.T, _ Target, c *cli) {
 		"alice": {"role": "admin", "shell": "zsh"},
 	})
 	got := c.awaitSearch(1, bag, "id:alice", "-a", "shell")
-	var row struct {
-		Data map[string]any `json:"data"`
-	}
+	var row map[string]any
 	if err := json.Unmarshal(got.Rows[0], &row); err != nil {
 		t.Fatal(err)
 	}
-	wantEqual(t, "data.id", fmt.Sprint(row.Data["id"]), "alice")
-	wantEqual(t, "data.shell", fmt.Sprint(row.Data["shell"]), "zsh")
+	wantEqual(t, "row id", fmt.Sprint(row["id"]), "alice")
+	wantEqual(t, "row shell", fmt.Sprint(row["shell"]), "zsh")
 
 	wantLines(t, "partial -i", c.run("search", bag, "id:alice", "-a", "shell", "-i"), "alice")
 	wantContains(t, "partial table", c.run("search", bag, "id:alice", "-a", "shell"), "NAME", "SHELL", "alice", "zsh")

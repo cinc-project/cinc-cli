@@ -53,3 +53,41 @@ func TestNodePolicySetCommand(t *testing.T) {
 		t.Errorf("output = %q", out)
 	}
 }
+
+// TestNodeAssignUnchangedSkipsPut checks that setting what the node already
+// has sends no PUT and says so.
+func TestNodeAssignUnchangedSkipsPut(t *testing.T) {
+	current := cinc.Node{Name: "web01", Environment: "prod", PolicyName: "base", PolicyGroup: "prod"}
+	for args, want := range map[string]string{
+		"environment-set web01 prod": "Node \"web01\" is already in environment \"prod\", so there's nothing to change\n",
+		"policy-set web01 prod base": "Node \"web01\" already uses policy \"base\" in group \"prod\", so there's nothing to change\n",
+	} {
+		srv, puts := nodeModifyServer(t, current, nil)
+		out, err := runNodeCmd(t, srv.URL, strings.Fields(args)...)
+		if err != nil {
+			t.Fatalf("node %s: %v\n%s", args, err, out)
+		}
+		if len(*puts) != 0 {
+			t.Errorf("node %s sent %d PUT(s), want none", args, len(*puts))
+		}
+		if out != want {
+			t.Errorf("node %s output = %q, want %q", args, out, want)
+		}
+	}
+}
+
+// TestNodeEnvironmentSetReportsServerState checks the reported environment
+// is the one the server stored.
+func TestNodeEnvironmentSetReportsServerState(t *testing.T) {
+	srv, _ := nodeModifyServer(t, cinc.Node{Name: "web01", Environment: "prod"}, func(n cinc.Node) cinc.Node {
+		n.Environment = ""
+		return n
+	})
+	out, err := runNodeCmd(t, srv.URL, "environment-set", "web01", "")
+	if err != nil {
+		t.Fatalf("node environment-set: %v\n%s", err, out)
+	}
+	if want := "Set node \"web01\" environment to \"_default\"\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}

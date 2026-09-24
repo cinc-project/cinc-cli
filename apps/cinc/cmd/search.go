@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -14,14 +15,6 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
 )
-
-// searchResult is the structured output of a search, emitted verbatim by
-// `--format json`.
-type searchResult struct {
-	Total int               `json:"total"`
-	Start int               `json:"start"`
-	Rows  []json.RawMessage `json:"rows"`
-}
 
 // newSearchCmd builds the global `cinc search <index> <query>` command. It is
 // a verb-first global utility (not `cinc node search`): the index selects what
@@ -62,8 +55,10 @@ cinc search node 'role:web'`,
 			}
 
 			var opts []cinc.SearchOption
-			if partial := partialProjection(attrs); partial != nil {
-				opts = append(opts, cinc.WithPartial(partial))
+			if len(attrs) > 0 {
+				// Always project name and id too, so a row stays identifiable
+				// whichever of the two its index keys objects by.
+				opts = append(opts, cinc.WithPartialPaths(append([]string{"name", "id"}, attrs...)...))
 			}
 			result, err := runSearch(cmd.Context(), c, index, query, rowsCap, start, opts)
 			if err != nil {
@@ -75,7 +70,7 @@ cinc search node 'role:web'`,
 			case format == printer.FormatJSON:
 				return printer.New(out, format).Value(result)
 			case idOnly:
-				return printer.New(out, format).List(searchIDs(result.Rows, len(attrs) > 0))
+				return printer.New(out, format).List(searchIDs(result.Rows))
 			default:
 				renderSearchTable(out, index, attrs, result)
 				return nil
@@ -89,83 +84,58 @@ cinc search node 'role:web'`,
 	return cmd
 }
 
-// partialProjection turns the -a attribute paths into a partial-search
-// projection, always including name and id so a row stays identifiable.
-func partialProjection(attrs []string) map[string][]string {
-	if len(attrs) == 0 {
-		return nil
-	}
-	p := map[string][]string{"name": {"name"}, "id": {"id"}}
-	for _, a := range attrs {
-		p[a] = strings.Split(a, ".")
-	}
-	return p
-}
-
 // runSearch fetches results. With an explicit --rows it returns that single
 // page (reporting the server's total); otherwise it pages through every match
 // from --start on, so the default output is never silently truncated.
-func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap, start int, opts []cinc.SearchOption) (searchResult, error) {
+//
+// Each row is unwrapped (cinc.UnwrapSearchRow) to the object it describes: a
+// partial row's projection rather than its {url, data} envelope, a data bag
+// item rather than its Chef::DataBagItem wrapper. The envelopes are wire
+// detail, so the table and --format json both work from the objects.
+func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap, start int, opts []cinc.SearchOption) (*cinc.SearchResult, error) {
+	opts = append([]cinc.SearchOption{cinc.WithStart(start)}, opts...)
+	var res *cinc.SearchResult
 	if rowsCap > 0 {
-		pageOpts := append([]cinc.SearchOption{cinc.WithStart(start), cinc.WithRows(rowsCap)}, opts...)
-		res, _, err := c.Search.Query(ctx, index, query, pageOpts...)
+		page, _, err := c.Search.Query(ctx, index, query, append(opts, cinc.WithRows(rowsCap))...)
 		if err != nil {
-			return searchResult{}, err
+			return nil, err
 		}
-		return searchResult{Total: res.Total, Start: res.Start, Rows: res.Rows}, nil
+		res = page
+	} else {
+		all, err := c.Search.SearchAll(ctx, index, query, opts...)
+		if err != nil {
+			return nil, err
+		}
+		// Every match from start on was fetched, so start plus what came
+		// back is the whole result set.
+		res = &cinc.SearchResult{Total: start + len(all), Start: start, Rows: all}
 	}
-	all, err := c.Search.SearchAll(ctx, index, query, append([]cinc.SearchOption{cinc.WithStart(start)}, opts...)...)
-	if err != nil {
-		return searchResult{}, err
+	if res.Rows == nil {
+		// --format json must print "rows": [] for no matches, so scripts can
+		// iterate it without a null check.
+		res.Rows = []json.RawMessage{}
 	}
-	if all == nil {
-		// SearchAll returns nil for no matches; --format json must still
-		// print "rows": [] so scripts can iterate it.
-		all = []json.RawMessage{}
+	for i, row := range res.Rows {
+		res.Rows[i] = cinc.UnwrapSearchRow(row)
 	}
-	// Every match from start on was fetched, so start plus what came back is
-	// the whole result set.
-	return searchResult{Total: start + len(all), Start: start, Rows: all}, nil
+	return res, nil
 }
 
-// objectMap normalizes a search row into the map to read fields from. Partial
-// search wraps the projection under a "data" key; full rows are the object,
-// except that a data bag item comes back wrapped (see unwrapDataBagItem).
-func objectMap(raw json.RawMessage, partial bool) map[string]any {
+// objectMap decodes an (unwrapped) search row into the map to read fields
+// from, or an empty map when the row is not a JSON object.
+func objectMap(raw json.RawMessage) map[string]any {
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
 		return map[string]any{}
-	}
-	if partial {
-		if data, ok := m["data"].(map[string]any); ok {
-			return data
-		}
-		return map[string]any{}
-	}
-	return unwrapDataBagItem(m)
-}
-
-// unwrapDataBagItem returns the item inside a wrapped data bag search row.
-// The server returns data bag items from a full search as a
-// Chef::DataBagItem envelope, named "data_bag_item_<bag>_<id>" with the item
-// itself under "raw_data", so reading the row directly would identify it by
-// the envelope's name and list the envelope's keys. Any other row is
-// returned unchanged.
-func unwrapDataBagItem(m map[string]any) map[string]any {
-	if m["chef_type"] != "data_bag_item" && m["json_class"] != "Chef::DataBagItem" {
-		return m
-	}
-	if item, ok := m["raw_data"].(map[string]any); ok {
-		return item
 	}
 	return m
 }
 
 // searchIDs returns the sorted identities (name, falling back to id) of rows.
-func searchIDs(rows []json.RawMessage, partial bool) []string {
+func searchIDs(rows []json.RawMessage) []string {
 	ids := make([]string, 0, len(rows))
 	for _, raw := range rows {
-		ids = append(ids, rowIdentity(objectMap(raw, partial)))
+		ids = append(ids, rowIdentity(objectMap(raw)))
 	}
 	slices.Sort(ids)
 	return ids
@@ -187,8 +157,7 @@ type searchColumn struct {
 }
 
 // renderSearchTable prints the aligned table and a count footer.
-func renderSearchTable(out interface{ Write([]byte) (int, error) }, index string, attrs []string, result searchResult) {
-	partial := len(attrs) > 0
+func renderSearchTable(out interface{ Write([]byte) (int, error) }, index string, attrs []string, result *cinc.SearchResult) {
 	columns := searchColumns(index, attrs)
 
 	type line struct {
@@ -197,7 +166,7 @@ func renderSearchTable(out interface{ Write([]byte) (int, error) }, index string
 	}
 	lines := make([]line, 0, len(result.Rows))
 	for _, raw := range result.Rows {
-		obj := objectMap(raw, partial)
+		obj := objectMap(raw)
 		cells := make([]string, len(columns))
 		for i, col := range columns {
 			cells[i] = col.get(obj)
@@ -278,34 +247,28 @@ func searchColumns(index string, attrs []string) []searchColumn {
 	}
 }
 
-// nodePlatform renders "<platform> <version>" from a node's automatic
-// attributes, or "-" when the node has not converged yet.
+// nodePlatform renders "<platform> <version>" from a node's attributes, read
+// with Chef precedence, or "-" when the node has not converged yet.
 func nodePlatform(o map[string]any) string {
-	auto, ok := o["automatic"].(map[string]any)
-	if !ok {
-		return "-"
+	attrs := func(level string) cinc.Attributes {
+		m, _ := o[level].(map[string]any)
+		return m
 	}
-	platform := cellString(auto["platform"])
+	node := cinc.Node{Automatic: attrs("automatic"), Override: attrs("override"), Normal: attrs("normal"), Default: attrs("default")}
+	platform := node.AttributeString("platform")
 	if platform == "" {
 		return "-"
 	}
-	if version := cellString(auto["platform_version"]); version != "" {
+	if version := node.AttributeString("platform_version"); version != "" {
 		return platform + " " + version
 	}
 	return platform
 }
 
-// itemKeys lists a data bag item's top-level keys (minus chef bookkeeping).
+// itemKeys lists a data bag item's own top-level keys, leaving out the id and
+// the server's bookkeeping.
 func itemKeys(o map[string]any) string {
-	keys := make([]string, 0, len(o))
-	for k := range o {
-		switch k {
-		case "id", "chef_type", "data_bag":
-			continue
-		}
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
+	keys := slices.Sorted(maps.Keys(cinc.DataBagItem(o).Content()))
 	if len(keys) == 0 {
 		return "-"
 	}

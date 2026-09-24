@@ -873,6 +873,13 @@ func TestNodeEditCommandReadsFromFile(t *testing.T) {
 }
 
 func TestSearchRowAttributeFollowsChefPrecedence(t *testing.T) {
+	host := func(row, attr string) (string, error) {
+		var node cinc.Node
+		if err := json.Unmarshal([]byte(row), &node); err != nil {
+			t.Fatal(err)
+		}
+		return nodeSSHHost(&node, attr)
+	}
 	for _, tc := range []struct{ name, row, attr, want string }{
 		{"dotted path under automatic", `{"automatic":{"cloud":{"public_hostname":"web01.cloud.test"}}}`, "cloud.public_hostname", "web01.cloud.test"},
 		{"override beats default", `{"default":{"ipaddress":"10.0.0.1"},"override":{"ipaddress":"10.0.0.2"}}`, "ipaddress", "10.0.0.2"},
@@ -881,13 +888,37 @@ func TestSearchRowAttributeFollowsChefPrecedence(t *testing.T) {
 		{"node name", `{"name":"web01","automatic":{}}`, "name", "web01"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := searchRowAttribute(json.RawMessage(tc.row), tc.attr)
+			got, err := host(tc.row, tc.attr)
 			if err != nil || got != tc.want {
-				t.Errorf("searchRowAttribute(%s, %q) = %q, %v; want %q", tc.row, tc.attr, got, err, tc.want)
+				t.Errorf("nodeSSHHost(%s, %q) = %q, %v; want %q", tc.row, tc.attr, got, err, tc.want)
 			}
 		})
 	}
-	if _, err := searchRowAttribute(json.RawMessage(`{"automatic":{}}`), "cloud.public_hostname"); err == nil {
-		t.Error("want an error when the attribute is missing")
+	_, err := host(`{"name":"web01","automatic":{}}`, "cloud.public_hostname")
+	if err == nil {
+		t.Fatal("want an error when the attribute is missing")
+	}
+	if !strings.Contains(err.Error(), "web01") || !strings.Contains(err.Error(), "cloud.public_hostname") {
+		t.Errorf("error = %q, want it to name the node and the attribute", err)
+	}
+}
+
+// TestNodeSSHTargetsReportsUndecodableRow checks that a search row that is not
+// a node is reported rather than skipped.
+func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"total":1,"start":0,"rows":[{"name":5}]}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"node", "ssh", "name:web01", "uptime", "--ssh-user", "u", "--config", writeNodeConfig(t, srv.URL)})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "decode node") {
+		t.Errorf("node ssh error = %v, want the decode failure", err)
 	}
 }

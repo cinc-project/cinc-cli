@@ -79,7 +79,7 @@ cinc node create web01 --file web01.json`,
 			if err != nil {
 				return err
 			}
-			node := cinc.Node{Name: args[0], RunList: []string{}}
+			node := cinc.Node{Name: args[0]}
 			if inputFile != "" {
 				data, err := os.ReadFile(inputFile)
 				if err != nil {
@@ -116,9 +116,9 @@ cinc node create web01 --file web01.json`,
 }
 
 // newNodeEditCmd builds the `cinc node edit <name>` command. It fetches the
-// node, opens its JSON in the shared editor, and PUTs the result back. The
-// path arg pins the node name. `--file` reads the updated JSON from disk for
-// scripted use.
+// node, opens it in the node edit form, and PUTs the result back unless
+// nothing changed. The path arg pins the node name. `--file` replaces the
+// node with the JSON read from disk, for scripted use.
 func newNodeEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -134,21 +134,16 @@ cinc node edit web01`,
 			}
 			name := args[0]
 
-			var updated cinc.Node
-			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read %s: %w", inputFile, err)
-				}
-				if err := json.Unmarshal(data, &updated); err != nil {
-					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
-				}
-			} else {
-				current, _, err := c.Nodes.Get(cmd.Context(), name)
-				if err != nil {
-					return err
-				}
-				edited, changed, err := editNodeForm(current)
+			if inputFile == "" {
+				_, changed, err := c.Nodes.Modify(cmd.Context(), name, func(n *cinc.Node) error {
+					edited, changed, err := editNodeForm(n)
+					if err != nil || !changed {
+						return err
+					}
+					*n = *edited
+					n.Name = name
+					return nil
+				})
 				if err != nil {
 					return err
 				}
@@ -156,10 +151,19 @@ cinc node edit web01`,
 					fmt.Fprintf(cmd.OutOrStdout(), "Node %q unchanged\n", name)
 					return nil
 				}
-				updated = *edited
+				fmt.Fprintf(cmd.OutOrStdout(), "Updated node %q\n", name)
+				return nil
+			}
+
+			data, err := os.ReadFile(inputFile)
+			if err != nil {
+				return fmt.Errorf("cinc: read %s: %w", inputFile, err)
+			}
+			var updated cinc.Node
+			if err := json.Unmarshal(data, &updated); err != nil {
+				return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
 			}
 			updated.Name = name
-
 			if _, _, err := c.Nodes.Update(cmd.Context(), &updated); err != nil {
 				return err
 			}
@@ -442,11 +446,7 @@ func writeNodeShowHuman(cmd *cobra.Command, node *cinc.Node) error {
 	}
 	fmt.Fprintf(tw, "Run List\t%s\n", runList)
 
-	environment := node.Environment
-	if environment == "" {
-		environment = "_default"
-	}
-	fmt.Fprintf(tw, "Environment\t%s\n", environment)
+	fmt.Fprintf(tw, "Environment\t%s\n", node.EnvironmentName())
 
 	optional("Policy Name", node.PolicyName)
 	optional("Policy Group", node.PolicyGroup)
@@ -557,13 +557,12 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.Search.SearchAll(cmd.Context(), "node", expandNodeSSHQuery(query))
-	if err != nil {
-		return nil, err
-	}
-	targets := make([]remote.Target, 0, len(rows))
-	for _, row := range rows {
-		host, err := searchRowAttribute(row, flags.attribute)
+	var targets []remote.Target
+	for node, err := range c.Search.Nodes(cmd.Context(), expandNodeSSHQuery(query)) {
+		if err != nil {
+			return nil, err
+		}
+		host, err := nodeSSHHost(node, flags.attribute)
 		if err != nil {
 			return nil, err
 		}
@@ -584,52 +583,18 @@ func expandNodeSSHQuery(query string) string {
 	return "tags:*" + query + "* OR roles:*" + query + "* OR fqdn:*" + query + "* OR addresses:*" + query + "*"
 }
 
-// searchRowAttribute reads the SSH host attribute from one node search row.
-// The lookup follows Chef's read precedence (automatic, override, normal,
-// default) and accepts dotted paths such as cloud.public_hostname, the way
-// node[...] does in a recipe. "name" is the node's own name, which isn't an
-// attribute.
-func searchRowAttribute(row json.RawMessage, attr string) (string, error) {
-	var node cinc.Node
-	if err := json.Unmarshal(row, &node); err != nil {
-		return "", err
-	}
+// nodeSSHHost reads the SSH host attribute from a node. The lookup follows
+// Chef's read precedence (automatic, override, normal, default) and accepts
+// dotted paths such as cloud.public_hostname, the way node[...] does in a
+// recipe. "name" is the node's own name, which isn't an attribute.
+func nodeSSHHost(node *cinc.Node, attr string) (string, error) {
 	if attr == "name" {
 		return node.Name, nil
 	}
 	if _, ok := node.Attribute(attr); !ok {
-		return "", fmt.Errorf("search row missing SSH attribute %q", attr)
+		return "", fmt.Errorf("node %q has no %q attribute to connect to. Pick another with --attribute, or pass --attribute name to use the node name", node.Name, attr)
 	}
 	return node.AttributeString(attr), nil
-}
-
-func lookupAttribute(data any, path []string) (any, bool) {
-	current := data
-	for _, part := range path {
-		m, ok := current.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		current, ok = m[part]
-		if !ok {
-			return nil, false
-		}
-	}
-	return current, true
-}
-
-func attributeString(value any) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case []any:
-		if len(v) == 0 {
-			return ""
-		}
-		return attributeString(v[0])
-	default:
-		return fmt.Sprint(v)
-	}
 }
 
 func remoteOptions(flags nodeSSHFlags) remote.SSHOptions {
@@ -696,6 +661,18 @@ func validateBootstrapFlags(flags nodeBootstrapFlags, environmentChanged bool) e
 	return nil
 }
 
+// gatherCSVArgs flattens args that may each be a single entry or a
+// comma-separated list of entries into one ordered slice.
+func gatherCSVArgs(args []string) []string {
+	var out []string
+	for _, arg := range args {
+		out = append(out, splitCSV(arg)...)
+	}
+	return out
+}
+
+// splitCSV splits a comma-separated list, trimming each entry and dropping
+// empty ones. It returns nil for an empty string.
 func splitCSV(s string) []string {
 	if s == "" {
 		return nil
