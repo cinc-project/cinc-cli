@@ -14,6 +14,12 @@ Run the pre-flight checks for every profile in your credentials file.
 cinc config validate
 ```
 
+Check just one profile.
+
+```bash
+cinc config validate --profile staging
+```
+
 ### Options
 
 ```

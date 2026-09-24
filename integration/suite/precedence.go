@@ -11,6 +11,34 @@ import (
 // They sit in cliFamily beside the profile and chef-compat cases in
 // behaviour.go.
 
+// testConfigValidateProfileFlag validates a file holding a broken profile.
+// With no --profile every profile is checked, and CINC_PROFILE, which users
+// often set for every command, does not change that. An explicit --profile
+// checks just that profile, and an unknown one is a one-line error.
+func testConfigValidateProfileFlag(t *testing.T, _ Target, c *cli) {
+	behAppendProfile(t, c.credentialsPath(), "broken", behWith(c.adminFields(c.tgt.Org), "client_key", filepath.Join(c.home, "missing.pem")))
+
+	rep, _ := c.validate()
+	if rep.Valid || len(rep.Profiles) != 3 {
+		t.Errorf("config validate should check all three profiles and fail on broken: %+v", rep)
+	}
+
+	rep, _ = c.validate("--profile", "default")
+	if !rep.Valid || len(rep.Profiles) != 1 || rep.Profiles[0].Name != "default" {
+		t.Errorf("config validate --profile default should check only default: %+v", rep)
+	}
+
+	r := c.exec(runOpts{env: []string{"CINC_PROFILE=default"}}, "config", "validate", "--format", "json")
+	if r.exitCode == 0 || !strings.Contains(r.stdout, `"broken"`) {
+		t.Errorf("CINC_PROFILE should not narrow config validate to one profile: %s", r)
+	}
+
+	r = c.fail("config", "validate", "--profile", "nosuch")
+	if line := behStderrLine(t, r); !strings.Contains(line, `"nosuch"`) || !strings.Contains(line, c.credentialsPath()) {
+		t.Errorf("an unknown --profile should name the profile and the file: %s", r)
+	}
+}
+
 // testSSLVerifyModeTypo sets ssl_verify_mode = "verify_none", without the
 // leading colon knife requires. Only the exact ":verify_none" turns
 // certificate checks off, so the typo never weakens TLS: commands verify as
