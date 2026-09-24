@@ -15,6 +15,8 @@ require (
 	golang.org/x/crypto v0.57.0
 )
 
+require github.com/kevinburke/ssh_config v1.6.0 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
