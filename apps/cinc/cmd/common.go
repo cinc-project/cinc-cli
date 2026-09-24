@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -336,10 +335,7 @@ func offerFirstRun(cmd *cobra.Command, cincPath string) (succeeded, declined boo
 	// who'll configure later, isn't dropped into the prompts. Default is yes.
 	fmt.Fprintln(out, "It looks like this is your first time using Cinc.")
 	fmt.Fprint(out, "Would you like to run the interactive setup? (Y/n) ")
-	switch strings.ToLower(readPromptLine(cmd.InOrStdin())) {
-	case "n", "no":
-		fmt.Fprintf(out, "No problem — run `%s config create` whenever you're ready to set up a profile.\n", progname.Get())
-		fmt.Fprintln(out)
+	if !confirmFirstRun(cmd, out) {
 		return false, true, nil
 	}
 
@@ -355,11 +351,20 @@ func offerFirstRun(cmd *cobra.Command, cincPath string) (succeeded, declined boo
 // newline, so it never buffers past the line — a later reader (e.g. the
 // configure prompts) still sees the rest of stdin intact.
 func readPromptLine(r io.Reader) string {
+	line, _ := readPromptAnswer(r)
+	return line
+}
+
+// readPromptAnswer is readPromptLine that also reports whether the user
+// answered at all: ok is false when input ended before a single byte
+// arrived, which on a terminal means Ctrl-D rather than Enter.
+func readPromptAnswer(r io.Reader) (line string, ok bool) {
 	var b strings.Builder
 	buf := make([]byte, 1)
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
+			ok = true
 			if buf[0] == '\n' {
 				break
 			}
@@ -369,7 +374,27 @@ func readPromptLine(r io.Reader) string {
 			break
 		}
 	}
-	return strings.TrimSpace(b.String())
+	return strings.TrimSpace(b.String()), ok
+}
+
+// confirmFirstRun reads the answer to a first-run yes/no question, where
+// Enter means yes. No, or end of input, prints the decline message and
+// returns false: a user who presses Ctrl-D is backing out, and treating it
+// as yes would carry on into prompts nobody is answering.
+func confirmFirstRun(cmd *cobra.Command, out io.Writer) bool {
+	answer, ok := readPromptAnswer(cmd.InOrStdin())
+	switch strings.ToLower(answer) {
+	case "n", "no":
+	default:
+		if ok {
+			return true
+		}
+		// Ctrl-D echoes no newline, so end the prompt's line first.
+		fmt.Fprintln(out)
+	}
+	fmt.Fprintf(out, "No problem — run `%s config create` whenever you're ready to set up a profile.\n", progname.Get())
+	fmt.Fprintln(out)
+	return false
 }
 
 // runMigrationPrompt asks the user whether to migrate ~/.chef/credentials
@@ -377,11 +402,7 @@ func readPromptLine(r io.Reader) string {
 // declined flag matches offerFirstRun's contract.
 func runMigrationPrompt(cmd *cobra.Command, chefPath, cincPath string, out io.Writer) (succeeded, declined bool, err error) {
 	fmt.Fprintf(out, "We found an existing Chef config at %s. Want us to migrate it to %s for you? [Y/n] ", chefPath, cincPath)
-	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "n", "no":
-		fmt.Fprintf(out, "No problem — run `%s config create` whenever you're ready to set up a profile.\n", progname.Get())
-		fmt.Fprintln(out)
+	if !confirmFirstRun(cmd, out) {
 		return false, true, nil
 	}
 

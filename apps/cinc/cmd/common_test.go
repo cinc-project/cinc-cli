@@ -132,7 +132,7 @@ func TestResolveProfileWelcomesUserOnFirstRun(t *testing.T) {
 	swapConfigure(t, fakeConfigure(t))
 
 	stderr := new(bytes.Buffer)
-	c := fakeCmd("", "", "", stderr)
+	c := fakeCmd("", "", "\n", stderr)
 	if _, err := resolveProfile(c); !errors.Is(err, errFirstRunCompleted) {
 		t.Fatalf("resolveProfile after first run = %v, want errFirstRunCompleted", err)
 	}
@@ -169,7 +169,7 @@ client_key      = "/k/t.pem"
 	})
 
 	stderr := new(bytes.Buffer)
-	c := fakeCmd("", "", "y\n", stderr)
+	c := fakeCmd("", "", "y\ny\n", stderr)
 	if _, err := resolveProfile(c); !errors.Is(err, errFirstRunCompleted) {
 		t.Fatalf("resolveProfile after migration = %v, want errFirstRunCompleted", err)
 	}
@@ -199,7 +199,8 @@ client_key      = "/k/t.pem"
 `), 0o600)
 	})
 
-	c := fakeCmd("", "", "\n", new(bytes.Buffer))
+	// Enter at the setup gate, then Enter at the migration prompt.
+	c := fakeCmd("", "", "\n\n", new(bytes.Buffer))
 	if _, err := resolveProfile(c); !errors.Is(err, errFirstRunCompleted) {
 		t.Fatalf("resolveProfile = %v, want errFirstRunCompleted", err)
 	}
@@ -247,7 +248,7 @@ func TestResolveProfileRunsConfigureWhenNoChefFile(t *testing.T) {
 	})
 
 	stderr := new(bytes.Buffer)
-	c := fakeCmd("", "", "", stderr)
+	c := fakeCmd("", "", "\n", stderr)
 	if _, err := resolveProfile(c); !errors.Is(err, errFirstRunCompleted) {
 		t.Fatalf("resolveProfile after configure = %v, want errFirstRunCompleted", err)
 	}
@@ -420,5 +421,46 @@ func TestResolveSecretExpandsTildeInSecretFile(t *testing.T) {
 	}
 	if string(got) != "s3cret" {
 		t.Errorf("secret = %q, want the contents of ~/secret", got)
+	}
+}
+
+// TestFirstRunTreatsEndOfInputAsDecline presses Ctrl-D, not Enter, at each
+// first-run question. End of input is the user backing out, so setup stops
+// with the decline message instead of reading on into prompts nobody is
+// answering, or migrating a file nobody agreed to.
+func TestFirstRunTreatsEndOfInputAsDecline(t *testing.T) {
+	for _, tc := range []struct {
+		name, stdin string
+		chef        bool
+	}{
+		{"at the setup gate", "", false},
+		{"at the migration prompt", "y\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			if tc.chef {
+				_ = os.MkdirAll(filepath.Join(home, ".chef"), 0o700)
+				_ = os.WriteFile(filepath.Join(home, ".chef", "credentials"), []byte("x"), 0o600)
+			}
+			swapTTY(t, true)
+			swapMigrate(t, func(_, _ string) (int, error) {
+				t.Error("migrateChef must not run on end of input")
+				return 0, nil
+			})
+			swapConfigure(t, func(*cobra.Command, string) error {
+				t.Error("the configure prompts must not run on end of input")
+				return nil
+			})
+
+			stderr := new(bytes.Buffer)
+			_, err := resolveProfile(fakeCmd("", "", tc.stdin, stderr))
+			if err == nil || errors.Is(err, errFirstRunCompleted) || !strings.Contains(err.Error(), "config create") {
+				t.Errorf("resolveProfile = %v, want the missing-credentials error", err)
+			}
+			if !strings.Contains(stderr.String(), "No problem") {
+				t.Errorf("expected the decline message on stderr, got:\n%s", stderr.String())
+			}
+		})
 	}
 }
