@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -98,9 +96,6 @@ cinc node create web01 --file web01.json`,
 			if cmd.Flags().Changed("run-list") {
 				node.RunList = splitCSV(runList)
 			}
-			if node.RunList == nil {
-				node.RunList = []string{}
-			}
 			if policyName != "" {
 				node.PolicyName = policyName
 				node.PolicyGroup = policyGroup
@@ -164,9 +159,6 @@ cinc node edit web01`,
 				updated = *edited
 			}
 			updated.Name = name
-			if updated.RunList == nil {
-				updated.RunList = []string{}
-			}
 
 			if _, _, err := c.Nodes.Update(cmd.Context(), &updated); err != nil {
 				return err
@@ -381,7 +373,7 @@ cinc node list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchNodeNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.Nodes.List)
 			if err != nil {
 				return err
 			}
@@ -482,20 +474,6 @@ cinc node delete web01`,
 			return nil
 		},
 	}
-}
-
-// fetchNodeNames returns the sorted names of every node on the server.
-func fetchNodeNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.Nodes.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }
 
 func addNodeSSHFlags(cmd *cobra.Command, flags *nodeSSHFlags) {

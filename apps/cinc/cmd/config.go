@@ -103,11 +103,11 @@ func profileToValidate(cmd *cobra.Command, path string, cfg *config.Config) (*co
 
 func configValidatePath(cmd *cobra.Command, args []string) (string, error) {
 	if len(args) > 0 {
-		return expandHome(args[0])
+		return config.ExpandHome(args[0])
 	}
 	cfgPath, err := configPathForCommand(cmd)
 	if err != nil {
 		return "", err
 	}
-	return expandHome(cfgPath)
+	return config.ExpandHome(cfgPath)
 }

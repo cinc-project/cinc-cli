@@ -61,13 +61,13 @@ func TestFetchCookbookNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchCookbookNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Cookbooks.List)
 	if err != nil {
-		t.Fatalf("fetchCookbookNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"apache", "mysql", "nginx"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchCookbookNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

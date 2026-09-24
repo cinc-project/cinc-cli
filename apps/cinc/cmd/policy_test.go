@@ -57,13 +57,13 @@ func TestFetchPolicyNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchPolicyNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Policies.List)
 	if err != nil {
-		t.Fatalf("fetchPolicyNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"base", "db", "web"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchPolicyNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

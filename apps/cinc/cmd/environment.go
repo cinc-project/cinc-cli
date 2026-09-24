@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -198,26 +196,11 @@ cinc environment list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchEnvironmentNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.Environments.List)
 			if err != nil {
 				return err
 			}
 			return printer.New(cmd.OutOrStdout(), format).List(names)
 		},
 	}
-}
-
-// fetchEnvironmentNames returns the sorted names of every environment on
-// the server.
-func fetchEnvironmentNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.Environments.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }

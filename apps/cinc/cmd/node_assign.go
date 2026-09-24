@@ -28,9 +28,6 @@ cinc node environment-set web01 prod`,
 			}
 			node.Name = name
 			node.Environment = env
-			if node.RunList == nil {
-				node.RunList = []string{}
-			}
 			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
 				return err
 			}
@@ -63,9 +60,6 @@ cinc node policy-set web01 prod base`,
 			node.Name = name
 			node.PolicyGroup = group
 			node.PolicyName = policy
-			if node.RunList == nil {
-				node.RunList = []string{}
-			}
 			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
 				return err
 			}

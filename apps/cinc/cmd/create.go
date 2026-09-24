@@ -14,6 +14,7 @@ import (
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 
+	"github.com/cinc-project/cinc-cli/cli/components"
 	"github.com/cinc-project/cinc-cli/cli/config"
 	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/supermarket"
@@ -96,11 +97,11 @@ cinc config create`,
 			if clientKey == "" {
 				return fmt.Errorf("cinc: --client-key is required")
 			}
-			cfgPath, err = expandHome(cfgPath)
+			cfgPath, err = config.ExpandHome(cfgPath)
 			if err != nil {
 				return err
 			}
-			clientKey, err = expandHome(clientKey)
+			clientKey, err = config.ExpandHome(clientKey)
 			if err != nil {
 				return err
 			}
@@ -179,12 +180,12 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 	fmt.Fprintln(out)
 
 	var err error
-	defaults.ConfigPath, err = promptWithDefault(reader, out, "Credentials file location", defaults.ConfigPath)
+	defaults.ConfigPath, err = components.PromptWithDefault(reader, out, "Credentials file location", defaults.ConfigPath)
 	if err != nil {
 		return configureDefaults{}, err
 	}
 
-	if resolvedPath, expandErr := expandHome(defaults.ConfigPath); expandErr == nil {
+	if resolvedPath, expandErr := config.ExpandHome(defaults.ConfigPath); expandErr == nil {
 		if existing, loadErr := config.Load(resolvedPath); loadErr == nil && len(existing.Profiles) > 0 {
 			adjusted, err := promptExistingFileAction(reader, out, resolvedPath, existing, defaults)
 			if err != nil {
@@ -195,28 +196,28 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 	}
 
 	if !defaults.ProfileNameExplicit {
-		defaults.ProfileName, err = promptWithDefault(reader, out, "Profile name", defaults.ProfileName)
+		defaults.ProfileName, err = components.PromptWithDefault(reader, out, "Profile name", defaults.ProfileName)
 		if err != nil {
 			return configureDefaults{}, err
 		}
 	}
-	defaults.SupermarketSite, err = promptWithDefault(reader, out, "Supermarket site", defaults.SupermarketSite)
+	defaults.SupermarketSite, err = components.PromptWithDefault(reader, out, "Supermarket site", defaults.SupermarketSite)
 	if err != nil {
 		return configureDefaults{}, err
 	}
-	defaults.ClientName, err = promptWithDefault(reader, out, "Client name", defaults.ClientName)
+	defaults.ClientName, err = components.PromptWithDefault(reader, out, "Client name", defaults.ClientName)
 	if err != nil {
 		return configureDefaults{}, err
 	}
 	if defaults.ClientKey == "" {
 		defaults.ClientKey = defaultClientKey(defaults.ClientName)
 	}
-	defaults.ClientKey, err = promptWithDefault(reader, out, "Client key path", defaults.ClientKey)
+	defaults.ClientKey, err = components.PromptWithDefault(reader, out, "Client key path", defaults.ClientKey)
 	if err != nil {
 		return configureDefaults{}, err
 	}
 	defaultHost, defaultOrg := splitChefServerURL(defaults.ChefServerURL)
-	serverHost, err := promptWithDefault(reader, out, "Chef server host (optional, e.g. chef.example.com)", defaultHost)
+	serverHost, err := components.PromptWithDefault(reader, out, "Chef server host (optional, e.g. chef.example.com)", defaultHost)
 	if err != nil {
 		return configureDefaults{}, err
 	}
@@ -227,7 +228,7 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 		if urlOrg != "" && serverHost != defaultHost {
 			defaultOrg = urlOrg
 		}
-		serverOrg, err := promptWithDefault(reader, out, "Chef server organization", defaultOrg)
+		serverOrg, err := components.PromptWithDefault(reader, out, "Chef server organization", defaultOrg)
 		if err != nil {
 			return configureDefaults{}, err
 		}
@@ -242,7 +243,7 @@ func promptConfigure(cmd *cobra.Command, defaults configureDefaults) (configureD
 	if defaults.SSLVerifyMode == "" {
 		defaults.SSLVerifyMode = ":verify_peer"
 	}
-	defaults.SSLVerifyMode, err = promptWithDefault(reader, out, "SSL verify mode", defaults.SSLVerifyMode)
+	defaults.SSLVerifyMode, err = components.PromptWithDefault(reader, out, "SSL verify mode", defaults.SSLVerifyMode)
 	if err != nil {
 		return configureDefaults{}, err
 	}
@@ -268,7 +269,7 @@ func promptExistingFileAction(reader *bufio.Reader, out io.Writer, path string, 
 	fmt.Fprintln(out)
 
 	for {
-		choice, err := promptWithDefault(reader, out, "Choice", "1")
+		choice, err := components.PromptWithDefault(reader, out, "Choice", "1")
 		if err != nil {
 			return configureDefaults{}, err
 		}
@@ -365,7 +366,7 @@ func promptProfilePicker(reader *bufio.Reader, out io.Writer, names []string) (s
 	}
 	fmt.Fprintln(out)
 	for {
-		choice, err := promptWithDefault(reader, out, "Choice", "1")
+		choice, err := components.PromptWithDefault(reader, out, "Choice", "1")
 		if err != nil {
 			return "", err
 		}
@@ -477,19 +478,6 @@ func promptNoDefault(reader *bufio.Reader, out io.Writer, label string) (string,
 	return strings.TrimSpace(answer), nil
 }
 
-func promptWithDefault(reader *bufio.Reader, out io.Writer, label, defaultValue string) (string, error) {
-	fmt.Fprintf(out, "%s [%s]: ", label, defaultValue)
-	answer, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-	answer = strings.TrimSpace(answer)
-	if answer == "" {
-		return defaultValue, nil
-	}
-	return answer, nil
-}
-
 func configureOptionsChanged(cmd *cobra.Command) bool {
 	for _, name := range []string{
 		"server-url",
@@ -515,16 +503,7 @@ func configureProfileNameForCommand(cmd *cobra.Command) string {
 }
 
 func configureProfileExplicit(cmd *cobra.Command) bool {
-	if profileName, _ := cmd.Flags().GetString("profile"); profileName != "" {
-		return true
-	}
-	if os.Getenv("CINC_PROFILE") != "" {
-		return true
-	}
-	if os.Getenv("CHEF_PROFILE") != "" {
-		return true
-	}
-	return false
+	return explicitProfile(cmd) != ""
 }
 
 // serverURLFlags are config create's spellings of the server URL flag,
@@ -606,20 +585,6 @@ func clearCredentials(path string) error {
 	return nil
 }
 
-func expandHome(path string) (string, error) {
-	if path == "~" || strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cinc: locate home directory: %w", err)
-		}
-		if path == "~" {
-			return home, nil
-		}
-		return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
-	}
-	return path, nil
-}
-
 func configPathForCommand(cmd *cobra.Command) (string, error) {
 	cfgPath, _ := cmd.Flags().GetString("config")
 	if cfgPath != "" {
@@ -629,15 +594,17 @@ func configPathForCommand(cmd *cobra.Command) (string, error) {
 }
 
 func profileNameForCommand(cmd *cobra.Command) string {
-	profileName, _ := cmd.Flags().GetString("profile")
-	if profileName != "" {
-		return profileName
-	}
-	if profileName = os.Getenv("CINC_PROFILE"); profileName != "" {
-		return profileName
-	}
-	if profileName = os.Getenv("CHEF_PROFILE"); profileName != "" {
-		return profileName
+	if name := explicitProfile(cmd); name != "" {
+		return name
 	}
 	return "default"
+}
+
+// explicitProfile returns the profile the user pinned with --profile or,
+// failing that, $CINC_PROFILE then $CHEF_PROFILE, or "" when none is set.
+func explicitProfile(cmd *cobra.Command) string {
+	if name, _ := cmd.Flags().GetString("profile"); name != "" {
+		return name
+	}
+	return config.EnvProfile()
 }

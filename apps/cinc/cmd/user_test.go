@@ -51,13 +51,13 @@ func TestFetchUserNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchUserNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Users.List)
 	if err != nil {
-		t.Fatalf("fetchUserNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"alice", "bob", "carol"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchUserNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

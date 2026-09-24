@@ -459,7 +459,7 @@ func ValidateSiteURL(raw string) error {
 // "default". When both env vars are set CINC_PROFILE wins.
 func (c *Config) Profile(name string) (Profile, error) {
 	if name == "" {
-		name = envProfile()
+		name = EnvProfile()
 	}
 	if name == "" {
 		name = "default"
@@ -471,9 +471,9 @@ func (c *Config) Profile(name string) (Profile, error) {
 	return p, nil
 }
 
-// envProfile returns the profile name selected by environment variables,
-// preferring CINC_PROFILE over CHEF_PROFILE.
-func envProfile() string {
+// EnvProfile returns the profile name selected by environment variables,
+// preferring CINC_PROFILE over CHEF_PROFILE, or "" when neither is set.
+func EnvProfile() string {
 	if v := os.Getenv("CINC_PROFILE"); v != "" {
 		return v
 	}

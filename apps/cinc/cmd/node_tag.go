@@ -71,9 +71,6 @@ cinc node tag set web01 prod web`,
 				node.SetTags(tags)
 			}
 			node.Name = name
-			if node.RunList == nil {
-				node.RunList = []string{}
-			}
 			if _, _, err := c.Nodes.Update(cmd.Context(), node); err != nil {
 				return err
 			}

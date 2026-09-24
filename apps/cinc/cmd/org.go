@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,7 +73,7 @@ cinc org list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchOrgNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.Orgs.List)
 			if errors.Is(err, cinc.ErrForbidden) {
 				names, err = fetchMemberOrgNames(cmd, c, err)
 			}
@@ -84,20 +83,6 @@ cinc org list`,
 			return printer.New(cmd.OutOrStdout(), format).List(names)
 		},
 	}
-}
-
-// fetchOrgNames returns the sorted names of every organization on the server.
-func fetchOrgNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.Orgs.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }
 
 // fetchMemberOrgNames is org list's answer when the server refuses to list

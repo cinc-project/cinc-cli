@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
@@ -58,9 +56,6 @@ cinc role create webserver`,
 					return fmt.Errorf("cinc: parse %s: %w", inputFile, err)
 				}
 				role.Name = args[0]
-			}
-			if role.RunList == nil {
-				role.RunList = []string{}
 			}
 			if description != "" {
 				role.Description = description
@@ -121,9 +116,6 @@ cinc role edit webserver`,
 				updated = *edited
 			}
 			updated.Name = name
-			if updated.RunList == nil {
-				updated.RunList = []string{}
-			}
 
 			if _, _, err := c.Roles.Update(cmd.Context(), &updated); err != nil {
 				return err
@@ -202,25 +194,11 @@ cinc role list`,
 			if err != nil {
 				return err
 			}
-			names, err := fetchRoleNames(cmd.Context(), c)
+			names, err := listNames(cmd.Context(), c.Roles.List)
 			if err != nil {
 				return err
 			}
 			return printer.New(cmd.OutOrStdout(), format).List(names)
 		},
 	}
-}
-
-// fetchRoleNames returns the sorted names of every role on the server.
-func fetchRoleNames(ctx context.Context, c *cinc.Client) ([]string, error) {
-	index, _, err := c.Roles.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(index))
-	for name := range index {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names, nil
 }

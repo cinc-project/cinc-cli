@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/client"
@@ -32,7 +30,7 @@ cinc explore`,
 			}
 			return explore.Run(cmd.Context(), explore.Options{
 				Profiles:    cfg.Profiles,
-				Preselected: preselectedProfile(cmd),
+				Preselected: explicitProfile(cmd),
 				NewClient:   client.New,
 				Stdin:       cmd.InOrStdin(),
 				Stdout:      cmd.OutOrStdout(),
@@ -40,20 +38,4 @@ cinc explore`,
 			})
 		},
 	}
-}
-
-// preselectedProfile returns the profile the user pinned explicitly via
-// --profile or the CINC_PROFILE/CHEF_PROFILE env vars, or "" to let the
-// TUI show its picker.
-func preselectedProfile(cmd *cobra.Command) string {
-	if name, _ := cmd.Flags().GetString("profile"); name != "" {
-		return name
-	}
-	if name := os.Getenv("CINC_PROFILE"); name != "" {
-		return name
-	}
-	if name := os.Getenv("CHEF_PROFILE"); name != "" {
-		return name
-	}
-	return ""
 }

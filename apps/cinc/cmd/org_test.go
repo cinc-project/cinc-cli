@@ -67,13 +67,13 @@ func TestFetchOrgNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchOrgNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.Orgs.List)
 	if err != nil {
-		t.Fatalf("fetchOrgNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"acme", "mondoo", "zeta"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchOrgNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 

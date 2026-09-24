@@ -52,13 +52,13 @@ func TestFetchDataBagNamesReturnsSortedNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	names, err := fetchDataBagNames(context.Background(), c)
+	names, err := listNames(context.Background(), c.DataBags.List)
 	if err != nil {
-		t.Fatalf("fetchDataBagNames: %v", err)
+		t.Fatalf("listNames: %v", err)
 	}
 	want := []string{"apps", "secrets", "users"}
 	if !slices.Equal(names, want) {
-		t.Errorf("fetchDataBagNames = %v, want %v", names, want)
+		t.Errorf("listNames = %v, want %v", names, want)
 	}
 }
 
