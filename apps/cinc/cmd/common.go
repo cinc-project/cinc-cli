@@ -443,6 +443,14 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 	if answers.ClientKey == "" {
 		answers.ClientKey = defaultClientKey(answers.ClientName)
 	}
+	// Expand ~ the way `config create` does, or a typed ~/work/credentials
+	// lands in a directory named ~ under wherever the command ran.
+	if answers.ConfigPath, err = expandHome(answers.ConfigPath); err != nil {
+		return err
+	}
+	if answers.ClientKey, err = expandHome(answers.ClientKey); err != nil {
+		return err
+	}
 	if answers.ReplaceFile {
 		if err := os.Remove(answers.ConfigPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("cinc: remove old credentials: %w", err)
