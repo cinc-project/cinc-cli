@@ -28,8 +28,6 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
-github.com/cinc-project/cinc-api v0.14.2 h1:nsQe8AespOCivO70lz/KB/+C23mCcdAXQ19ONlsC7g0=
-github.com/cinc-project/cinc-api v0.14.2/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
 github.com/cinc-project/cinc-server-ng v0.14.0 h1:DMmb22PQPTH0MtJJTbbyd0lC6wE6zzV4bsMCnw0UHMU=
 github.com/cinc-project/cinc-server-ng v0.14.0/go.mod h1:+TLa5LlEnZEVM1GtnY1hRiPnaK8lle/W69182ZmBEOw=
 github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=

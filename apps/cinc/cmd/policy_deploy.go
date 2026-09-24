@@ -267,7 +267,7 @@ func pushRevision(cmd *cobra.Command, format printer.Format, c *cinc.Client, loc
 	if err != nil {
 		return err
 	}
-	return emitPushResult(cmd, format, lock.Name, group, rev, uploads, len(cookbooks))
+	return emitPushResult(cmd, format, lock.Name, group, rev.Revision, uploads, len(cookbooks))
 }
 
 func emitPushResult(cmd *cobra.Command, format printer.Format, policy, group string, rev *cinc.PolicyRevision, uploaded, total int) error {
