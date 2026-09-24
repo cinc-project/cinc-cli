@@ -204,18 +204,54 @@ cinc group member remove admins alice`),
 			if _, _, err := c.Groups.Update(cmd.Context(), current); err != nil {
 				return err
 			}
+			// erchef accepts a group PUT naming an actor that does not exist
+			// and silently drops it, answering with the body as sent. Read
+			// the group back so an add reports only what actually landed.
+			var dropped []string
+			if add {
+				if changed, dropped, err = keptMembers(cmd, c, group, memberKind(kind), changed); err != nil {
+					return err
+				}
+			}
 			note := ""
 			if len(unchanged) > 0 {
 				note = fmt.Sprintf(" (%s %s it)", strings.Join(unchanged, ", "),
 					memberState(add, len(unchanged) > 1, true))
 			}
-			fmt.Fprintf(out, "%s %s %s group %q%s\n",
-				cases(add, "Added", "Removed"), strings.Join(changed, ", "), preposition, group, note)
+			if len(changed) > 0 {
+				fmt.Fprintf(out, "%s %s %s group %q%s\n",
+					cases(add, "Added", "Removed"), strings.Join(changed, ", "), preposition, group, note)
+			}
+			if len(dropped) > 0 {
+				return fmt.Errorf("the server didn't add %s to group %q. Check that a %s by that name exists in this organization",
+					strings.Join(dropped, ", "), group, kind)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&kind, "type", string(memberUser), "actor type to change: user, client, or group")
 	return cmd
+}
+
+// keptMembers reads group back after an add and splits the names the add
+// sent into those the group now holds and those the server dropped.
+func keptMembers(cmd *cobra.Command, c *cinc.Client, group string, kind memberKind, added []string) (kept, dropped []string, err error) {
+	after, _, err := c.Groups.Get(cmd.Context(), group)
+	if err != nil {
+		return nil, nil, err
+	}
+	members, err := memberSlice(after, kind)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, name := range added {
+		if slices.Contains(*members, name) {
+			kept = append(kept, name)
+		} else {
+			dropped = append(dropped, name)
+		}
+	}
+	return kept, dropped, nil
 }
 
 // applyMemberChange adds or removes names from the actor list of the

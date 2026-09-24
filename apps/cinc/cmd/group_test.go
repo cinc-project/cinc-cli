@@ -186,6 +186,14 @@ client_key      = %q
 // the actors.users slice from any PUT body.
 func groupMemberServer(t *testing.T, name string, users []string, gotUsers *[]string) *httptest.Server {
 	t.Helper()
+	return groupMemberServerKnowing(t, name, users, gotUsers, nil)
+}
+
+// groupMemberServerKnowing is groupMemberServer for a server that knows
+// only the users in known (nil means every name exists): like erchef, a PUT
+// silently drops a member it cannot find, and later GETs show what it kept.
+func groupMemberServerKnowing(t *testing.T, name string, users []string, gotUsers *[]string, known []string) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/groups/"+name, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -200,6 +208,13 @@ func groupMemberServer(t *testing.T, name string, users []string, gotUsers *[]st
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			*gotUsers = body.Actors.Users
+			users = nil
+			for _, u := range body.Actors.Users {
+				if known == nil || slices.Contains(known, u) {
+					users = append(users, u)
+				}
+			}
+			// erchef answers with the body as sent, not what it stored.
 			_ = json.NewEncoder(w).Encode(cinc.Group{GroupName: name, Name: name, Users: body.Actors.Users})
 		default:
 			t.Errorf("unexpected method %q", r.Method)

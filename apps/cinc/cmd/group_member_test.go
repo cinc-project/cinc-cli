@@ -129,3 +129,25 @@ func TestGroupMemberRemoveReportsOnlyRemovedMembers(t *testing.T) {
 		t.Errorf("output = %q, want %q", out, want)
 	}
 }
+
+// TestGroupMemberAddReportsDroppedMembers adds a real user and one the
+// server has never heard of. erchef accepts the group PUT but silently
+// drops the unknown name, so the command checks what the group holds
+// afterwards: it reports only the member that was added, and fails naming
+// the one that wasn't.
+func TestGroupMemberAddReportsDroppedMembers(t *testing.T) {
+	var gotUsers []string
+	srv := groupMemberServerKnowing(t, "admins", []string{"alice"}, &gotUsers, []string{"alice", "bob"})
+	cfg := groupMemberConfig(t, srv)
+
+	out, err := runGroupMember(t, cfg, "add", "admins", "bob", "ghost")
+	if err == nil {
+		t.Fatalf("adding an unknown user succeeded: %q", out)
+	}
+	if !strings.Contains(err.Error(), "ghost") || strings.Contains(err.Error(), "bob") {
+		t.Errorf("error = %v, want it to name ghost and only ghost", err)
+	}
+	if want := "Added bob to group \"admins\"\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}

@@ -75,9 +75,6 @@ func run(m *testing.M) int {
 		Gaps: map[string]string{
 			"keys/client-edit-partial": "key PUT drops fields the body omits: https://github.com/cinc-project/cinc-server-ng/issues/163 (fixed on main by #202, not yet released)",
 			"keys/client-edit-rename":  "key PUT ignores a new name: https://github.com/cinc-project/cinc-server-ng/issues/163 (fixed on main by #202, not yet released)",
-			// v0.14.0 drops unknown members as erchef does; what remains is
-			// the CLI reporting a dropped member as added, fixed separately.
-			"groups/member-unknown": "group PUT dropping unknown members (https://github.com/cinc-project/cinc-server-ng/issues/186) is fixed; the CLI does not yet report a dropped member",
 		},
 	}
 	return m.Run()
