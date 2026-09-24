@@ -61,8 +61,8 @@ func (groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited [
 	if err := json.Unmarshal(edited, &g); err != nil {
 		return fmt.Errorf("parse edited group: %w", err)
 	}
-	// Update builds its URL from Name; the GET response populates
-	// GroupName, so pin the known name to address the right group.
+	// Pin the selected group, so an edited name in the JSON can't send
+	// the update to a different one.
 	g.Name = name
 	_, _, err := c.Groups.Update(ctx, &g)
 	return err
