@@ -30,8 +30,8 @@ github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSg
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
 github.com/cinc-project/cinc-api v0.14.2 h1:nsQe8AespOCivO70lz/KB/+C23mCcdAXQ19ONlsC7g0=
 github.com/cinc-project/cinc-api v0.14.2/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
-github.com/cinc-project/cinc-server-ng v0.13.0 h1:0+Qj70U7r9D3Llg1JStQxPSPPTJP4S1cN7V25tVMOYg=
-github.com/cinc-project/cinc-server-ng v0.13.0/go.mod h1:+TLa5LlEnZEVM1GtnY1hRiPnaK8lle/W69182ZmBEOw=
+github.com/cinc-project/cinc-server-ng v0.14.0 h1:DMmb22PQPTH0MtJJTbbyd0lC6wE6zzV4bsMCnw0UHMU=
+github.com/cinc-project/cinc-server-ng v0.14.0/go.mod h1:+TLa5LlEnZEVM1GtnY1hRiPnaK8lle/W69182ZmBEOw=
 github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=
 github.com/cinc-project/cinc-supermarket-api v0.6.0/go.mod h1:EAxUjVWn4otvz06+I9rbfIivivUrOxj7tAEKKnjIdug=
 github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSEFgwIwO+UVM8=
