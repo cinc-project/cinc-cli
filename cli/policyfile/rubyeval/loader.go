@@ -27,7 +27,7 @@ import (
 // of truth and are asserted by loader_test.go without touching the network.
 const (
 	// rubyWasmVersion is the pinned ruby/ruby.wasm release tag.
-	rubyWasmVersion = "2.9.4"
+	rubyWasmVersion = "2.10.1"
 	// rubyWasmAsset is the WASI "full" build (CRuby 3.4 + stdlib) we run. The
 	// "full" build ships the standard library as host files we mount, not
 	// packed into the module.
@@ -36,14 +36,14 @@ const (
 	rubyWasmURL = "https://github.com/ruby/ruby.wasm/releases/download/" + rubyWasmVersion + "/" + rubyWasmAsset
 	// rubyWasmSHA256 is the verified SHA-256 of rubyWasmAsset. A mismatch is a
 	// hard failure (a corrupted or tampered download is never used).
-	rubyWasmSHA256 = "ccda86a375a4fe09849846d3b03a370172a4902a0c571087f48457388a2762c7"
+	rubyWasmSHA256 = "440f9a48a3bae258c70de610f7a78cfc56b536bdb9b81ef750f8d3918382515e"
 	// rubyWasmBinarySHA256 is the SHA-256 of the CRuby wasm module extracted
 	// from the pinned, checksum-verified archive (rubyWasmTreeBinary). It is
 	// re-checked on every cache hit so a cached module tampered-with after
 	// extraction is rejected and re-fetched, not executed. Because it's derived
 	// deterministically from the pinned archive, anyone can reproduce it by
 	// extracting rubyWasmAsset.
-	rubyWasmBinarySHA256 = "ea1ccf46994cd2441812c75fb058136850149f2a472ff4472f7085b086fd1d1a"
+	rubyWasmBinarySHA256 = "348305ee0b4e4cdb84ec169223e33721899548577a42a421725b71e481afff11"
 
 	// rubyWasmTreeBinary is the path, within the extracted archive, of the
 	// CRuby wasm module.
