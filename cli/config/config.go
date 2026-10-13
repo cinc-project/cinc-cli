@@ -199,8 +199,7 @@ func Load(path string) (*Config, error) {
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
 		// An open or read failure already names the file. A parse or type
 		// error only names a line, and the user may keep several files.
-		var pathErr *fs.PathError
-		if errors.As(err, &pathErr) {
+		if _, ok := errors.AsType[*fs.PathError](err); ok {
 			return nil, fmt.Errorf("config: %w", err)
 		}
 		return nil, fmt.Errorf("config: we couldn't read %s: %w", path, err)

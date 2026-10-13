@@ -94,7 +94,7 @@ func renderExamples(raw string) string {
 			inCode = false
 		}
 	}
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		t := strings.TrimSpace(line)
 		switch {
 		case t == "":

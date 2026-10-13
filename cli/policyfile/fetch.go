@@ -243,8 +243,8 @@ var transportHelperRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*::`)
 // scp-style addresses (user@host:path), and local paths, but refuses
 // transport-helper forms (ext::/fd::/…) and any other scheme.
 func validateGitURL(repoURL string) error {
-	if i := strings.Index(repoURL, "://"); i >= 0 {
-		switch strings.ToLower(repoURL[:i]) {
+	if before, _, ok := strings.Cut(repoURL, "://"); ok {
+		switch strings.ToLower(before) {
 		case "https", "http", "git", "ssh", "file":
 			return nil
 		default:

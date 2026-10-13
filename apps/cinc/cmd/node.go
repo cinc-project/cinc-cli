@@ -247,7 +247,7 @@ type nodeBootstrapFlags struct {
 
 func newNodeBootstrapCmd() *cobra.Command {
 	flags := nodeBootstrapFlags{
-		nodeSSHFlags: nodeSSHFlags{port: 22, timeout: 30 * time.Second, useAgent: true, verifyHost: true},
+		port: 22, timeout: 30 * time.Second, useAgent: true, verifyHost: true,
 		environment:  "_default",
 		sudo:         true,
 		bootstrapURL: remote.DefaultBootstrapURL,
@@ -630,7 +630,7 @@ func printRemoteResults(cmd *cobra.Command, results []remote.CommandResult) {
 }
 
 func writePrefixedLines(out interface{ Write([]byte) (int, error) }, host, text string) {
-	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
 		if line != "" {
 			fmt.Fprintf(out, "%s\t%s\n", host, line)
 		}

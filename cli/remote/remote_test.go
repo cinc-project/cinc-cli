@@ -208,7 +208,7 @@ func TestRunManyExitOnErrorLetsInFlightWorkFinish(t *testing.T) {
 	}()
 
 	// Wait until all four are inside Run, then let them all return at once.
-	for i := 0; i < n; i++ {
+	for range n {
 		<-runner.arrived
 	}
 	close(runner.release)

@@ -2,6 +2,7 @@ package suite
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -100,10 +101,5 @@ func listed(c *cli, name string, args ...string) bool {
 	c.t.Helper()
 	var names []string
 	c.json(&names, args...)
-	for _, n := range names {
-		if n == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, name)
 }

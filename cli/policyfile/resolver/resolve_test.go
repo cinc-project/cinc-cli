@@ -61,16 +61,10 @@ func TestResolveMatchesChefGoldens(t *testing.T) {
 // firstDiff returns a short description of where two byte slices first diverge,
 // to make golden mismatches easy to debug.
 func firstDiff(a, b []byte) string {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
+	n := min(len(b), len(a))
 	for i := 0; i < n; i++ {
 		if a[i] != b[i] {
-			lo := i - 40
-			if lo < 0 {
-				lo = 0
-			}
+			lo := max(i-40, 0)
 			return "first difference at byte " + itoa(i) + ":\n  cinc:   ..." + safeSlice(a, lo, i+40) +
 				"\n  golden: ..." + safeSlice(b, lo, i+40)
 		}

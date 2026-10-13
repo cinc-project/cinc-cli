@@ -238,7 +238,7 @@ func testSearchEnvironment(t *testing.T, _ Target, c *cli) {
 	table := c.run("search", "environment", "name:"+name)
 	wantContains(t, "environment table", table, "NAME", "DESCRIPTION", "COOKBOOKS", name, "searchable env", "1 environment matched")
 	// COOKBOOKS counts the constraints.
-	for _, line := range strings.Split(table, "\n") {
+	for line := range strings.SplitSeq(table, "\n") {
 		if strings.HasPrefix(line, name) && !strings.HasSuffix(strings.TrimSpace(line), "2") {
 			t.Errorf("environment row should count 2 cookbook constraints: %q", line)
 		}

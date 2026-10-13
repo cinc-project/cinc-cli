@@ -257,10 +257,7 @@ func moveCursor(m model, delta int) (tea.Model, tea.Cmd) {
 	if len(m.browse.items) == 0 {
 		return m, nil
 	}
-	c := m.browse.cursor + delta
-	if c < 0 {
-		c = 0
-	}
+	c := max(m.browse.cursor+delta, 0)
 	if c > len(m.browse.items)-1 {
 		c = len(m.browse.items) - 1
 	}
@@ -395,10 +392,7 @@ func viewBrowseScreen(m model) string {
 	}
 	header := renderHeader(m, width)
 	footer := renderFooter(m)
-	bodyHeight := height - lipgloss.Height(header) - lipgloss.Height(footer)
-	if bodyHeight < 3 {
-		bodyHeight = 3
-	}
+	bodyHeight := max(height-lipgloss.Height(header)-lipgloss.Height(footer), 3)
 	body := renderBrowseBody(m, width, bodyHeight)
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
@@ -457,20 +451,11 @@ func sortChip(m model, key, label string, value sortOrder, dim bool) string {
 }
 
 func renderBrowseBody(m model, width, height int) string {
-	listWidth := width * 2 / 5
-	if listWidth < 24 {
-		listWidth = 24
-	}
+	listWidth := max(width*2/5, 24)
 	if listWidth > width-30 {
-		listWidth = width - 30
-		if listWidth < 24 {
-			listWidth = 24
-		}
+		listWidth = max(width-30, 24)
 	}
-	previewWidth := width - listWidth - 3 // 1 for divider + 2 padding
-	if previewWidth < 10 {
-		previewWidth = 10
-	}
+	previewWidth := max(width-listWidth-3, 10) // 1 for divider + 2 padding
 	listCol := renderList(m, listWidth, height)
 	previewCol := renderPreview(m, previewWidth, height)
 	divider := renderDivider(height, m)
@@ -687,10 +672,7 @@ func visibleWindow(cursor, n, height int) (int, int) {
 	if n <= height {
 		return 0, n
 	}
-	top := cursor - height/2
-	if top < 0 {
-		top = 0
-	}
+	top := max(cursor-height/2, 0)
 	if top+height > n {
 		top = n - height
 	}

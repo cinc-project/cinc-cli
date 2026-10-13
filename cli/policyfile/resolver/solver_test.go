@@ -108,8 +108,7 @@ func TestSolveUnsatisfiable(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected NoSolutionError, got nil")
 	}
-	var nse *NoSolutionError
-	if !errors.As(err, &nse) {
+	if _, ok := errors.AsType[*NoSolutionError](err); !ok {
 		t.Fatalf("expected *NoSolutionError, got %T: %v", err, err)
 	}
 }

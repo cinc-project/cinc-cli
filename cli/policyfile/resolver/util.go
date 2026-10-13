@@ -64,8 +64,8 @@ func runListItemName(item string) string {
 // so neither do we, which keeps resolution (and its failure modes) identical.
 func runListCookbookName(item string) string {
 	name := runListItemName(item)
-	if i := strings.Index(name, "::"); i >= 0 {
-		return name[:i]
+	if before, _, ok := strings.Cut(name, "::"); ok {
+		return before
 	}
 	return name
 }

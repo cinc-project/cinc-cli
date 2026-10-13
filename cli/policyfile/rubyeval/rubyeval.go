@@ -376,8 +376,8 @@ func (e *Engine) EvaluateFileWithRaw(ctx context.Context, path string) (*Evaluat
 func hostEnv() map[string]string {
 	out := map[string]string{}
 	for _, kv := range os.Environ() {
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			out[kv[:i]] = kv[i+1:]
+		if before, after, ok := strings.Cut(kv, "="); ok {
+			out[before] = after
 		}
 	}
 	return out
