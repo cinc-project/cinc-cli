@@ -5,17 +5,16 @@
 // dependencies are exactly a release build's.
 module github.com/cinc-project/cinc-cli/integration
 
-go 1.26.4
+go 1.27.1
 
 require (
 	github.com/cinc-project/cinc-api v0.15.1
 	github.com/cinc-project/cinc-cli v0.0.0
+	github.com/cinc-project/cinc-server-ng v0.14.0
 	github.com/creack/pty v1.1.24
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.58.0
 )
-
-require github.com/kevinburke/ssh_config v1.6.0 // indirect
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
@@ -29,7 +28,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
-	github.com/cinc-project/cinc-server-ng v0.14.0
 	github.com/cinc-project/cinc-supermarket-api v0.6.0 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
@@ -38,6 +36,7 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect

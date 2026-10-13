@@ -55,7 +55,7 @@ internal architecture are described in [`docs/dev/`](docs/dev/).
 
 ## Install
 
-Requires Go 1.26 or newer.
+Requires Go 1.27 or newer.
 
 ```sh
 # Build a local ./cinc binary
