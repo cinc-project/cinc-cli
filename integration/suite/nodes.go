@@ -236,7 +236,7 @@ func testNodeStatus(t *testing.T, _ Target, c *cli) {
 	// asynchronously.
 	eventually(t, searchTimeout, func() error {
 		out := c.run("node", "status")
-		for _, line := range strings.Split(out, "\n") {
+		for line := range strings.SplitSeq(out, "\n") {
 			switch {
 			case strings.Contains(line, never) && !strings.Contains(line, "never"):
 				return fmt.Errorf("%s should show as never checked in: %q", never, line)

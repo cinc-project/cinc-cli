@@ -144,7 +144,7 @@ func clientRB(opts BootstrapOptions) string {
 const heredocDelimiter = "CINC_EOF"
 
 func writeFileCommand(prefix, path, content string) (string, error) {
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		if strings.TrimRight(line, "\r") == heredocDelimiter {
 			return "", fmt.Errorf("refusing to write %s: its content contains a %s line, which would end the heredoc early", path, heredocDelimiter)
 		}

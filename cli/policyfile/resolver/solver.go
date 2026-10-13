@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -132,9 +133,7 @@ func (s *solverState) backtrack(constraints map[string][]constraintWithSource, a
 			continue
 		}
 		// Success: copy the resolved assignment back up.
-		for k, v := range nextAssign {
-			assignment[k] = v
-		}
+		maps.Copy(assignment, nextAssign)
 		return nil
 	}
 
@@ -179,9 +178,7 @@ func constraintStrings(cons []constraintWithSource) []string {
 
 func cloneAssign(m map[string]Version) map[string]Version {
 	out := make(map[string]Version, len(m)+1)
-	for k, v := range m {
-		out[k] = v
-	}
+	maps.Copy(out, m)
 	return out
 }
 

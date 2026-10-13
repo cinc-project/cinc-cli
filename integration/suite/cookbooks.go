@@ -3,6 +3,7 @@ package suite
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -537,9 +538,7 @@ func testCookbookDownloadExistingDir(t *testing.T, _ Target, c *cli) {
 	c.run("cookbook", "download", name, "--dir", dest)
 
 	want := map[string]string{"local-only.txt": "mine\n"}
-	for k, v := range files {
-		want[k] = v
-	}
+	maps.Copy(want, files)
 	wantCookbookTree(t, cbDir, want)
 }
 

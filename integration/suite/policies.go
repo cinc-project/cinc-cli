@@ -3,6 +3,7 @@ package suite
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -281,9 +282,7 @@ func pushGitCookbook(t *testing.T, tgt Target, c *cli, sub string, extra map[str
 	gitRun(t, repo, append(commit, "-am", "later")...)
 
 	opts := map[string]any{"git": repo, "revision": sha}
-	for k, v := range extra {
-		opts[k] = v
-	}
+	maps.Copy(opts, extra)
 	lock := policyLock{
 		name: policy, revision: identifier(t),
 		runList: []string{"recipe[" + cb + "::default]"},

@@ -123,8 +123,7 @@ func (u *tui) quit() {
 	u.send("q")
 	select {
 	case err := <-u.done:
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			u.t.Fatalf("explore exited %d after q:\n%s", ee.ExitCode(), u.screen())
 		} else if err != nil {
 			u.t.Fatalf("explore: %v", err)

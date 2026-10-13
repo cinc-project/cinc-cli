@@ -47,15 +47,13 @@ func TestEnsureRuntimeConcurrentFirstRuns(t *testing.T) {
 	errs := make([]error, n)
 	var wg sync.WaitGroup
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			rt, err := ensureRuntimeFrom(src, fetch)
 			if err == nil && !fileExists(rt.wasmPath) {
 				err = os.ErrNotExist
 			}
 			errs[i] = err
-		}()
+		})
 	}
 	wg.Wait()
 	for i, err := range errs {

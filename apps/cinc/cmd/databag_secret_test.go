@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -281,9 +282,7 @@ func TestDataBagSecretEditRoundTrips(t *testing.T) {
 			t.Errorf("editor saw password = %v, want decrypted 'old'", in["password"])
 		}
 		out := cinc.DataBagItem{}
-		for k, v := range in {
-			out[k] = v
-		}
+		maps.Copy(out, in)
 		out["password"] = "new"
 		return out, nil
 	})
@@ -324,9 +323,7 @@ func TestDataBagSecretEditSkipsPutWhenUnchanged(t *testing.T) {
 
 	withStubDataBagItemEditor(t, func(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 		out := cinc.DataBagItem{}
-		for k, v := range in {
-			out[k] = v
-		}
+		maps.Copy(out, in)
 		return out, nil
 	})
 

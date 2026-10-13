@@ -3,6 +3,7 @@ package explore
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,14 +23,15 @@ func formatDownloads(n int) string {
 	if first == 0 {
 		first = 3
 	}
-	out := s[:first]
+	var out strings.Builder
+	out.WriteString(s[:first])
 	for i := first; i < len(s); i += 3 {
-		out += "," + s[i:i+3]
+		out.WriteString("," + s[i:i+3])
 	}
 	if neg {
-		return "-" + out
+		return "-" + out.String()
 	}
-	return out
+	return out.String()
 }
 
 // formatRelativeTime turns a timestamp into the kind of phrasing a user

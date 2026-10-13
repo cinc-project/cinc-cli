@@ -101,10 +101,7 @@ func relativeCheckin(last, now time.Time) string {
 	if last.IsZero() {
 		return "never"
 	}
-	d := now.Sub(last)
-	if d < 0 {
-		d = 0
-	}
+	d := max(now.Sub(last), 0)
 	switch {
 	case d < time.Minute:
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))

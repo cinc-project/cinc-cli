@@ -115,8 +115,7 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 	if err == nil {
 		return result
 	}
-	var exitErr *ssh.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*ssh.ExitError](err); ok {
 		result.ExitCode = exitErr.ExitStatus()
 		result.Error = err.Error()
 		return result
@@ -162,9 +161,7 @@ func RunMany(ctx context.Context, runner Runner, targets []Target, command strin
 	// "stop launching new SSH sessions" means.
 	var stopLaunching atomic.Bool
 	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for idx := range jobs {
 				if stopLaunching.Load() || ctx.Err() != nil {
 					results[idx] = CommandResult{Host: targets[idx].Host, Skipped: true}
@@ -176,7 +173,7 @@ func RunMany(ctx context.Context, runner Runner, targets []Target, command strin
 					stopLaunching.Store(true)
 				}
 			}
-		}()
+		})
 	}
 	for i := range targets {
 		jobs <- i

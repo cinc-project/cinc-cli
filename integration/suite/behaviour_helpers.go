@@ -83,9 +83,7 @@ func (c *cli) adminFields(org string) map[string]string {
 // empty value deletes the key.
 func behWith(fields map[string]string, kv ...string) map[string]string {
 	out := make(map[string]string, len(fields))
-	for k, v := range fields {
-		out[k] = v
-	}
+	maps.Copy(out, fields)
 	for i := 0; i+1 < len(kv); i += 2 {
 		if kv[i+1] == "" {
 			delete(out, kv[i])

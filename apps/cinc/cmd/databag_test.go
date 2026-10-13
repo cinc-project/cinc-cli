@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -302,9 +303,7 @@ func TestDataBagCreateCommandItemSkipsConflictOnBag(t *testing.T) {
 
 	withStubDataBagItemEditor(t, func(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 		out := cinc.DataBagItem{}
-		for k, v := range in {
-			out[k] = v
-		}
+		maps.Copy(out, in)
 		out["password"] = "hunter2"
 		return out, nil
 	})
@@ -443,9 +442,7 @@ func TestDataBagItemEditCommandPutsEditorResult(t *testing.T) {
 
 	withStubDataBagItemEditor(t, func(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 		out := cinc.DataBagItem{}
-		for k, v := range in {
-			out[k] = v
-		}
+		maps.Copy(out, in)
 		out["role"] = "editor"
 		return out, nil
 	})
@@ -477,9 +474,7 @@ func TestDataBagItemEditCommandSkipsPutWhenUnchanged(t *testing.T) {
 
 	withStubDataBagItemEditor(t, func(in cinc.DataBagItem) (cinc.DataBagItem, error) {
 		out := cinc.DataBagItem{}
-		for k, v := range in {
-			out[k] = v
-		}
+		maps.Copy(out, in)
 		return out, nil
 	})
 

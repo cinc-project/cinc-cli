@@ -50,10 +50,7 @@ func detailBody(m model, cb *sm.Cookbook) string {
 	if width <= 0 {
 		width = 80
 	}
-	contentWidth := width - 2
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
+	contentWidth := max(width-2, 20)
 
 	header := lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -103,10 +100,7 @@ func renderVersions(versions []string, downloads map[string]int, width int, m mo
 	const perRow = 6
 	var rows []string
 	row := make([]string, 0, perRow)
-	colW := width / perRow
-	if colW < 10 {
-		colW = 10
-	}
+	colW := max(width/perRow, 10)
 	for _, v := range versions {
 		label := "• " + v
 		if d, ok := downloads[v]; ok && d > 0 {
@@ -155,10 +149,7 @@ func viewDetailScreen(m model) string {
 	case m.detail.ready:
 		body = m.detail.viewport.View()
 	}
-	bodyHeight := height - lipgloss.Height(header) - lipgloss.Height(footer) - 1
-	if bodyHeight < 1 {
-		bodyHeight = 1
-	}
+	bodyHeight := max(height-lipgloss.Height(header)-lipgloss.Height(footer)-1, 1)
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		padBlock(body, width, bodyHeight),

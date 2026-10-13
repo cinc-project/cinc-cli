@@ -114,7 +114,7 @@ func yajlEncode(v any) []byte {
 }
 
 func yajlIndent(b *strings.Builder, depth int) {
-	for i := 0; i < depth; i++ {
+	for range depth {
 		b.WriteString("  ")
 	}
 }

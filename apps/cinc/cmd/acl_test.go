@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,7 +67,6 @@ func newACLServer(t *testing.T, base string) *aclServer {
 		_ = json.NewEncoder(w).Encode(a.acl)
 	})
 	for _, perm := range []string{"create", "read", "update", "delete", "grant"} {
-		perm := perm
 		mux.HandleFunc(base+"/_acl/"+perm, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPut {
 				t.Errorf("method on %s = %q, want PUT", r.URL.Path, r.Method)
@@ -318,10 +318,5 @@ func slicesEqual(a, b []string) bool {
 }
 
 func slicesContains(a []string, v string) bool {
-	for _, x := range a {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(a, v)
 }
