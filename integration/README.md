@@ -8,7 +8,7 @@ root module, exactly as a release build is.
 | Package | What it is | When it runs |
 |---|---|---|
 | `suite/` | Every case, written once against a `suite.Target`, plus the coverage guard | Coverage guard on every `go test ./...` here |
-| `cincserverng/` | Runs the suite against an in-process [cinc-server-ng](https://github.com/cinc-project/cinc-server-ng) with signature checks and ACL enforcement on | Every pull request, every push to `main`, and every release tag before its binaries are published |
+| `cincserverng/` | Runs the suite against an in-process [cinc-server-ng](https://github.com/cinc-project/cinc-server-ng) with signature checks and ACL enforcement on, twice: over plain HTTP and over HTTPS with the server serving TLS itself from a throwaway CA | Every pull request, every push to `main`, and every release tag before its binaries are published |
 | `cincservererlang/` | Runs the suite against the CINC Server Erlang stack (erchef) in AWS | By hand, with `run-cinc-server-erlang.sh` |
 | `terraform/` | The AWS stack for `cincservererlang` | By hand, through the script |
 

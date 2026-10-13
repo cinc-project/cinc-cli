@@ -2,6 +2,9 @@
 // cinc-server-ng on every pull request and before every release. Signature
 // checks and ACL enforcement are both on, so the server verifies every request
 // the cinc binary sends and refuses what its actor may not do, as erchef does.
+//
+// The suite runs twice: over plain HTTP, and over HTTPS with cinc-server-ng
+// serving TLS itself, as a production server does.
 package cincserverng
 
 import (
@@ -22,64 +25,95 @@ const (
 	otherOrg = "cinccli-other"
 )
 
-// target is set by TestMain once the server is up.
-var target suite.Target
+// plainTarget and tlsTarget are set by TestMain once the servers are up.
+var plainTarget, tlsTarget suite.Target
 
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
 }
 
-// run starts one server for the whole package: every case gives its objects
-// unique names, so they share it safely and in parallel.
+// run starts one plain-HTTP and one TLS server for the whole package: every
+// case gives its objects unique names, so they share each server safely and
+// in parallel. The TLS server serves a certificate from a throwaway CA, which
+// the CLI trusts through ~/.cinc/trusted_certs as a user would.
 func run(m *testing.M) int {
-	srv, err := server.New(server.Options{
-		Addr:       "127.0.0.1:0",
-		Orgs:       []string{org, otherOrg},
-		EnforceACL: true,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "server.New: %v\n", err)
-		return 1
-	}
-	if err := srv.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "server.Start: %v\n", err)
-		return 1
-	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Stop(ctx)
-	}()
-
 	dir, err := os.MkdirTemp("", "cinc-server-ng-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "temp dir: %v\n", err)
 		return 1
 	}
 	defer os.RemoveAll(dir)
-	keyPath := filepath.Join(dir, "admin.pem")
-	if err := os.WriteFile(keyPath, srv.AdminKey(), 0o600); err != nil {
-		fmt.Fprintf(os.Stderr, "write admin key: %v\n", err)
+	ca, err := newTestCA(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "test CA: %v\n", err)
 		return 1
 	}
 
-	target = suite.Target{
-		Name:      "cinc-server-ng",
+	var stops []func()
+	defer func() {
+		for _, stop := range stops {
+			stop()
+		}
+	}()
+	for _, tc := range []struct {
+		name   string
+		opts   server.Options
+		caCert string
+		into   *suite.Target
+	}{
+		{"cinc-server-ng", server.Options{}, "", &plainTarget},
+		{"cinc-server-ng (TLS)", server.Options{TLSCertFile: ca.certFile, TLSKeyFile: ca.keyFile}, ca.caFile, &tlsTarget},
+	} {
+		tgt, stop, err := startTarget(tc.name, tc.opts, filepath.Join(dir, fmt.Sprintf("admin-%d.pem", len(stops))))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		stops = append(stops, stop)
+		tgt.CACertPath = tc.caCert
+		*tc.into = tgt
+	}
+	return m.Run()
+}
+
+// startTarget starts a server with opts, writing its admin key to keyPath,
+// and returns the suite target for it and a func that stops it.
+func startTarget(name string, opts server.Options, keyPath string) (suite.Target, func(), error) {
+	opts.Addr = "127.0.0.1:0"
+	opts.Orgs = []string{org, otherOrg}
+	opts.EnforceACL = true
+	srv, err := server.New(opts)
+	if err != nil {
+		return suite.Target{}, nil, fmt.Errorf("%s: server.New: %w", name, err)
+	}
+	if err := srv.Start(); err != nil {
+		return suite.Target{}, nil, fmt.Errorf("%s: server.Start: %w", name, err)
+	}
+	stop := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Stop(ctx)
+	}
+	if err := os.WriteFile(keyPath, srv.AdminKey(), 0o600); err != nil {
+		stop()
+		return suite.Target{}, nil, fmt.Errorf("%s: write admin key: %w", name, err)
+	}
+	return suite.Target{
+		Name:      name,
 		ServerURL: srv.URL(),
 		Org:       org,
 		OtherOrg:  otherOrg,
 		Admin:     srv.AdminName(),
 		KeyPath:   keyPath,
-		// Every entry names an upstream cinc-server-ng issue and is removed
-		// once that issue is fixed.
-		Gaps: map[string]string{
-			"keys/client-edit-partial": "key PUT drops fields the body omits: https://github.com/cinc-project/cinc-server-ng/issues/163 (fixed on main by #202, not yet released)",
-			"keys/client-edit-rename":  "key PUT ignores a new name: https://github.com/cinc-project/cinc-server-ng/issues/163 (fixed on main by #202, not yet released)",
-		},
-	}
-	return m.Run()
+		// Gaps lists cases cinc-server-ng gets wrong, each naming its upstream
+		// issue, and loses an entry once a release fixes it. v0.17.0 has none.
+	}, stop, nil
 }
 
 func TestCincServerNG(t *testing.T) {
-	suite.Run(t, target)
+	suite.Run(t, plainTarget)
+}
+
+func TestCincServerNGTLS(t *testing.T) {
+	suite.Run(t, tlsTarget)
 }
