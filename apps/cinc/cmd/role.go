@@ -146,7 +146,7 @@ cinc role show webserver`,
 
 // newRoleDeleteCmd builds the `cinc role delete <name>` command.
 func newRoleDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a role from the server",
 		Example: `Delete a role from the server.
@@ -164,7 +164,7 @@ cinc role delete webserver`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted role %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newRoleListCmd builds the `cinc role list` command.

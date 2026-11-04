@@ -106,7 +106,7 @@ cinc group create admins`,
 
 // newGroupDeleteCmd builds the `cinc group delete <name>` command.
 func newGroupDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a group from the server",
 		Example: `Delete a group from the server.
@@ -124,7 +124,7 @@ cinc group delete admins`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted group %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newGroupMemberCmd builds the `cinc group member` sub-group, which

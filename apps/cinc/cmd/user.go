@@ -180,8 +180,7 @@ cinc user delete alice`,
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&assumeYes, "yes", false, "skip the confirmation prompt when deleting the pivotal superuser")
-	return cmd
+	return addYesFlag(cmd, &assumeYes, "skip the confirmation prompt when deleting the pivotal superuser")
 }
 
 // confirmDeletePivotal warns that "pivotal" is the server's bootstrap

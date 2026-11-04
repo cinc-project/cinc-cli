@@ -148,7 +148,7 @@ cinc environment create prod`,
 
 // newEnvironmentDeleteCmd builds the `cinc environment delete <name>` command.
 func newEnvironmentDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete an environment from the server",
 		Example: `Delete an environment from the server.
@@ -166,7 +166,7 @@ cinc environment delete prod`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted environment %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newEnvironmentListCmd builds the `cinc environment list` command.

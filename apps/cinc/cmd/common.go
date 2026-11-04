@@ -560,3 +560,18 @@ func listNames[V any](ctx context.Context, list func(context.Context) (map[strin
 	}
 	return slices.Sorted(maps.Keys(index)), nil
 }
+
+// addYesFlag gives a delete command knife's -y/--yes flag. A command that asks
+// before deleting passes assumeYes, which the flag sets to skip the prompt, and
+// the usage to show for it. A command that never asks passes nil: it still
+// accepts the flag, so knife-style scripts (`... delete web01 -y`) run instead
+// of failing with "unknown flag". TestEveryDeleteCommandAcceptsYes keeps every
+// delete verb using it.
+func addYesFlag(cmd *cobra.Command, assumeYes *bool, usage string) *cobra.Command {
+	if assumeYes == nil {
+		cmd.Flags().BoolP("yes", "y", false, "accepted for knife compatibility; this command doesn't ask before deleting")
+		return cmd
+	}
+	cmd.Flags().BoolVarP(assumeYes, "yes", "y", false, usage)
+	return cmd
+}

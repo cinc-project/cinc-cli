@@ -316,24 +316,28 @@ func TestUserDeletePivotalDeclined(t *testing.T) {
 	}
 }
 
-// The --yes flag skips the prompt entirely for scripted use.
+// -y/--yes skips the prompt entirely for scripted use. Stdin is empty, so
+// a prompt would read EOF and decline.
 func TestUserDeletePivotalForced(t *testing.T) {
-	var deleted bool
-	cfgPath := userDeletePivotalServer(t, &deleted)
+	for _, flag := range []string{"--yes", "-y"} {
+		var deleted bool
+		cfgPath := userDeletePivotalServer(t, &deleted)
 
-	root := newRootCmd()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetArgs([]string{"user", "delete", "pivotal", "--yes", "--config", cfgPath})
+		root := newRootCmd()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetIn(strings.NewReader(""))
+		root.SetArgs([]string{"user", "delete", "pivotal", flag, "--config", cfgPath})
 
-	if err := root.Execute(); err != nil {
-		t.Fatalf("cinc user delete pivotal --yes: %v", err)
-	}
-	if !deleted {
-		t.Error("server never saw the delete with --yes")
-	}
-	if got := out.String(); got != "Deleted user \"pivotal\"\n" {
-		t.Errorf("user delete output = %q", got)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("cinc user delete pivotal %s: %v", flag, err)
+		}
+		if !deleted {
+			t.Errorf("server never saw the delete with %s", flag)
+		}
+		if got := out.String(); got != "Deleted user \"pivotal\"\n" {
+			t.Errorf("%s: user delete output = %q", flag, got)
+		}
 	}
 }
 

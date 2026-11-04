@@ -18,6 +18,7 @@ cinc policy-group delete prod
 
 ```
   -h, --help   help for delete
+  -y, --yes    accepted for knife compatibility; this command doesn't ask before deleting
 ```
 
 ### Options inherited from parent commands
