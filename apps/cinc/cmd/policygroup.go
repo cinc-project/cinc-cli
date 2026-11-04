@@ -27,7 +27,7 @@ func newPolicyGroupCmd() *cobra.Command {
 // command. It removes the named policy group from the server; the
 // policies it referenced are left in place.
 func newPolicyGroupDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a policy group from the server",
 		Example: `Delete a policy group.
@@ -45,7 +45,7 @@ cinc policy-group delete prod`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted policy group %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newPolicyGroupShowCmd builds the `cinc policy-group show <name>`

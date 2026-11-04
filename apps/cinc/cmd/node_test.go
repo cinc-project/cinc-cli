@@ -167,6 +167,44 @@ client_key      = %q
 	}
 }
 
+// -y is accepted on a delete that never prompts, so knife-style scripts
+// (`knife node delete web01 -y`) keep working.
+func TestNodeDeleteAcceptsYes(t *testing.T) {
+	var deleted string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/nodes/web01", func(w http.ResponseWriter, r *http.Request) {
+		deleted = "web01"
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"name": "web01"})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf(`[default]
+cinc_server_url = "%s/organizations/acme"
+client_name     = "tim"
+client_key      = %q
+`, srv.URL, writeTestKey(t))
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, flag := range []string{"-y", "--yes"} {
+		deleted = ""
+		root := newRootCmd()
+		var buf bytes.Buffer
+		root.SetOut(&buf)
+		root.SetArgs([]string{"node", "delete", "web01", flag, "--config", cfgPath})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("cinc node delete web01 %s: %v", flag, err)
+		}
+		if deleted != "web01" {
+			t.Errorf("%s: server saw delete of %q, want %q", flag, deleted, "web01")
+		}
+	}
+}
+
 func TestNodeShowCommandEndToEnd(t *testing.T) {
 	node := cinc.Node{
 		Name:        "web01",

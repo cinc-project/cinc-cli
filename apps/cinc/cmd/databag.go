@@ -228,7 +228,7 @@ cinc databag item show passwords mysql`,
 // newDataBagItemDeleteCmd builds `cinc databag item delete <bag> <id>`.
 // It removes a single item from a bag, leaving the bag itself in place.
 func newDataBagItemDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <bag> <id>",
 		Short: "Delete a data bag item from the server",
 		Example: `Delete an item from a data bag.
@@ -246,7 +246,7 @@ cinc databag item delete passwords mysql`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted item %q from data bag %q\n", id, bag)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newDataBagItemListCmd builds the `cinc databag item list <bag>`
@@ -351,7 +351,7 @@ cinc databag item edit passwords mysql`,
 
 // newDataBagDeleteCmd builds the `cinc databag delete <name>` command.
 func newDataBagDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a data bag from the server",
 		Example: `Delete a data bag and all of its items.
@@ -369,7 +369,7 @@ cinc databag delete passwords`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted data bag %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newDataBagListCmd builds the `cinc databag list` command.

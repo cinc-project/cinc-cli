@@ -237,7 +237,7 @@ cinc org edit acme`,
 
 // newOrgDeleteCmd builds the `cinc org delete <org>` command.
 func newOrgDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <org>",
 		Short: "Delete an organization from the server",
 		Long: `Delete an organization from the server.
@@ -258,7 +258,7 @@ cinc org delete acme`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted organization %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newOrgMemberCmd builds the `cinc org member` subgroup, which manages the

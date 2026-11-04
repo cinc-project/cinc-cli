@@ -167,7 +167,7 @@ type cookbookUploadResult struct {
 // command. The server identifies a cookbook by name and version, so both
 // are required.
 func newCookbookDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name> <version>",
 		Short: "Delete a cookbook version from the server",
 		Example: `Delete a specific cookbook version from the server.
@@ -185,7 +185,7 @@ cinc cookbook delete nginx 1.2.0`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted cookbook %q version %s\n", name, version)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newCookbookListCmd builds the `cinc cookbook list` command.

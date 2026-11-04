@@ -37,7 +37,7 @@ func newPolicyCmd() *cobra.Command {
 // removes the named policy and every one of its revisions from the
 // server.
 func newPolicyDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a policy and all its revisions from the server",
 		Example: `Delete a policy and all of its revisions.
@@ -55,7 +55,7 @@ cinc policy delete appserver`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted policy %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newPolicyShowCmd builds the `cinc policy show <name>` command. It lists

@@ -447,7 +447,7 @@ func writeNodeShowHuman(cmd *cobra.Command, node *cinc.Node) error {
 
 // newNodeDeleteCmd builds the `cinc node delete <name>` command.
 func newNodeDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a node from the server",
 		Example: `Delete a node from the server.
@@ -465,7 +465,7 @@ cinc node delete web01`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted node %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 func addNodeSSHFlags(cmd *cobra.Command, flags *nodeSSHFlags) {

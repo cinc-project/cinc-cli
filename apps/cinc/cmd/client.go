@@ -195,7 +195,7 @@ cinc client create worker-01 --public-key worker-01.pub`,
 
 // newClientDeleteCmd builds the `cinc client delete <name>` command.
 func newClientDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete an API client from the server",
 		Example: `Delete an API client from the server.
@@ -213,7 +213,7 @@ cinc client delete worker-01`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted client %q\n", name)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // newClientListCmd builds the `cinc client list` command.

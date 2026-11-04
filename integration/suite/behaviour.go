@@ -86,6 +86,7 @@ var cliFamily = family{cases: []testCase{
 	{"cli/format-rejected-before-acting", []string{"node list", "node create", "config create", "version"}, testFormatRejectedBeforeActing},
 	{"cli/list-format-matrix", []string{"node list"}, testListFormatMatrix},
 	{"cli/not-found-shape", []string{"node show", "node delete"}, testNotFoundShape},
+	{"cli/delete-accepts-yes", []string{"node delete", "databag delete"}, testDeleteAcceptsYes},
 	{"cli/conflict-shape", []string{"node create"}, testConflictShape},
 	{"cli/version", []string{"version"}, testVersion},
 	{"cli/renamed-binary", []string{"version", "config create", "node list"}, testRenamedBinary},
@@ -1072,6 +1073,24 @@ func testNotFoundShape(t *testing.T, _ Target, c *cli) {
 		if strings.TrimSpace(r.stdout) != "" {
 			t.Errorf("%s printed on stdout: %s", what, r)
 		}
+	}
+}
+
+// testDeleteAcceptsYes: delete verbs take knife's -y/--yes, so a script
+// written for knife deletes the object instead of failing on an unknown flag.
+func testDeleteAcceptsYes(t *testing.T, _ Target, c *cli) {
+	node := uniqueName(t, "node")
+	c.run("node", "create", node)
+	c.run("node", "delete", node, "-y")
+	if r := c.exec(runOpts{}, "node", "show", node); !isNotFound(r) {
+		t.Errorf("node %s still there after node delete -y: %s", node, r)
+	}
+
+	bag := uniqueName(t, "bag")
+	c.run("databag", "create", bag)
+	c.run("databag", "delete", bag, "--yes")
+	if r := c.exec(runOpts{}, "databag", "show", bag); !isNotFound(r) {
+		t.Errorf("data bag %s still there after databag delete --yes: %s", bag, r)
 	}
 }
 

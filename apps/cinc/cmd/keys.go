@@ -240,7 +240,7 @@ cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pe
 
 // newKeyDeleteCmd builds `cinc <owner> key delete <name> <key-name>`.
 func newKeyDeleteCmd(owner keyOwner) *cobra.Command {
-	return &cobra.Command{
+	return addYesFlag(&cobra.Command{
 		Use:   "delete <" + owner.noun + "> <key-name>",
 		Short: "Delete one of a " + owner.noun + "'s keys",
 		Example: fmt.Sprintf(`Delete one of a %[1]s's keys.
@@ -258,7 +258,7 @@ cinc %[1]s key delete %[2]s rotation`, owner.noun, owner.sample),
 			fmt.Fprintf(cmd.OutOrStdout(), "Deleted key %q from %s %q\n", keyName, owner.noun, ownerName)
 			return nil
 		},
-	}
+	}, nil, "")
 }
 
 // emitPrivateKey reports a finished create, rotate or reregister, done
