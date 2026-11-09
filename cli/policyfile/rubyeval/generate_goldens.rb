@@ -120,8 +120,22 @@ def evaluate(policyfile_path)
   result
 end
 
-testdata = File.join(__dir__, "testdata")
-fixtures = Dir.glob(File.join(testdata, "*", "Policyfile.rb")).sort
+# confined_fixture resolves a globbed fixture path (following symlinks) and
+# refuses it unless it is a Policyfile.rb directly inside a testdata/<name>/
+# directory. Every path we read from or write to comes from here, so a
+# symlinked fixture can't make the generator read or overwrite a file outside
+# the corpus.
+def confined_fixture(path, root)
+  real = File.realpath(path)
+  dir = File.dirname(real)
+  unless File.basename(real) == "Policyfile.rb" && File.dirname(dir) == root
+    abort "refusing fixture #{path}: it resolves to #{real}, outside #{root}"
+  end
+  real
+end
+
+testdata = File.realpath(File.join(__dir__, "testdata"))
+fixtures = Dir.glob(File.join(testdata, "*", "Policyfile.rb")).sort.map { |pf| confined_fixture(pf, testdata) }
 if fixtures.empty?
   warn "no fixtures found under #{testdata}"
   exit 1
