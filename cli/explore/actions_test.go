@@ -71,7 +71,7 @@ func TestCreateWithSecretShowsResultModal(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	m := modelOnKinds(t, testClient(t, srv))
-	m.cur = newUserKind()
+	m.cur = newUserKind(newAdminsCache())
 	m.screen = screenList
 
 	m, _ = m2(m.startCreate()) // n: Creatable → editor with template

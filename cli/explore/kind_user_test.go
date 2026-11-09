@@ -69,7 +69,7 @@ func TestUserKindSummaryShowsFields(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	k, ok := newUserKind().(Summarizable)
+	k, ok := newUserKind(newAdminsCache()).(Summarizable)
 	if !ok {
 		t.Fatal("user kind is not Summarizable")
 	}
@@ -114,7 +114,7 @@ func userSummaryType(t *testing.T, username, userBody, adminsBody string) string
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	k := newUserKind().(Summarizable)
+	k := newUserKind(newAdminsCache()).(Summarizable)
 	view, err := k.Summary(context.Background(), testClient(t, srv), username)
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
