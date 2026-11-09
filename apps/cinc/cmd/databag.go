@@ -140,8 +140,8 @@ func readDataBagItemFile(path, id string) (cinc.DataBagItem, error) {
 	if item.Validate() != nil {
 		return nil, fmt.Errorf("%s doesn't say which item it is. Add \"id\": %q to it.", path, id)
 	}
-	if item.ID() != id {
-		return nil, fmt.Errorf("%s is the item %q, but you asked for %q. Change the file's id to %q, or name %q on the command line.", path, item.ID(), id, id, item.ID())
+	if err := checkFileName(path, "item", "id", item.ID(), id); err != nil {
+		return nil, err
 	}
 	return item, nil
 }

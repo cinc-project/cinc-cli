@@ -201,7 +201,7 @@ func TestEnvironmentCreateCommandReadsFile(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, "staging.json")
 	body := `{
-  "name": "ignored-by-cli",
+  "name": "staging",
   "description": "from file",
   "cookbook_versions": { "apache2": "~> 1.2.0" }
 }`
@@ -229,7 +229,7 @@ client_key      = %q
 		t.Fatalf("cinc environment create --file: %v", err)
 	}
 	if received.Name != "staging" {
-		t.Errorf("name = %q, want positional arg to override the file's name", received.Name)
+		t.Errorf("name = %q, want staging", received.Name)
 	}
 	if received.Description != "from file" {
 		t.Errorf("description = %q, want value from the file", received.Description)
@@ -367,7 +367,7 @@ func TestEnvironmentEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "env.json")
-	body, _ := json.Marshal(cinc.Environment{Name: "ignored", Description: "from file"})
+	body, _ := json.Marshal(cinc.Environment{Name: "staging", Description: "from file"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

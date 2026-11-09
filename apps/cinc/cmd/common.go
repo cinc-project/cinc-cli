@@ -575,3 +575,16 @@ func addYesFlag(cmd *cobra.Command, assumeYes *bool, usage string) *cobra.Comman
 	cmd.Flags().BoolVarP(assumeYes, "yes", "y", false, usage)
 	return cmd
 }
+
+// checkFileName refuses a --file whose own name for the object (its field
+// key, e.g. "name" or "username") differs from the name on the command line.
+// A file naming another object is almost always the wrong file, and quietly
+// storing it under the argument's name would overwrite one object with the
+// content meant for another. A file with no name, or the same one, is fine;
+// the caller fills the argument's name in. Call it before sending anything.
+func checkFileName(path, kind, field, fileName, argName string) error {
+	if fileName == "" || fileName == argName {
+		return nil
+	}
+	return fmt.Errorf("%s is the %s %q, but you asked for %q. Change the file's %s to %q, or name %q on the command line.", path, kind, fileName, argName, field, argName, fileName)
+}

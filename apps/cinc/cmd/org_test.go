@@ -466,7 +466,7 @@ func TestOrgEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "org.json")
-	body, _ := json.Marshal(cinc.Org{Name: "ignored", FullName: "From File"})
+	body, _ := json.Marshal(cinc.Org{Name: "acme", FullName: "From File"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

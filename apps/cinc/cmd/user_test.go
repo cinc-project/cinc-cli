@@ -516,7 +516,7 @@ func TestUserEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "user.json")
-	body, _ := json.Marshal(cinc.User{UserName: "ignored", DisplayName: "From File"})
+	body, _ := json.Marshal(cinc.User{UserName: "alice", DisplayName: "From File"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

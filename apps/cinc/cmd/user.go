@@ -33,7 +33,7 @@ func newUserCmd() *cobra.Command {
 // newUserEditCmd builds the `cinc user edit <name>` command. It fetches the
 // user, opens its JSON in the shared editor, and PUTs the result back. The
 // path arg pins the username. `--file` reads the updated JSON from disk for
-// scripted use.
+// scripted use, and is refused if its "username" names a different user.
 func newUserEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -52,6 +52,9 @@ cinc user edit alice`,
 			var updated cinc.User
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.User](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "user", "username", updated.UserName, name); err != nil {
 					return err
 				}
 			} else {

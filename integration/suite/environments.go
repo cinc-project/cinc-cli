@@ -15,7 +15,8 @@ var environmentFamily = family{cases: []testCase{
 	{"environments/lifecycle", []string{"environment create", "environment show", "environment list", "environment edit", "environment delete"}, testEnvironmentLifecycle},
 	{"environments/create-short-description", []string{"environment create"}, testEnvironmentCreateShortDescription},
 	{"environments/create-from-file", []string{"environment create", "environment show"}, testEnvironmentCreateFromFile},
-	{"environments/create-args-override-file", []string{"environment create"}, testEnvironmentCreateArgsOverrideFile},
+	{"environments/create-flag-overrides-file", []string{"environment create"}, testEnvironmentCreateFlagOverridesFile},
+	{"environments/file-name-mismatch", []string{"environment create", "environment edit"}, testEnvironmentFileNameMismatch},
 	{"environments/edit-replaces", []string{"environment edit"}, testEnvironmentEditReplaces},
 	{"environments/default", []string{"environment list", "environment show"}, testEnvironmentDefault},
 	{"environments/default-read-only", []string{"environment edit", "environment delete"}, testEnvironmentDefaultReadOnly},
@@ -59,7 +60,7 @@ func testEnvironmentLifecycle(t *testing.T, _ Target, c *cli) {
 	}
 
 	file := writeJSON(t, cinc.Environment{
-		Name:             "ignored",
+		Name:             name,
 		Description:      "edited via cinc",
 		CookbookVersions: map[string]string{"apache2": "~> 1.2.0"},
 	})
@@ -121,13 +122,11 @@ func testEnvironmentCreateFromFile(t *testing.T, _ Target, c *cli) {
 	}
 }
 
-// testEnvironmentCreateArgsOverrideFile checks that the positional name and
-// --description win over what the file says.
-func testEnvironmentCreateArgsOverrideFile(t *testing.T, _ Target, c *cli) {
+// testEnvironmentCreateFlagOverridesFile checks that --description wins
+// over the file's description.
+func testEnvironmentCreateFlagOverridesFile(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "env")
-	other := uniqueName(t, "env")
-	c.cleanup("environment", "delete", other)
-	file := writeJSON(t, cinc.Environment{Name: other, Description: "from the file",
+	file := writeJSON(t, cinc.Environment{Name: name, Description: "from the file",
 		CookbookVersions: map[string]string{"nginx": "= 2.0.0"}})
 	c.run("environment", "create", name, "--file", file, "--description", "from the flag")
 	c.cleanup("environment", "delete", name)
@@ -135,7 +134,26 @@ func testEnvironmentCreateArgsOverrideFile(t *testing.T, _ Target, c *cli) {
 	e := showEnvironment(c, name)
 	wantEqual(t, "description", e.Description, "from the flag")
 	wantEqual(t, "nginx constraint", e.CookbookVersions["nginx"], "= 2.0.0")
+}
+
+// testEnvironmentFileNameMismatch checks that a --file naming another
+// environment is refused, so `environment create staging --file prod.json`
+// can't land in the wrong slot. A file with no name is accepted under the
+// argument's name.
+func testEnvironmentFileNameMismatch(t *testing.T, _ Target, c *cli) {
+	name := uniqueName(t, "env")
+	other := uniqueName(t, "env")
+	c.cleanup("environment", "delete", other)
+	c.cleanup("environment", "delete", name)
+	file := writeJSON(t, cinc.Environment{Name: other, Description: "from the file"})
+
+	wantFileNameRefused(t, c.fail("environment", "create", name, "--file", file), other, name)
+	wantNotFound(t, c.fail("environment", "show", name))
 	wantNotFound(t, c.fail("environment", "show", other))
+
+	c.run("environment", "create", name, "--file", writeJSON(t, map[string]any{"description": "before"}))
+	wantFileNameRefused(t, c.fail("environment", "edit", name, "--file", file), other, name)
+	wantEqual(t, "description after a refused edit", showEnvironment(c, name).Description, "before")
 }
 
 // testEnvironmentEditReplaces checks that edit --file replaces the whole

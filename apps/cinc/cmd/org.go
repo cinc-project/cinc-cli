@@ -180,7 +180,8 @@ cinc org create acme "Acme Corporation"`,
 // newOrgEditCmd builds the `cinc org edit <org>` command. It fetches the org,
 // opens its JSON (typically to change the full name) in the shared editor, and
 // PUTs the result back. `--file` reads the updated JSON from disk for scripted
-// use, and an unchanged object is a friendly no-op.
+// use (refused if it names a different org), and an unchanged object is a
+// friendly no-op.
 func newOrgEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -205,6 +206,9 @@ cinc org edit acme`,
 			var updated cinc.Org
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.Org](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "organization", "name", updated.Name, name); err != nil {
 					return err
 				}
 			} else {

@@ -267,7 +267,14 @@ func testOrgLifecycle(t *testing.T, tgt Target, c *cli) {
 		t.Errorf("client list in %s = %v, want %s and the validator", name, clients, client)
 	}
 
-	file := writeJSON(t, cinc.Org{Name: "ignored", FullName: "Widgets International"})
+	other := uniqueName(t, "org")
+	wantFileNameRefused(t, c.fail("org", "edit", name, "--file", writeJSON(t, cinc.Org{Name: other, FullName: "Wrong Org"})), other, name)
+	c.json(&org, "org", "show", name)
+	if org.FullName == "Wrong Org" {
+		t.Errorf("full_name after a refused edit = %q, want it unchanged", org.FullName)
+	}
+
+	file := writeJSON(t, cinc.Org{Name: name, FullName: "Widgets International"})
 	wantEqual(t, "edit output", c.run("org", "edit", name, "--file", file), fmt.Sprintf("Updated organization %q\n", name))
 	c.json(&org, "org", "show", name)
 	wantEqual(t, "name after edit", org.Name, name)

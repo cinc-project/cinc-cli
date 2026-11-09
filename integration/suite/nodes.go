@@ -14,6 +14,7 @@ var nodeFamily = family{cases: []testCase{
 	{"nodes/lifecycle", []string{"node create", "node show", "node list", "node edit", "node delete"}, testNodeLifecycle},
 	{"nodes/create-with-policy", []string{"node create"}, testNodeCreateWithPolicy},
 	{"nodes/create-from-file", []string{"node create"}, testNodeCreateFromFile},
+	{"nodes/file-name-mismatch", []string{"node create", "node edit"}, testNodeFileNameMismatch},
 	{"nodes/not-found", []string{"node show", "node delete", "node run-list list", "node tag list"}, testNodeNotFound},
 	{"nodes/edit-missing", []string{"node edit"}, testNodeEditMissing},
 	{"nodes/already-exists", []string{"node create"}, testNodeAlreadyExists},
@@ -106,6 +107,25 @@ func testNodeCreateWithPolicy(t *testing.T, _ Target, c *cli) {
 
 // testNodeCreateFromFile creates a node from a full JSON document, including
 // attributes the flags cannot set, and checks the server kept them.
+// testNodeFileNameMismatch checks that a --file naming another node is
+// refused, so `node edit web --file db.json` can't write db over web. A file
+// with no name is accepted under the argument's name.
+func testNodeFileNameMismatch(t *testing.T, _ Target, c *cli) {
+	name := uniqueName(t, "node")
+	other := uniqueName(t, "node")
+	c.cleanup("node", "delete", other)
+	c.cleanup("node", "delete", name)
+	file := writeJSON(t, cinc.Node{Name: other, RunList: []string{"recipe[other]"}})
+
+	wantFileNameRefused(t, c.fail("node", "create", name, "--file", file), other, name)
+	wantNotFound(t, c.fail("node", "show", name))
+	wantNotFound(t, c.fail("node", "show", other))
+
+	c.run("node", "create", name, "--file", writeJSON(t, map[string]any{"run_list": []string{"recipe[base]"}}))
+	wantFileNameRefused(t, c.fail("node", "edit", name, "--file", file), other, name)
+	wantSlice(t, "run list after a refused edit", showNode(c, name).RunList, []string{"recipe[base]"})
+}
+
 func testNodeCreateFromFile(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "node")
 	file := writeJSON(t, map[string]any{

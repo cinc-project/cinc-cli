@@ -13,7 +13,8 @@ import (
 var roleFamily = family{cases: []testCase{
 	{"roles/lifecycle", []string{"role create", "role show", "role list", "role edit", "role delete"}, testRoleLifecycle},
 	{"roles/create-from-file", []string{"role create", "role show"}, testRoleCreateFromFile},
-	{"roles/create-args-override-file", []string{"role create"}, testRoleCreateArgsOverrideFile},
+	{"roles/create-flag-overrides-file", []string{"role create"}, testRoleCreateFlagOverridesFile},
+	{"roles/file-name-mismatch", []string{"role create", "role edit"}, testRoleFileNameMismatch},
 	{"roles/edit-replaces", []string{"role edit"}, testRoleEditReplaces},
 	{"roles/edit-pins-name", []string{"role edit"}, testRoleEditPinsName},
 	{"roles/not-found", []string{"role show", "role delete"}, testRoleNotFound},
@@ -53,8 +54,7 @@ func testRoleLifecycle(t *testing.T, _ Target, c *cli) {
 		t.Errorf("role list --format json does not include %s", name)
 	}
 
-	// The name in the file is ignored: the argument names the role to edit.
-	file := writeJSON(t, cinc.Role{Name: "ignored", Description: "edited via cinc", RunList: []string{"recipe[base]"}})
+	file := writeJSON(t, cinc.Role{Name: name, Description: "edited via cinc", RunList: []string{"recipe[base]"}})
 	wantEqual(t, "edit output", c.run("role", "edit", name, "--file", file), fmt.Sprintf("Updated role %q\n", name))
 	r = showRole(c, name)
 	wantEqual(t, "name after edit", r.Name, name)
@@ -100,21 +100,36 @@ func testRoleCreateFromFile(t *testing.T, _ Target, c *cli) {
 	}
 }
 
-// testRoleCreateArgsOverrideFile checks that the positional name and
-// --description win over what the file says, so `role create staging --file
-// prod.json` can never land in the wrong slot.
-func testRoleCreateArgsOverrideFile(t *testing.T, _ Target, c *cli) {
+// testRoleCreateFlagOverridesFile checks that --description wins over the
+// file's description.
+func testRoleCreateFlagOverridesFile(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "role")
-	other := uniqueName(t, "role")
-	c.cleanup("role", "delete", other)
-	file := writeJSON(t, cinc.Role{Name: other, Description: "from the file", RunList: []string{"recipe[base]"}})
+	file := writeJSON(t, cinc.Role{Name: name, Description: "from the file", RunList: []string{"recipe[base]"}})
 	c.run("role", "create", name, "--file", file, "--description", "from the flag")
 	c.cleanup("role", "delete", name)
 
 	r := showRole(c, name)
 	wantEqual(t, "description", r.Description, "from the flag")
 	wantSlice(t, "run list", r.RunList, []string{"recipe[base]"})
+}
+
+// testRoleFileNameMismatch checks that a --file naming another role is
+// refused, so `role edit web --file db.json` can't write db over web. A file
+// with no name is accepted under the argument's name.
+func testRoleFileNameMismatch(t *testing.T, _ Target, c *cli) {
+	name := uniqueName(t, "role")
+	other := uniqueName(t, "role")
+	c.cleanup("role", "delete", other)
+	c.cleanup("role", "delete", name)
+	file := writeJSON(t, cinc.Role{Name: other, Description: "from the file"})
+
+	wantFileNameRefused(t, c.fail("role", "create", name, "--file", file), other, name)
+	wantNotFound(t, c.fail("role", "show", name))
 	wantNotFound(t, c.fail("role", "show", other))
+
+	c.run("role", "create", name, "--file", writeJSON(t, map[string]any{"description": "before"}))
+	wantFileNameRefused(t, c.fail("role", "edit", name, "--file", file), other, name)
+	wantEqual(t, "description after a refused edit", showRole(c, name).Description, "before")
 }
 
 // testRoleEditReplaces checks that edit --file replaces the whole role, as a
@@ -139,16 +154,16 @@ func testRoleEditReplaces(t *testing.T, _ Target, c *cli) {
 	}
 }
 
-// testRoleEditPinsName checks that a file naming a different role neither
-// renames the edited role nor touches the other one.
+// testRoleEditPinsName checks that `role edit web --file db.json`, with
+// both roles on the server, is refused and leaves both of them untouched.
 func testRoleEditPinsName(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "role")
 	other := uniqueName(t, "role")
-	createRole(c, name)
+	createRole(c, name, "--description", "untouched")
 	createRole(c, other, "--description", "untouched")
 
-	c.run("role", "edit", name, "--file", writeJSON(t, cinc.Role{Name: other, Description: "edited"}))
-	wantEqual(t, "edited role", showRole(c, name).Description, "edited")
+	wantFileNameRefused(t, c.fail("role", "edit", name, "--file", writeJSON(t, cinc.Role{Name: other, Description: "edited"})), other, name)
+	wantEqual(t, "edited role", showRole(c, name).Description, "untouched")
 	wantEqual(t, "other role", showRole(c, other).Description, "untouched")
 }
 

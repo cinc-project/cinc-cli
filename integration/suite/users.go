@@ -168,10 +168,16 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 		t.Errorf("user list --format json does not include %s: %v", name, names)
 	}
 
-	// The file's username is ignored: the argument names the user, so an
-	// edit can never rename one by accident.
+	// A file naming another user is refused, so an edit can never rename
+	// one, or write one user's details over another's, by accident.
+	other := uniqueName(t, "user")
+	wantFileNameRefused(t, c.fail("user", "edit", name, "--file", writeJSON(t, cinc.User{UserName: other, DisplayName: "Wrong User"})), other, name)
+	if got := showUser(c, name).DisplayName; got == "Wrong User" {
+		t.Errorf("display_name after a refused edit = %q, want it unchanged", got)
+	}
+
 	file := writeJSON(t, cinc.User{
-		UserName:    "ignored",
+		UserName:    name,
 		DisplayName: "Carol Operator",
 		Email:       name + "@example.test",
 		FirstName:   "Caroline",
@@ -182,7 +188,6 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 	wantEqual(t, "username after edit", u.UserName, name)
 	wantEqual(t, "display_name after edit", u.DisplayName, "Carol Operator")
 	wantEqual(t, "first_name after edit", u.FirstName, "Caroline")
-	wantNotFound(t, c.fail("user", "show", "ignored"))
 
 	wantEqual(t, "delete output", c.run("user", "delete", name), fmt.Sprintf("Deleted user %q\n", name))
 	wantNotFound(t, c.fail("user", "show", name))

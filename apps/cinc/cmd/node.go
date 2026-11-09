@@ -48,8 +48,8 @@ func newNodeCmd() *cobra.Command {
 // newNodeCreateCmd builds the `cinc node create <name>` command. By default it
 // POSTs a minimal node carrying the name, an empty run list, and the optional
 // --environment / --run-list values. With --file the full node JSON is read
-// from disk, with the positional name overriding whatever "name" the file
-// declares.
+// from disk; a file naming a different node is refused (see checkFileName),
+// and one with no name gets the positional name.
 func newNodeCreateCmd() *cobra.Command {
 	var (
 		environment string
@@ -88,6 +88,9 @@ cinc node create web01 --file web01.json`,
 				if node, err = readJSONFile[cinc.Node](inputFile); err != nil {
 					return err
 				}
+				if err := checkFileName(inputFile, "node", "name", node.Name, args[0]); err != nil {
+					return err
+				}
 				node.Name = args[0]
 			}
 			if environment != "" {
@@ -118,7 +121,8 @@ cinc node create web01 --file web01.json`,
 // newNodeEditCmd builds the `cinc node edit <name>` command. It fetches the
 // node, opens it in the node edit form, and PUTs the result back unless
 // nothing changed. The path arg pins the node name. `--file` replaces the
-// node with the JSON read from disk, for scripted use.
+// node with the JSON read from disk, for scripted use, and is refused if it
+// names a different node.
 func newNodeEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -157,6 +161,9 @@ cinc node edit web01`,
 
 			updated, err := readJSONFile[cinc.Node](inputFile)
 			if err != nil {
+				return err
+			}
+			if err := checkFileName(inputFile, "node", "name", updated.Name, name); err != nil {
 				return err
 			}
 			updated.Name = name

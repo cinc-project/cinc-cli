@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,6 +74,19 @@ func writeJSON(t *testing.T, v any) string {
 	path := filepath.Join(t.TempDir(), "obj.json")
 	writeFile(t, path, string(b))
 	return path
+}
+
+// wantFileNameRefused checks that a create or edit --file was refused
+// because the file names fileName while the command line names argName: one
+// error line naming both, sent before anything reached the server.
+func wantFileNameRefused(t *testing.T, r result, fileName, argName string) {
+	t.Helper()
+	line := behStderrLine(t, r)
+	for _, want := range []string{fmt.Sprintf("%q", fileName), fmt.Sprintf("%q", argName), "on the command line"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("error %q does not mention %s", line, want)
+		}
+	}
 }
 
 // wantEqual fails the case unless got equals want.
