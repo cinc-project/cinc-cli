@@ -8,10 +8,16 @@ cinc role create <name> [flags]
 
 ### Examples
 
-Create a role; your editor opens to define its run-list and attributes.
+Create an empty role with a description.
 
 ```bash
-cinc role create webserver
+cinc role create webserver --description "Front-end web servers"
+```
+
+Create a role with its run list and attributes from a JSON file.
+
+```bash
+cinc role create webserver --file webserver.json
 ```
 
 ### Options

@@ -36,8 +36,11 @@ func newRoleCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a role on the server",
-		Example: `Create a role; your editor opens to define its run-list and attributes.
-cinc role create webserver`,
+		Example: `Create an empty role with a description.
+cinc role create webserver --description "Front-end web servers"
+
+Create a role with its run list and attributes from a JSON file.
+cinc role create webserver --file webserver.json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := resolveClient(cmd)

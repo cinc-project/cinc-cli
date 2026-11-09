@@ -116,8 +116,11 @@ func newEnvironmentCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create an environment on the server",
-		Example: `Create an environment; your editor opens to define it.
-cinc environment create prod`,
+		Example: `Create an empty environment with a description.
+cinc environment create prod --description "Production"
+
+Create an environment with its cookbook constraints and attributes from a JSON file.
+cinc environment create prod --file prod.json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := resolveClient(cmd)
