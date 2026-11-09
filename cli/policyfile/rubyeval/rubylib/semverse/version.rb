@@ -16,14 +16,35 @@ module Semverse
       #
       # @return [Array]
       def split(version_string)
-        case version_string.to_s
-        when /^(\d+)\.(\d+)\.(\d+)(-([0-9a-z\-\.]+))?(\+([0-9a-z\-\.]+))?$/i
-          [ $1.to_i, $2.to_i, $3.to_i, $5, $7 ]
-        when /^(\d+)\.(\d+)\.(\d+)?$/
-          [ $1.to_i, $2.to_i, $3.to_i ]
-        when /^(\d+)\.(\d+)?$/
+        # cinc: upstream matched the whole string with one regex whose pre-release
+        # and build groups nest a quantifier inside an optional group, which code
+        # scanning flags as ReDoS-prone. We split off "+build" and "-pre" with
+        # String#partition and match each piece with a flat, \A..\z-anchored
+        # pattern instead. Results are identical for any single-line input;
+        # upstream's ^/$ also accepted one trailing newline, so we drop that first.
+        str = version_string.to_s.delete_suffix("\n")
+        head, plus, build = str.partition("+")
+        core, dash, pre = head.partition("-")
+
+        if !plus.empty? || !dash.empty?
+          ident = /\A[0-9a-z.\-]+\z/i
+          if (m = /\A(\d+)\.(\d+)\.(\d+)\z/.match(core)) &&
+              (dash.empty? || ident.match?(pre)) &&
+              (plus.empty? || ident.match?(build))
+            return [ m[1].to_i, m[2].to_i, m[3].to_i, (pre unless dash.empty?), (build unless plus.empty?) ]
+          end
+
+          raise InvalidVersionFormat.new(version_string)
+        end
+
+        case core
+        when /\A(\d+)\.(\d+)\.(\d+)\z/
+          [ $1.to_i, $2.to_i, $3.to_i, nil, nil ]
+        when /\A(\d+)\.(\d+)\.\z/
           [ $1.to_i, $2.to_i, 0 ]
-        when /^(\d+)$/
+        when /\A(\d+)\.(\d*)\z/
+          [ $1.to_i, $2.to_i, 0 ]
+        when /\A(\d+)\z/
           [ $1.to_i, 0, 0 ]
         else
           raise InvalidVersionFormat.new(version_string)
