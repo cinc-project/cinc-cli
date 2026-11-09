@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -35,18 +36,43 @@ func TestRelativeCheckin(t *testing.T) {
 	}
 }
 
-// nodeStatusSearchServer serves a node search result with the given raw rows.
-// total must match the number of rows so the client's pagination terminates.
-func nodeStatusSearchServer(t *testing.T, total int, rows string) *httptest.Server {
+// partialNodeSearchServer is a fake node search endpoint that only answers
+// partial searches. Each row is the projected data for one node, which the
+// server wraps in the {url, data} envelope a real partial search returns. A
+// full (GET) search is rejected, so a command that fetches whole nodes fails.
+// The returned func reports the projection of the last request.
+func partialNodeSearchServer(t *testing.T, rows ...string) (*httptest.Server, func() map[string][]string) {
 	t.Helper()
+	var mu sync.Mutex
+	var projection map[string][]string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":["want a partial search (POST)"]}`, http.StatusBadRequest)
+			return
+		}
+		var body map[string][]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":["bad partial search body"]}`, http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		projection = body
+		mu.Unlock()
+		wrapped := make([]string, len(rows))
+		for i, row := range rows {
+			wrapped[i] = fmt.Sprintf(`{"url":"https://cinc.example.test/organizations/acme/nodes/n%d","data":%s}`, i, row)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, fmt.Sprintf(`{"total":%d,"start":0,"rows":[%s]}`, total, rows))
+		_, _ = fmt.Fprintf(w, `{"total":%d,"start":0,"rows":[%s]}`, len(rows), strings.Join(wrapped, ","))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, func() map[string][]string {
+		mu.Lock()
+		defer mu.Unlock()
+		return projection
+	}
 }
 
 func withFixedNodeStatusClock(t *testing.T, now time.Time) {
@@ -61,11 +87,10 @@ func TestNodeStatusCommandHumanOutput(t *testing.T) {
 	withFixedNodeStatusClock(t, now)
 	recent := now.Add(-2 * time.Minute).Unix()
 	old := now.Add(-3 * time.Hour).Unix()
-	rows := fmt.Sprintf(
-		`{"name":"db01","automatic":{"ohai_time":%d,"platform":"ubuntu","platform_version":"22.04","fqdn":"db01.example.test"}},`+
-			`{"name":"web01","automatic":{"ohai_time":%d,"platform":"rhel","platform_version":"9","fqdn":"web01.example.test"}}`,
-		old, recent)
-	srv := nodeStatusSearchServer(t, 2, rows)
+	srv, projection := partialNodeSearchServer(t,
+		fmt.Sprintf(`{"name":"db01","ohai_time":%d,"platform":"ubuntu","platform_version":"22.04","fqdn":"db01.example.test","ipaddress":"10.0.0.1"}`, old),
+		fmt.Sprintf(`{"name":"web01","ohai_time":%d,"platform":"rhel","platform_version":"9","fqdn":"web01.example.test","ipaddress":null}`, recent),
+	)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -83,8 +108,19 @@ func TestNodeStatusCommandHumanOutput(t *testing.T) {
 	if !strings.Contains(out, "2m ago") || !strings.Contains(out, "3h ago") {
 		t.Errorf("missing relative check-in times:\n%s", out)
 	}
-	if !strings.Contains(out, "ubuntu 22.04") || !strings.Contains(out, "web01.example.test") {
-		t.Errorf("missing platform/fqdn columns:\n%s", out)
+	if !strings.Contains(out, "ubuntu 22.04") || !strings.Contains(out, "web01.example.test") || !strings.Contains(out, "10.0.0.1") {
+		t.Errorf("missing platform/fqdn/ipaddress columns:\n%s", out)
+	}
+	want := map[string][]string{
+		"name":             {"name"},
+		"ohai_time":        {"ohai_time"},
+		"platform":         {"platform"},
+		"platform_version": {"platform_version"},
+		"fqdn":             {"fqdn"},
+		"ipaddress":        {"ipaddress"},
+	}
+	if got := projection(); !reflect.DeepEqual(got, want) {
+		t.Errorf("partial search projection = %v, want %v", got, want)
 	}
 }
 
@@ -92,7 +128,7 @@ func TestNodeStatusCommandJSONOutput(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	withFixedNodeStatusClock(t, now)
 	ts := now.Add(-time.Minute).Unix()
-	srv := nodeStatusSearchServer(t, 1, fmt.Sprintf(`{"name":"web01","automatic":{"ohai_time":%d,"platform":"ubuntu"}}`, ts))
+	srv, _ := partialNodeSearchServer(t, fmt.Sprintf(`{"name":"web01","ohai_time":%d,"platform":"ubuntu"}`, ts))
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -113,7 +149,7 @@ func TestNodeStatusCommandJSONOutput(t *testing.T) {
 
 func TestNodeStatusCommandReportsNeverCheckedIn(t *testing.T) {
 	withFixedNodeStatusClock(t, time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC))
-	srv := nodeStatusSearchServer(t, 1, `{"name":"fresh"}`)
+	srv, _ := partialNodeSearchServer(t, `{"name":"fresh","ohai_time":null,"platform":null}`)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -131,7 +167,7 @@ func TestNodeStatusCommandReportsNeverCheckedIn(t *testing.T) {
 // TestNodeStatusCommandReportsUndecodableRow checks that a search row that is
 // not a node fails the command instead of showing up as a blank line.
 func TestNodeStatusCommandReportsUndecodableRow(t *testing.T) {
-	srv := nodeStatusSearchServer(t, 1, `{"name":5}`)
+	srv, _ := partialNodeSearchServer(t, `{"name":5}`)
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
@@ -142,14 +178,13 @@ func TestNodeStatusCommandReportsUndecodableRow(t *testing.T) {
 	}
 }
 
-// TestNodeStatusCommandFollowsAttributePrecedence checks host facts are read
-// the way a recipe reads node[...], so one set outside automatic still shows,
-// and that a fractional ohai_time survives into the JSON.
-func TestNodeStatusCommandFollowsAttributePrecedence(t *testing.T) {
+// TestNodeStatusCommandKeepsFractionalOhaiTime checks that a fractional
+// ohai_time from the partial search survives into the JSON.
+func TestNodeStatusCommandKeepsFractionalOhaiTime(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	withFixedNodeStatusClock(t, now)
 	ts := float64(now.Add(-time.Minute).Unix()) + 0.5
-	srv := nodeStatusSearchServer(t, 1, fmt.Sprintf(`{"name":"web01","automatic":{"ohai_time":%v},"normal":{"fqdn":"web01.normal.test"}}`, ts))
+	srv, _ := partialNodeSearchServer(t, fmt.Sprintf(`{"name":"web01","ohai_time":%v,"fqdn":"web01.normal.test"}`, ts))
 
 	root := newRootCmd()
 	var buf bytes.Buffer

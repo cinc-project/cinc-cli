@@ -23,14 +23,18 @@ type nodeStatus struct {
 	OhaiTime        float64 `json:"ohai_time,omitempty"`
 }
 
+// nodeStatusAttributes are the node attributes `node status` reads, and all
+// that its search asks the server for besides the node name.
+var nodeStatusAttributes = []string{"ohai_time", "platform", "platform_version", "fqdn", "ipaddress"}
+
 // nodeStatusClock is overridable in tests so the relative check-in time is
 // deterministic.
 var nodeStatusClock = time.Now
 
 // newNodeStatusCmd builds `cinc node status [query]`, which reports every node
 // (or those matching the search query) with how long ago it last checked in,
-// mirroring knife's `status`. Check-in and host facts are read from each node's
-// automatic attributes via a single search.
+// mirroring knife's `status`. Check-in and host facts come from a single
+// partial search that fetches only those attributes, not whole nodes.
 func newNodeStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status [query]",
@@ -56,7 +60,7 @@ cinc node status 'role:web'`,
 			}
 			now := nodeStatusClock()
 			statuses := []nodeStatus{}
-			for node, err := range c.Search.Nodes(cmd.Context(), query) {
+			for node, err := range searchNodesPartial(cmd.Context(), c, query, nodeStatusAttributes...) {
 				if err != nil {
 					return err
 				}
@@ -75,8 +79,8 @@ cinc node status 'role:web'`,
 	}
 }
 
-// nodeStatusOf summarizes one node's check-in and host facts. The facts are
-// read with Chef attribute precedence, the way node[...] reads them.
+// nodeStatusOf summarizes one node's check-in and host facts, from a node
+// returned by searchNodesPartial.
 func nodeStatusOf(node *cinc.Node, now time.Time) nodeStatus {
 	status := nodeStatus{
 		Name:            node.Name,
