@@ -9,10 +9,21 @@ import (
 )
 
 // groupKind is the Groups kind. Groups are created by name only (a
-// NamedCreatable), then edited to add members.
-type groupKind struct{}
+// NamedCreatable), then edited to add members. admins is the session's
+// shared admins-group memo, dropped whenever this kind writes the admins
+// group so user summaries don't report stale admin status.
+type groupKind struct {
+	admins *adminsCache
+}
 
-func newGroupKind() Kind { return groupKind{} }
+// invalidateAdmins drops the admins memo when name is the admins group.
+func (k groupKind) invalidateAdmins(c *cinc.Client, name string) {
+	if name == adminsGroup {
+		k.admins.invalidate(c)
+	}
+}
+
+func newGroupKind(admins *adminsCache) Kind { return groupKind{admins: admins} }
 
 func (groupKind) Title() string     { return "Groups" }
 func (groupKind) Columns() []string { return []string{"NAME"} }
@@ -56,7 +67,7 @@ func groupSummaryFields(g *cinc.Group) []summaryField {
 	}
 }
 
-func (groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited []byte) error {
+func (k groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited []byte) error {
 	var g cinc.Group
 	if err := json.Unmarshal(edited, &g); err != nil {
 		return fmt.Errorf("parse edited group: %w", err)
@@ -65,17 +76,21 @@ func (groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited [
 	// the update to a different one.
 	g.Name = name
 	_, _, err := c.Groups.Update(ctx, &g)
+	k.invalidateAdmins(c, name)
 	return err
 }
 
-func (groupKind) CreateNamed(ctx context.Context, c *cinc.Client, name string) (CreateResult, error) {
-	if _, err := c.Groups.Create(ctx, name); err != nil {
+func (k groupKind) CreateNamed(ctx context.Context, c *cinc.Client, name string) (CreateResult, error) {
+	_, err := c.Groups.Create(ctx, name)
+	k.invalidateAdmins(c, name)
+	if err != nil {
 		return CreateResult{}, err
 	}
 	return CreateResult{Name: name}, nil
 }
 
-func (groupKind) Delete(ctx context.Context, c *cinc.Client, name string) error {
+func (k groupKind) Delete(ctx context.Context, c *cinc.Client, name string) error {
 	_, err := c.Groups.Delete(ctx, name)
+	k.invalidateAdmins(c, name)
 	return err
 }

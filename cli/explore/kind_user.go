@@ -13,11 +13,13 @@ const adminsGroup = "admins"
 
 // newUserKind builds the Users kind. Creating a user with create_key
 // returns a one-time private key, surfaced through CreateResult.Secret.
-func newUserKind() Kind {
+// admins is the session's shared admins-group memo that userType reads;
+// deleting a user drops it, since the server removes them from the group.
+func newUserKind(admins *adminsCache) Kind {
 	return editorKind[cinc.User]{
 		title: "Users",
 		summaryFn: func(ctx context.Context, c *cinc.Client, u *cinc.User) []summaryField {
-			return userSummaryFields(u, userType(ctx, c, u.UserName))
+			return userSummaryFields(u, userType(ctx, admins, c, u.UserName))
 		},
 		listFn: func(ctx context.Context, c *cinc.Client) (map[string]string, error) {
 			index, _, err := c.Users.List(ctx)
@@ -40,6 +42,7 @@ func newUserKind() Kind {
 		},
 		deleteFn: func(ctx context.Context, c *cinc.Client, name string) error {
 			_, err := c.Users.Delete(ctx, name)
+			admins.invalidate(c)
 			return err
 		},
 		template: func() []byte {
@@ -58,20 +61,21 @@ func newUserKind() Kind {
 
 // userType classifies a user for the summary pane. The pivotal bootstrap
 // account is the server's Superuser, decided by name alone. Otherwise we
-// look up the current org's admins group: a member is an Administrator,
-// anyone else a plain User. If that lookup fails — there's no org, or the
+// consult the current org's admins group, memoized for the session in
+// admins (see adminsCache): a member is an Administrator, anyone else a
+// plain User. If that lookup fails — there's no org, or the
 // signed-in user can't read the group — we report Unknown rather than
 // guess. Membership is the group's direct user list, matching what
 // `cinc group show admins` reports.
-func userType(ctx context.Context, c *cinc.Client, username string) string {
+func userType(ctx context.Context, admins *adminsCache, c *cinc.Client, username string) string {
 	if username == cinc.SuperuserName {
 		return "Superuser"
 	}
-	group, _, err := c.Groups.Get(ctx, adminsGroup)
-	if err != nil {
+	members, ok := admins.lookup(ctx, c)
+	if !ok {
 		return "Unknown"
 	}
-	if slices.Contains(group.Users, username) {
+	if slices.Contains(members, username) {
 		return "Administrator"
 	}
 	return "User"

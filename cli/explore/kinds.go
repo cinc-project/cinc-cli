@@ -144,13 +144,14 @@ func indexOfKind(ks []Kind, target Kind) int {
 // registry returns the kinds shown in the top-level menu, in display
 // order.
 func registry() []Kind {
+	admins := newAdminsCache()
 	return []Kind{
 		newNodeKind(),
 		newRoleKind(),
 		newEnvironmentKind(),
 		newClientKind(),
-		newGroupKind(),
-		newUserKind(),
+		newGroupKind(admins),
+		newUserKind(admins),
 		dataBagKind{},
 		cookbookKind{},
 		policyKind{},

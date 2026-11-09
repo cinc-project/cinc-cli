@@ -37,7 +37,7 @@ func TestGroupKindSummaryShowsFields(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	k, ok := newGroupKind().(Summarizable)
+	k, ok := newGroupKind(newAdminsCache()).(Summarizable)
 	if !ok {
 		t.Fatal("group kind is not Summarizable")
 	}
