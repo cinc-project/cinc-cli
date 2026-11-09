@@ -11,6 +11,12 @@ updates:
       go-dependencies:
         patterns:
           - "*"
+    ignore:
+      # pflag 1.1.0 renders every bool flag as `--flag[=true|false]` in
+      # help output (no opt-out), changing every `cinc ... --help` screen
+      # and docs/commands. Held at 1.0.10 until we decide to adopt it.
+      - dependency-name: github.com/spf13/pflag
+        versions: [">= 1.1.0"]
 
   # The integration suite's module, which pins cinc-server-ng.
   - package-ecosystem: gomod
@@ -21,6 +27,10 @@ updates:
       integration-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Held with the root module; see the pflag note above.
+      - dependency-name: github.com/spf13/pflag
+        versions: [">= 1.1.0"]
 
   # Providers of the cinc-server-erlang Terraform stack.
   - package-ecosystem: terraform

@@ -5,10 +5,10 @@
 // dependencies are exactly a release build's.
 module github.com/cinc-project/cinc-cli/integration
 
-go 1.27.1
+go 1.27.3
 
 require (
-	github.com/cinc-project/cinc-api v0.16.0
+	github.com/cinc-project/cinc-api v0.17.0
 	github.com/cinc-project/cinc-cli v0.0.0
 	github.com/cinc-project/cinc-server-ng v0.18.0
 	github.com/creack/pty v1.1.24
@@ -31,7 +31,7 @@ require (
 	github.com/cinc-project/cinc-supermarket-api v0.6.0 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/dlclark/regexp2/v2 v2.8.4 // indirect
+	github.com/dlclark/regexp2/v2 v2.13.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -49,7 +49,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
-	github.com/xo/terminfo v1.2.0 // indirect
+	github.com/xo/terminfo v1.3.1 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
