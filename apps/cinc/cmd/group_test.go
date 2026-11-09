@@ -387,7 +387,7 @@ func TestGroupEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "group.json")
-	body, _ := json.Marshal(cinc.Group{GroupName: "ignored", Users: []string{"dave"}})
+	body, _ := json.Marshal(cinc.Group{GroupName: "devs", Users: []string{"dave"}})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

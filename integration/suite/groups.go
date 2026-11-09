@@ -66,14 +66,17 @@ func testGroupLifecycle(t *testing.T, tgt Target, c *cli) {
 
 	client := newACLClient(c)
 	inner := createACLGroup(c)
-	// The name in the file is ignored: the argument names the group.
-	file := writeJSON(t, cinc.Group{GroupName: "ignored", Users: []string{tgt.Admin}, Clients: []string{client.name}, Groups: []string{inner}})
+	// A file naming another group is the wrong file: refused, nothing sent.
+	other := uniqueName(t, "group")
+	wantFileNameRefused(t, c.fail("group", "edit", name, "--file", writeJSON(t, cinc.Group{GroupName: other, Users: []string{tgt.Admin}})), other, name)
+	wantSlice(t, "users after a refused edit", showGroup(c, name).Users, g.Users)
+
+	file := writeJSON(t, cinc.Group{GroupName: name, Users: []string{tgt.Admin}, Clients: []string{client.name}, Groups: []string{inner}})
 	wantEqual(t, "edit output", c.run("group", "edit", name, "--file", file), fmt.Sprintf("Updated group %q\n", name))
 	g = showGroup(c, name)
 	wantSlice(t, "users after edit", g.Users, []string{tgt.Admin})
 	wantSlice(t, "clients after edit", g.Clients, []string{client.name})
 	wantSlice(t, "groups after edit", g.Groups, []string{inner})
-	wantNotFound(t, c.fail("group", "show", "ignored"))
 
 	wantEqual(t, "delete output", c.run("group", "delete", name), fmt.Sprintf("Deleted group %q\n", name))
 	wantNotFound(t, c.fail("group", "show", name))

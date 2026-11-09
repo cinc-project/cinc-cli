@@ -27,7 +27,8 @@ func newEnvironmentCmd() *cobra.Command {
 // newEnvironmentEditCmd builds the `cinc environment edit <name>` command. It
 // fetches the environment, opens its JSON in the shared editor, and PUTs the
 // result back. The path arg pins the name. `--file` reads the updated JSON
-// from disk for scripted use.
+// from disk for scripted use, and is refused if it names a different
+// environment.
 func newEnvironmentEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -46,6 +47,9 @@ cinc environment edit prod`,
 			var updated cinc.Environment
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.Environment](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "environment", "name", updated.Name, name); err != nil {
 					return err
 				}
 			} else {
@@ -105,9 +109,10 @@ cinc environment show prod`,
 // newEnvironmentCreateCmd builds the `cinc environment create <name>`
 // command. By default it POSTs a minimal environment carrying just the
 // name and an optional --description. With --file the full environment
-// JSON is read from disk, with the positional name overriding whatever
-// "name" the file declares so `cinc environment create staging --file
-// prod.json` can never silently land in the wrong slot.
+// JSON is read from disk. A file naming a different environment is refused
+// (see checkFileName), so `cinc environment create staging --file prod.json`
+// can never land in the wrong slot; one with no name gets the positional
+// name.
 func newEnvironmentCreateCmd() *cobra.Command {
 	var (
 		description string
@@ -130,6 +135,9 @@ cinc environment create prod --file prod.json`,
 			env := cinc.Environment{Name: args[0]}
 			if inputFile != "" {
 				if env, err = readJSONFile[cinc.Environment](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "environment", "name", env.Name, args[0]); err != nil {
 					return err
 				}
 				env.Name = args[0]

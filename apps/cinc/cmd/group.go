@@ -30,7 +30,8 @@ func newGroupCmd() *cobra.Command {
 // newGroupEditCmd builds the `cinc group edit <name>` command. It fetches the
 // group, opens its JSON (members and all) in the shared editor, and PUTs the
 // result back. The path arg pins the group name. `--file` reads the updated
-// JSON from disk for scripted use. For targeted member changes, prefer
+// JSON from disk for scripted use, and is refused if its "groupname" or
+// "name" names a different group. For targeted member changes, prefer
 // `group member add|remove`.
 func newGroupEditCmd() *cobra.Command {
 	var inputFile string
@@ -50,6 +51,15 @@ cinc group edit admins`,
 			var updated cinc.Group
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.Group](inputFile); err != nil {
+					return err
+				}
+				// The server identifies a group by "groupname"; "name" is a
+				// courtesy copy. A file may carry either or both, and
+				// either one naming another group means it's the wrong file.
+				if err := checkFileName(inputFile, "group", "groupname", updated.GroupName, name); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "group", "name", updated.Name, name); err != nil {
 					return err
 				}
 			} else {

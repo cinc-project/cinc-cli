@@ -70,6 +70,10 @@ func testClientLifecycle(t *testing.T, _ Target, c *cli) {
 		t.Errorf("client list --format json does not include %s: %v", name, names)
 	}
 
+	other := uniqueName(t, "client")
+	wantFileNameRefused(t, c.fail("client", "edit", name, "--file", writeJSON(t, cinc.APIClient{Name: other, Validator: true})), other, name)
+	wantEqual(t, "validator after a refused edit", showClient(c, name).Validator, false)
+
 	file := writeJSON(t, cinc.APIClient{Name: name, Validator: true})
 	wantEqual(t, "edit output", c.run("client", "edit", name, "--file", file), fmt.Sprintf("Updated client %q\n", name))
 	wantEqual(t, "validator after edit", showClient(c, name).Validator, true)

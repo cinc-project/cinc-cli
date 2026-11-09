@@ -377,7 +377,7 @@ func TestClientEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "client.json")
-	body, err := json.Marshal(cinc.APIClient{Name: "ignored-in-file", Validator: true})
+	body, err := json.Marshal(cinc.APIClient{Name: "worker-01", Validator: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestClientEditCommandReadsFromFile(t *testing.T) {
 		t.Errorf("PUT body validator = %v, want true", gotPut.Validator)
 	}
 	if gotPut.Name != "worker-01" {
-		t.Errorf("PUT body name = %q, want worker-01 (path arg must win over file)", gotPut.Name)
+		t.Errorf("PUT body name = %q, want worker-01", gotPut.Name)
 	}
 }
 

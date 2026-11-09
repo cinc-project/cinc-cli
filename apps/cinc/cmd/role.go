@@ -26,8 +26,9 @@ func newRoleCmd() *cobra.Command {
 
 // newRoleCreateCmd builds the `cinc role create <name>` command. By default
 // it POSTs a minimal role carrying just the name, an empty run list, and an
-// optional --description. With --file the full role JSON is read from disk,
-// with the positional name overriding whatever "name" the file declares.
+// optional --description. With --file the full role JSON is read from disk;
+// a file naming a different role is refused (see checkFileName), and one with
+// no name gets the positional name.
 func newRoleCreateCmd() *cobra.Command {
 	var (
 		description string
@@ -52,6 +53,9 @@ cinc role create webserver --file webserver.json`,
 				if role, err = readJSONFile[cinc.Role](inputFile); err != nil {
 					return err
 				}
+				if err := checkFileName(inputFile, "role", "name", role.Name, args[0]); err != nil {
+					return err
+				}
 				role.Name = args[0]
 			}
 			if description != "" {
@@ -72,7 +76,8 @@ cinc role create webserver --file webserver.json`,
 // newRoleEditCmd builds the `cinc role edit <name>` command. It fetches the
 // role, opens its JSON in the shared editor, and PUTs the result back. The
 // path arg pins the role name so an edit can't rename it. `--file` reads the
-// updated JSON from disk for scripted use.
+// updated JSON from disk for scripted use, and is refused if it names a
+// different role.
 func newRoleEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -91,6 +96,9 @@ cinc role edit webserver`,
 			var updated cinc.Role
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.Role](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "role", "name", updated.Name, name); err != nil {
 					return err
 				}
 			} else {

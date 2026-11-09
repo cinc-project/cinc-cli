@@ -814,7 +814,7 @@ func TestNodeCreateCommandReadsFromFile(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	filePath := filepath.Join(t.TempDir(), "node.json")
-	body, _ := json.Marshal(cinc.Node{Name: "ignored", Environment: "staging", RunList: []string{"recipe[base]"}})
+	body, _ := json.Marshal(cinc.Node{Name: "web01", Environment: "staging", RunList: []string{"recipe[base]"}})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -827,7 +827,7 @@ func TestNodeCreateCommandReadsFromFile(t *testing.T) {
 		t.Fatalf("cinc node create --file: %v", err)
 	}
 	if created.Name != "web01" {
-		t.Errorf("create body name = %q, want web01 (path arg must win over file)", created.Name)
+		t.Errorf("create body name = %q, want web01", created.Name)
 	}
 	if created.Environment != "staging" || !slices.Equal(created.RunList, []string{"recipe[base]"}) {
 		t.Errorf("create body = %+v, want from file", created)
@@ -901,7 +901,7 @@ func TestNodeEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "node.json")
-	body, _ := json.Marshal(cinc.Node{Name: "ignored", Environment: "qa", RunList: []string{"recipe[x]"}})
+	body, _ := json.Marshal(cinc.Node{Name: "web01", Environment: "qa", RunList: []string{"recipe[x]"}})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -89,10 +89,10 @@ cinc client show worker-01`,
 // newClientEditCmd builds the `cinc client edit <name>` command. It
 // fetches the named client, presents the editable fields in a small
 // form (see editor.go), and PUTs the result back to the server.
-// With `--file` the JSON is read from a file unmodified, which makes
-// the command scriptable and keeps the unit and integration tests off the
-// TUI codepath. The form short-circuits with "unchanged" when the
-// user submits without modifying any field.
+// With `--file` the JSON is read from a file (refused if it names a
+// different client), which makes the command scriptable and keeps the unit
+// and integration tests off the TUI codepath. The form short-circuits with
+// "unchanged" when the user submits without modifying any field.
 func newClientEditCmd() *cobra.Command {
 	var inputFile string
 	cmd := &cobra.Command{
@@ -111,6 +111,9 @@ cinc client edit worker-01`,
 			var updated cinc.APIClient
 			if inputFile != "" {
 				if updated, err = readJSONFile[cinc.APIClient](inputFile); err != nil {
+					return err
+				}
+				if err := checkFileName(inputFile, "client", "name", updated.Name, name); err != nil {
 					return err
 				}
 			} else {

@@ -249,7 +249,7 @@ client_key      = %q
 	}
 
 	filePath := filepath.Join(t.TempDir(), "role.json")
-	body, _ := json.Marshal(cinc.Role{Name: "ignored-in-file", Description: "From file", RunList: []string{"recipe[base]"}})
+	body, _ := json.Marshal(cinc.Role{Name: "web", Description: "From file", RunList: []string{"recipe[base]"}})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ client_key      = %q
 		t.Fatalf("cinc role create --file: %v", err)
 	}
 	if created.Name != "web" {
-		t.Errorf("create body name = %q, want web (path arg must win over file)", created.Name)
+		t.Errorf("create body name = %q, want web", created.Name)
 	}
 	if !slices.Equal(created.RunList, []string{"recipe[base]"}) {
 		t.Errorf("create body run_list = %v, want from file", created.RunList)
@@ -317,7 +317,7 @@ func TestRoleEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "role.json")
-	body, _ := json.Marshal(cinc.Role{Name: "ignored", RunList: []string{"recipe[x]"}})
+	body, _ := json.Marshal(cinc.Role{Name: "web", RunList: []string{"recipe[x]"}})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
