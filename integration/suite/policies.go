@@ -162,16 +162,22 @@ default['%[2]s']['port'] = 8080
 
 // testPolicyPushAgainUploadsNothing pushes one lock to two groups. The
 // second push finds every artifact already on the server and uploads none,
-// so its summary must say so rather than repeat the first push's count.
+// so its summary must say so rather than repeat the first push's count. The
+// cookbook's source is deleted between the pushes: push fetches only what
+// the server lacks, so the second push must not need it.
 func testPolicyPushAgainUploadsNothing(t *testing.T, tgt Target, c *cli) {
 	api := adminAPI(t, tgt, tgt.Org)
 	policy, first, second := uniqueName(t, "policy"), uniqueName(t, "pgroup"), uniqueName(t, "pgroup")
 	cb := uniqueName(t, "cb")
 	cleanupArtifacts(c, api, cb)
 	cleanupPolicy(c, policy, first, second)
-	lockPath, _, lock := pathPolicy(t, t.TempDir(), policy, cb, "1.0.0")
+	dir := t.TempDir()
+	lockPath, _, lock := pathPolicy(t, dir, policy, cb, "1.0.0")
 
 	wantEqual(t, "first push cookbooks_uploaded", pushJSON(c, first, lockPath).CookbooksUploaded, 1)
+	if err := os.RemoveAll(filepath.Join(dir, "cookbooks")); err != nil {
+		t.Fatal(err)
+	}
 	again := pushJSON(c, second, lockPath)
 	wantEqual(t, "second push revision", again.RevisionID, lock.revision)
 	wantSlice(t, "artifact identifiers", artifactIdentifiers(t, api, cb), []string{lock.cookbooks[0].identifier})

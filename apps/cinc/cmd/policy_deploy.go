@@ -18,9 +18,10 @@ import (
 const defaultLockFile = "Policyfile.lock.json"
 
 // newPolicyPushCmd builds `cinc policy push <group> [lock]`. It deploys an
-// existing Policyfile.lock.json: it fetches every cookbook the lock pins (from
-// the source the lock records, into the cinc cache), uploads each as a cookbook
-// artifact, and associates the revision with the named policy group.
+// existing Policyfile.lock.json: it fetches each cookbook the lock pins that
+// the server doesn't already hold (from the source the lock records, into the
+// cinc cache), uploads each as a cookbook artifact, and associates the
+// revision with the named policy group.
 func newPolicyPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push <group> [lock]",
@@ -49,11 +50,18 @@ cinc policy push prod Policyfile.lock.json`,
 			if err != nil {
 				return err
 			}
+			// Fetch only the cookbooks the server lacks: redeploying an
+			// unchanged lock, or pushing it to another group, downloads
+			// nothing. PushRevision skips the artifacts the server has.
+			missing, _, err := c.Policies.MissingArtifacts(cmd.Context(), lock)
+			if err != nil {
+				return err
+			}
 			fetcher, err := newFetcher(filepath.Dir(lockPath), c)
 			if err != nil {
 				return err
 			}
-			cookbooks, err := fetchLockCookbooks(cmd.Context(), fetcher, lock)
+			cookbooks, err := fetchLockCookbooks(cmd.Context(), fetcher, lock, missing)
 			if err != nil {
 				return err
 			}
@@ -232,11 +240,12 @@ func newFetcher(lockDir string, chef *cinc.Client) (*policyfile.Fetcher, error) 
 	return &policyfile.Fetcher{CacheRoot: cacheRoot, LockDir: lockDir, Chef: chef}, nil
 }
 
-// fetchLockCookbooks resolves every cookbook the lock pins to an uploadable
-// LocalCookbook, fetching+caching as needed.
-func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *cinc.PolicyRevision) (map[string]*cinc.LocalCookbook, error) {
-	cookbooks := make(map[string]*cinc.LocalCookbook, len(lock.CookbookLocks))
-	for name, cl := range lock.CookbookLocks {
+// fetchLockCookbooks resolves the named cookbook locks to uploadable
+// LocalCookbooks, fetching and caching as needed.
+func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *cinc.PolicyRevision, names []string) (map[string]*cinc.LocalCookbook, error) {
+	cookbooks := make(map[string]*cinc.LocalCookbook, len(names))
+	for _, name := range names {
+		cl := lock.CookbookLocks[name]
 		dir, err := fetcher.EnsureCookbook(ctx, name, cl)
 		if err != nil {
 			return nil, err

@@ -218,6 +218,73 @@ func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
 	}
 }
 
+// TestPolicyPushSkipsFetchingCookbooksTheServerHas redeploys a lock whose
+// artifact the server already holds, with the cookbook's source gone. Push
+// must not fetch a cookbook it won't upload, so it succeeds without it.
+func TestPolicyPushSkipsFetchingCookbooksTheServerHas(t *testing.T) {
+	const identifier = "0000000000000000000000000000000000000004"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"base":{"url":"u","versions":[{"identifier":"`+identifier+`","url":"u"}]}}`)
+	})
+	mux.HandleFunc("/organizations/acme/policy_groups/prod/policies/appserver", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"revision_id":"rev123","name":"appserver"}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	lockPath := writePolicyLockFixture(t, identifier)
+	if err := os.RemoveAll(filepath.Join(filepath.Dir(lockPath), "cookbooks")); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"policy", "push", "prod", lockPath, "--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("cinc policy push: %v", err)
+	}
+	if want := "(0 uploaded, 1 already on the server)"; !strings.Contains(buf.String(), want) {
+		t.Errorf("output = %q, want it to contain %q", buf.String(), want)
+	}
+}
+
+// TestPolicyPushStillFetchesWhatTheServerLacks checks the other side: a
+// cookbook the server lacks is still fetched, so a missing source is an error.
+func TestPolicyPushStillFetchesWhatTheServerLacks(t *testing.T) {
+	const identifier = "0000000000000000000000000000000000000005"
+	var uploads int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			uploads++
+		}
+		http.NotFound(w, r)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	lockPath := writePolicyLockFixture(t, identifier)
+	if err := os.RemoveAll(filepath.Join(filepath.Dir(lockPath), "cookbooks")); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"policy", "push", "prod", lockPath, "--config", writeCreateConfig(t, srv.URL)})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected an error when a cookbook the server lacks can't be fetched")
+	}
+	if uploads != 0 {
+		t.Errorf("made %d write request(s) after a fetch failed; want none", uploads)
+	}
+}
+
 func TestPolicyPushCommandReportsMissingLock(t *testing.T) {
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
