@@ -8,10 +8,16 @@ cinc environment create <name> [flags]
 
 ### Examples
 
-Create an environment; your editor opens to define it.
+Create an empty environment with a description.
 
 ```bash
-cinc environment create prod
+cinc environment create prod --description "Production"
+```
+
+Create an environment with its cookbook constraints and attributes from a JSON file.
+
+```bash
+cinc environment create prod --file prod.json
 ```
 
 ### Options
