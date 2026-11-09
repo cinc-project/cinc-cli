@@ -176,7 +176,7 @@ func testConfigValidateAuthFailures(t *testing.T, tgt Target, c *cli) {
 		}
 	}
 	if detail := rep.profile(t, "ghost").wantCheck(t, checkReachable, false).Detail; !strings.Contains(detail, ghost) {
-		t.Errorf("ghost: the 401 should name the client the server did not recognise: %q", detail)
+		t.Errorf("ghost: the 401 should name the client the server did not recognize: %q", detail)
 	}
 
 	human := c.exec(runOpts{}, "config", "validate")
@@ -933,7 +933,7 @@ func testForbiddenShape(t *testing.T, _ Target, c *cli) {
 	envFile := writeJSON(t, map[string]any{"name": env, "description": "changed by robot"})
 	nodeFile := writeJSON(t, cinc.Node{Name: node, Environment: "_default", RunList: []string{"recipe[robot]"}})
 
-	// Reads are allowed, so the robot is a working, recognised actor.
+	// Reads are allowed, so the robot is a working, recognized actor.
 	c.run("node", "list", "--profile", "robot")
 	for _, args := range [][]string{
 		{"node", "delete", node},

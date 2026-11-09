@@ -165,7 +165,7 @@ func readJSONFile[T any](path string) (T, error) {
 	v, err = decodeStrictJSON[T](data)
 	var unknown *unknownFieldError
 	if errors.As(err, &unknown) {
-		return v, fmt.Errorf("%s has a field we don't recognise, %q. Check the spelling, or remove it.", path, unknown.key)
+		return v, fmt.Errorf("%s has a field we don't recognize, %q. Check the spelling, or remove it.", path, unknown.key)
 	}
 	if err != nil {
 		return v, fmt.Errorf("%s isn't valid JSON: %w", path, err)
