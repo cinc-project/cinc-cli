@@ -206,7 +206,7 @@ func (c *cli) execTTY(answers string, args ...string) result {
 	case waitErr = <-done:
 	case <-time.After(60 * time.Second):
 		_ = cmd.Process.Kill()
-		<-done
+		_ = <-done // reap the killed child; its "signal: killed" error is expected
 		c.t.Fatalf("cinc %s did not finish; it is probably waiting on a prompt\nstdout:\n%s\nstderr:\n%s",
 			strings.Join(args, " "), stdout.String(), stderr.String())
 	}
