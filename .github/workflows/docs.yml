@@ -12,6 +12,27 @@ jobs:
     name: Regenerate docs/commands
     runs-on: ubuntu-latest
     steps:
+      # Fail fast with a clear message when the token has expired or been
+      # revoked. Otherwise checkout fails with git's unhelpful
+      # "could not read Username for 'https://github.com'".
+      - name: Check DOCS_BOT_TOKEN
+        env:
+          TOKEN: ${{ secrets.DOCS_BOT_TOKEN }}
+        run: |
+          fix="Create a new PAT (contents: write on ${GITHUB_REPOSITORY}) for an account on main's branch-protection bypass list and save it as the DOCS_BOT_TOKEN repository secret."
+          if [[ -z "$TOKEN" ]]; then
+            echo "::error::DOCS_BOT_TOKEN isn't set. ${fix}"
+            exit 1
+          fi
+          if ! push=$(GH_TOKEN="$TOKEN" gh api "repos/${GITHUB_REPOSITORY}" --jq .permissions.push 2>&1); then
+            echo "::error::GitHub rejected DOCS_BOT_TOKEN (${push}). It has probably expired or been revoked. ${fix}"
+            exit 1
+          fi
+          if [[ "$push" != "true" ]]; then
+            echo "::error::DOCS_BOT_TOKEN works but can't push to ${GITHUB_REPOSITORY}. ${fix}"
+            exit 1
+          fi
+
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
