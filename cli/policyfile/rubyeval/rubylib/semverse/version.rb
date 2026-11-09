@@ -19,37 +19,44 @@ module Semverse
         # cinc: upstream matched the whole string with one regex whose pre-release
         # and build groups nest a quantifier inside an optional group, which code
         # scanning flags as ReDoS-prone. We split off "+build" and "-pre" with
-        # String#partition and match each piece with a flat, \A..\z-anchored
-        # pattern instead. Results are identical for any single-line input;
-        # upstream's ^/$ also accepted one trailing newline, so we drop that first.
+        # String#partition, split the dotted core on ".", and check each piece
+        # against a pattern with a single quantifier. Results are identical for
+        # any single-line input; upstream's ^/$ also accepted one trailing
+        # newline, so we drop that first.
         str = version_string.to_s.delete_suffix("\n")
         head, plus, build = str.partition("+")
         core, dash, pre = head.partition("-")
+        parts = core.split(".", -1)
+        nums = parts.map { |p| DIGITS.match?(p) }
 
         if !plus.empty? || !dash.empty?
-          ident = /\A[0-9a-z.\-]+\z/i
-          if (m = /\A(\d+)\.(\d+)\.(\d+)\z/.match(core)) &&
-              (dash.empty? || ident.match?(pre)) &&
-              (plus.empty? || ident.match?(build))
-            return [ m[1].to_i, m[2].to_i, m[3].to_i, (pre unless dash.empty?), (build unless plus.empty?) ]
+          if parts.length == 3 && nums.all? &&
+              (dash.empty? || IDENTIFIER.match?(pre)) &&
+              (plus.empty? || IDENTIFIER.match?(build))
+            return [ parts[0].to_i, parts[1].to_i, parts[2].to_i, (pre unless dash.empty?), (build unless plus.empty?) ]
           end
 
           raise InvalidVersionFormat.new(version_string)
         end
 
-        case core
-        when /\A(\d+)\.(\d+)\.(\d+)\z/
-          [ $1.to_i, $2.to_i, $3.to_i, nil, nil ]
-        when /\A(\d+)\.(\d+)\.\z/
-          [ $1.to_i, $2.to_i, 0 ]
-        when /\A(\d+)\.(\d*)\z/
-          [ $1.to_i, $2.to_i, 0 ]
-        when /\A(\d+)\z/
-          [ $1.to_i, 0, 0 ]
-        else
-          raise InvalidVersionFormat.new(version_string)
+        case parts.length
+        when 1
+          return [ parts[0].to_i, 0, 0 ] if nums[0]
+        when 2
+          # "1.2" and "1."
+          return [ parts[0].to_i, parts[1].to_i, 0 ] if nums[0] && (nums[1] || parts[1].empty?)
+        when 3
+          # "1.2.3" and "1.2."
+          return [ parts[0].to_i, parts[1].to_i, parts[2].to_i, nil, nil ] if nums.all?
+          return [ parts[0].to_i, parts[1].to_i, 0 ] if nums[0] && nums[1] && parts[2].empty?
         end
+
+        raise InvalidVersionFormat.new(version_string)
       end
+
+      DIGITS = /\A\d+\z/
+      IDENTIFIER = /\A[0-9a-z.\-]+\z/i
+      private_constant :DIGITS, :IDENTIFIER
     end
 
     include Comparable
