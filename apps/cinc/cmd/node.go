@@ -2,7 +2,11 @@ package cmd
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"strings"
@@ -550,7 +554,7 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 		return nil, err
 	}
 	var targets []remote.Target
-	for node, err := range c.Search.Nodes(cmd.Context(), expandNodeSSHQuery(query)) {
+	for node, err := range searchNodesPartial(cmd.Context(), c, expandNodeSSHQuery(query), flags.attribute) {
 		if err != nil {
 			return nil, err
 		}
@@ -566,6 +570,85 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 		return nil, fmt.Errorf("node ssh found no hosts for query %q", query)
 	}
 	return targets, nil
+}
+
+// searchNodesPartial searches the node index for just the node name and the
+// given attributes, rather than whole nodes, whose automatic attributes alone
+// often run past 100 KB each. Each attribute may be a dotted path such as
+// cloud.public_hostname.
+//
+// It yields each row as a cinc.Node holding only those values, each placed in
+// Automatic at its path, so the cinc.Node readers (Attribute, AttributeScalar,
+// LastCheckin) work on it unchanged. The server projects from the node's
+// merged attributes (automatic over override over normal over default), so
+// each value is already the one Chef's read precedence picks. A null value,
+// which is how the server reports an attribute the node doesn't have, is left
+// out, so the attribute reads as missing.
+func searchNodesPartial(ctx context.Context, c *cinc.Client, query string, attrs ...string) iter.Seq2[*cinc.Node, error] {
+	paths := []string{"name"}
+	for _, attr := range attrs {
+		if attr != "name" && !slices.Contains(paths, attr) {
+			paths = append(paths, attr)
+		}
+	}
+	return func(yield func(*cinc.Node, error) bool) {
+		for row, err := range c.Search.All(ctx, "node", query, cinc.WithPartialPaths(paths...)) {
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			node, err := nodeFromPartialRow(row, paths[1:])
+			if !yield(node, err) || err != nil {
+				return
+			}
+		}
+	}
+}
+
+// nodeFromPartialRow decodes one partial node search row,
+// {"url": ..., "data": {"name": ..., <attr>: <value>}}, into a cinc.Node as
+// searchNodesPartial describes.
+func nodeFromPartialRow(row json.RawMessage, attrs []string) (*cinc.Node, error) {
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(row, &envelope); err != nil {
+		return nil, fmt.Errorf("decode node search row: %w", err)
+	}
+	if len(envelope.Data) == 0 {
+		return nil, errors.New("decode node search row: the server sent back a whole object instead of the partial search result we asked for")
+	}
+	var named struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(envelope.Data, &named); err != nil {
+		return nil, fmt.Errorf("decode node search row: %w", err)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(envelope.Data, &data); err != nil {
+		return nil, fmt.Errorf("decode node search row: %w", err)
+	}
+	node := &cinc.Node{Name: named.Name, Automatic: cinc.Attributes{}}
+	for _, attr := range attrs {
+		if value := data[attr]; value != nil {
+			setAttributePath(node.Automatic, strings.Split(attr, "."), value)
+		}
+	}
+	return node, nil
+}
+
+// setAttributePath stores value in attrs at path, creating the maps along it.
+func setAttributePath(attrs cinc.Attributes, path []string, value any) {
+	m := map[string]any(attrs)
+	for _, key := range path[:len(path)-1] {
+		next, ok := m[key].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			m[key] = next
+		}
+		m = next
+	}
+	m[path[len(path)-1]] = value
 }
 
 func expandNodeSSHQuery(query string) string {

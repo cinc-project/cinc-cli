@@ -14,12 +14,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 
 	cinc "github.com/cinc-project/cinc-api"
+	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/remote"
 )
@@ -390,12 +392,14 @@ func TestNodeSSHSearchBackedCommand(t *testing.T) {
 	nodeRemoteRunner = runner
 	t.Cleanup(func() { nodeRemoteRunner = old })
 
-	var sawQuery string
+	var sawQuery, sawMethod string
+	var sawProjection map[string][]string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, r *http.Request) {
-		sawQuery = r.URL.Query().Get("q")
+		sawQuery, sawMethod = r.URL.Query().Get("q"), r.Method
+		_ = json.NewDecoder(r.Body).Decode(&sawProjection)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"total":1,"start":0,"rows":[{"automatic":{"fqdn":"web01.example.test"}}]}`)
+		_, _ = io.WriteString(w, `{"total":1,"start":0,"rows":[{"url":"https://cinc.example.test/organizations/acme/nodes/web01","data":{"name":"web01","fqdn":"web01.example.test"}}]}`)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -416,6 +420,10 @@ func TestNodeSSHSearchBackedCommand(t *testing.T) {
 	}
 	if !strings.Contains(sawQuery, "tags:*web*") || !strings.Contains(sawQuery, "fqdn:*web*") {
 		t.Fatalf("query = %q, want expanded Knife-style node query", sawQuery)
+	}
+	wantProjection := map[string][]string{"name": {"name"}, "fqdn": {"fqdn"}}
+	if sawMethod != http.MethodPost || !reflect.DeepEqual(sawProjection, wantProjection) {
+		t.Fatalf("search = %s with projection %v, want a partial search (POST) of %v", sawMethod, sawProjection, wantProjection)
 	}
 	if len(runner.calls) != 1 || runner.calls[0].target.Host != "web01.example.test" {
 		t.Fatalf("runner calls = %+v", runner.calls)
@@ -944,13 +952,7 @@ func TestSearchRowAttributeFollowsChefPrecedence(t *testing.T) {
 // TestNodeSSHTargetsReportsUndecodableRow checks that a search row that is not
 // a node is reported rather than skipped.
 func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"total":1,"start":0,"rows":[{"name":5}]}`)
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+	srv, _ := partialNodeSearchServer(t, `{"name":5,"fqdn":"web01.example.test"}`)
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
@@ -958,6 +960,74 @@ func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
 	root.SetArgs([]string{"node", "ssh", "name:web01", "uptime", "--ssh-user", "u", "--config", writeNodeConfig(t, srv.URL)})
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "decode node") {
 		t.Errorf("node ssh error = %v, want the decode failure", err)
+	}
+}
+
+// nodeSSHTestCmd is a command for calling nodeSSHTargets directly, configured
+// against the test server.
+func nodeSSHTestCmd(t *testing.T, serverURL string) *cobra.Command {
+	t.Helper()
+	cmd := fakeCmd(writeNodeConfig(t, serverURL), "", "", &bytes.Buffer{})
+	cmd.SetContext(context.Background())
+	return cmd
+}
+
+// TestNodeSSHTargetsProjectsTheAttribute checks node ssh asks the server for
+// only the node name and the --attribute value (a dotted path projects as its
+// own key), and reads the host from the projection.
+func TestNodeSSHTargetsProjectsTheAttribute(t *testing.T) {
+	for _, tc := range []struct {
+		name, attr, row, want string
+		projection            map[string][]string
+	}{
+		{"dotted path", "cloud.public_hostname", `{"name":"web01","cloud.public_hostname":"web01.cloud.test"}`, "web01.cloud.test",
+			map[string][]string{"name": {"name"}, "cloud.public_hostname": {"cloud", "public_hostname"}}},
+		{"node name", "name", `{"name":"web01"}`, "web01",
+			map[string][]string{"name": {"name"}}},
+		{"array value", "addresses", `{"name":"web01","addresses":["10.0.0.3","10.0.0.4"]}`, "10.0.0.3",
+			map[string][]string{"name": {"name"}, "addresses": {"addresses"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, projection := partialNodeSearchServer(t, tc.row)
+			targets, err := nodeSSHTargets(nodeSSHTestCmd(t, srv.URL), "name:web01", nodeSSHFlags{attribute: tc.attr})
+			if err != nil {
+				t.Fatalf("nodeSSHTargets: %v", err)
+			}
+			if len(targets) != 1 || targets[0].Host != tc.want {
+				t.Errorf("targets = %+v, want host %q", targets, tc.want)
+			}
+			if got := projection(); !reflect.DeepEqual(got, tc.projection) {
+				t.Errorf("projection = %v, want %v", got, tc.projection)
+			}
+		})
+	}
+}
+
+// TestNodeSSHTargetsReportsUnusableAttribute checks the errors for a missing
+// attribute and for one that holds an object still name the node, and the
+// object case still suggests a dotted path inside it.
+func TestNodeSSHTargetsReportsUnusableAttribute(t *testing.T) {
+	for _, tc := range []struct {
+		name, attr, row string
+		want            []string
+	}{
+		{"missing", "cloud.public_hostname", `{"name":"web01","cloud.public_hostname":null}`,
+			[]string{`node "web01" has no "cloud.public_hostname" attribute`}},
+		{"object", "cloud", `{"name":"web01","cloud":{"public_hostname":"web01.cloud.test","provider":"ec2"}}`,
+			[]string{`node "web01"'s "cloud" attribute isn't a single value`, "--attribute cloud.provider or cloud.public_hostname"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := partialNodeSearchServer(t, tc.row)
+			_, err := nodeSSHTargets(nodeSSHTestCmd(t, srv.URL), "name:web01", nodeSSHFlags{attribute: tc.attr})
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q should contain %q", err, want)
+				}
+			}
+		})
 	}
 }
 

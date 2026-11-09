@@ -24,6 +24,7 @@ var nodeFamily = family{cases: []testCase{
 	{"nodes/policy-set", []string{"node policy-set"}, testNodePolicySet},
 	{"nodes/ssh-skip-search", []string{"node ssh"}, testNodeSSHSkipSearch},
 	{"nodes/ssh-search", []string{"node ssh"}, testNodeSSHSearch},
+	{"nodes/ssh-search-merged-attribute", []string{"node ssh"}, testNodeSSHSearchMergedAttribute},
 	{"nodes/bootstrap", []string{"node bootstrap"}, testNodeBootstrap},
 	{"nodes/bootstrap-policy", []string{"node bootstrap"}, testNodeBootstrapPolicy},
 }}
@@ -228,6 +229,9 @@ func testNodeStatus(t *testing.T, _ Target, c *cli) {
 			"fqdn":      recent + ".example.test",
 			"platform":  "ubuntu",
 		},
+		// Set below automatic, so the report shows it only if the search
+		// reads the node's merged attributes.
+		"normal": map[string]any{"ipaddress": "10.9.8.7"},
 	})
 	c.run("node", "create", recent, "--file", file)
 	c.cleanup("node", "delete", recent)
@@ -242,6 +246,8 @@ func testNodeStatus(t *testing.T, _ Target, c *cli) {
 				return fmt.Errorf("%s should show as never checked in: %q", never, line)
 			case strings.Contains(line, recent) && !strings.Contains(line, "m ago"):
 				return fmt.Errorf("%s should show a check-in minutes ago: %q", recent, line)
+			case strings.Contains(line, recent) && !strings.Contains(line, "10.9.8.7"):
+				return fmt.Errorf("%s should show its normal-level ipaddress: %q", recent, line)
 			}
 		}
 		if !strings.Contains(out, never) || !strings.Contains(out, recent) {
@@ -304,6 +310,31 @@ func testNodeSSHSearch(t *testing.T, _ Target, c *cli) {
 		return nil
 	})
 	wantEqual(t, "command", s.received()[0], "uptime")
+}
+
+// testNodeSSHSearchMergedAttribute reads the host from a dotted --attribute
+// whose value is split across precedence levels: the override address must
+// win over the default one, and an automatic sibling key must not hide it.
+func testNodeSSHSearchMergedAttribute(t *testing.T, _ Target, c *cli) {
+	s := startSSHServer(t, "hello from merged\n")
+	name := uniqueName(t, "node")
+	file := writeJSON(t, map[string]any{
+		"name":             name,
+		"chef_environment": "_default",
+		"default":          map[string]any{"cloud": map[string]any{"public_hostname": "default-loses.invalid"}},
+		"override":         map[string]any{"cloud": map[string]any{"public_hostname": "127.0.0.1"}},
+		"automatic":        map[string]any{"cloud": map[string]any{"provider": "ec2"}},
+	})
+	c.run("node", "create", name, "--file", file)
+	c.cleanup("node", "delete", name)
+
+	eventually(t, searchTimeout, func() error {
+		r := c.exec(runOpts{}, append([]string{"node", "ssh", "name:" + name, "uptime", "--attribute", "cloud.public_hostname"}, s.sshArgs()...)...)
+		if r.exitCode != 0 || r.stdout != "127.0.0.1\thello from merged\n" {
+			return fmt.Errorf("node ssh by merged attribute: %s", r)
+		}
+		return nil
+	})
 }
 
 func testNodeBootstrap(t *testing.T, _ Target, c *cli) {
