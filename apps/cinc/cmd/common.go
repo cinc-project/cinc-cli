@@ -153,14 +153,21 @@ func readSecretFile(path string) ([]byte, error) {
 
 // readJSONFile reads the JSON document a --file flag points at into a T.
 // Every `create`/`edit --file` path goes through it, so they all report a
-// missing file or bad JSON the same way.
+// missing file, bad JSON, or a key T doesn't know the same way. It decodes
+// with decodeStrictJSON, the editor's rules, so a misspelled key fails here
+// too instead of being silently dropped.
 func readJSONFile[T any](path string) (T, error) {
 	var v T
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return v, fmt.Errorf("we couldn't read %s: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &v); err != nil {
+	v, err = decodeStrictJSON[T](data)
+	var unknown *unknownFieldError
+	if errors.As(err, &unknown) {
+		return v, fmt.Errorf("%s has a field we don't recognise, %q. Check the spelling, or remove it.", path, unknown.key)
+	}
+	if err != nil {
 		return v, fmt.Errorf("%s isn't valid JSON: %w", path, err)
 	}
 	return v, nil

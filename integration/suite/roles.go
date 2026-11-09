@@ -205,8 +205,8 @@ func testRoleInvalidRunList(t *testing.T, _ Target, c *cli) {
 	wantSlice(t, "run list after refused edit", showRole(c, name).RunList, []string{})
 }
 
-// testRoleBadFile checks that an unreadable or malformed --file fails before
-// anything reaches the server.
+// testRoleBadFile checks that an unreadable or malformed --file, or one with
+// a misspelled key, fails before anything reaches the server.
 func testRoleBadFile(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "role")
 	c.cleanup("role", "delete", name)
@@ -220,6 +220,9 @@ func testRoleBadFile(t *testing.T, _ Target, c *cli) {
 
 	createRole(c, name, "--description", "original")
 	wantStderr(t, c.fail("role", "edit", name, "--file", malformed), "bad.json")
+	typo := filepath.Join(t.TempDir(), "typo.json")
+	writeFile(t, typo, `{"description": "typo", "overide_attributes": {"a": 1}}`)
+	wantStderr(t, c.fail("role", "edit", name, "--file", typo), `"overide_attributes"`)
 	wantEqual(t, "description", showRole(c, name).Description, "original")
 }
 
