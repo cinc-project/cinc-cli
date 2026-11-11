@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -189,7 +188,7 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 			}
 			changed, err := change(cmd.Context(), scope.target(name), perm, actors, groups)
 			if err != nil {
-				return explainACLChangeError(err, grant, target, members, groups)
+				return explainACLChangeError(err, grant, target, members)
 			}
 
 			out := cmd.OutOrStdout()
@@ -248,7 +247,7 @@ func explainACLError(err error, target, change string) error {
 // the ACL is explained as a read. A failed write names the permission that
 // failed and, since each permission is its own request, the ones already
 // changed before it, so the user knows what state the ACL is left in.
-func explainACLChangeError(err error, grant bool, target, members string, groups []string) error {
+func explainACLChangeError(err error, grant bool, target, members string) error {
 	var partial *cinc.ACLChangeError
 	if !errors.As(err, &partial) {
 		return explainACLError(err, target, "")
@@ -257,7 +256,7 @@ func explainACLChangeError(err error, grant bool, target, members string, groups
 	change := fmt.Sprintf("%s %s on %s %s %s", verb, partial.Perm, target, preposition, members)
 
 	var explained error
-	if !grant && partial.Perm == "grant" && slices.Contains(groups, "admins") && errors.Is(err, cinc.ErrForbidden) {
+	if errors.Is(err, cinc.ErrAdminsRequiredOnGrant) {
 		// erchef refuses to take admins off grant for anyone but the
 		// superuser, with a 403 that says nothing about the caller's own
 		// grant permission.

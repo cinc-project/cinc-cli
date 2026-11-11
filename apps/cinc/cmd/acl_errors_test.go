@@ -238,4 +238,7 @@ func TestACLRevokeAdminsFromGrantSurfacesServerMessage(t *testing.T) {
 	if !errors.Is(err, cinc.ErrForbidden) {
 		t.Errorf("error should still unwrap to cinc.ErrForbidden: %v", err)
 	}
+	if !errors.Is(err, cinc.ErrAdminsRequiredOnGrant) {
+		t.Errorf("error should unwrap to cinc.ErrAdminsRequiredOnGrant: %v", err)
+	}
 }
