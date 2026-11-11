@@ -3,8 +3,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -584,78 +582,22 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 // often run past 100 KB each. Each attribute may be a dotted path such as
 // cloud.public_hostname.
 //
-// It yields each row as a cinc.Node holding only those values, each placed in
-// Automatic at its path, so the cinc.Node readers (Attribute, AttributeScalar,
-// LastCheckin) work on it unchanged. The server projects from the node's
-// merged attributes (automatic over override over normal over default), so
-// each value is already the one Chef's read precedence picks. A null value,
-// which is how the server reports an attribute the node doesn't have, is left
-// out, so the attribute reads as missing.
-func searchNodesPartial(ctx context.Context, c *cinc.Client, query string, attrs ...string) iter.Seq2[*cinc.Node, error] {
+// The server projects from the node's merged attributes (automatic over
+// override over normal over default), so each value in a row's Data is
+// already the one Chef's read precedence picks, keyed by the path asked for.
+// An attribute the node doesn't have comes back as null.
+//
+// The row's name comes from its URL. The projection still asks for "name",
+// which the library falls back to if a server's URL doesn't end in the node
+// name, and which keeps the projection non-empty for --attribute name.
+func searchNodesPartial(ctx context.Context, c *cinc.Client, query string, attrs ...string) iter.Seq2[*cinc.PartialNode, error] {
 	paths := []string{"name"}
 	for _, attr := range attrs {
-		if attr != "name" && !slices.Contains(paths, attr) {
+		if !slices.Contains(paths, attr) {
 			paths = append(paths, attr)
 		}
 	}
-	return func(yield func(*cinc.Node, error) bool) {
-		for row, err := range c.Search.All(ctx, "node", query, cinc.WithPartialPaths(paths...)) {
-			if err != nil {
-				yield(nil, err)
-				return
-			}
-			node, err := nodeFromPartialRow(row, paths[1:])
-			if !yield(node, err) || err != nil {
-				return
-			}
-		}
-	}
-}
-
-// nodeFromPartialRow decodes one partial node search row,
-// {"url": ..., "data": {"name": ..., <attr>: <value>}}, into a cinc.Node as
-// searchNodesPartial describes.
-func nodeFromPartialRow(row json.RawMessage, attrs []string) (*cinc.Node, error) {
-	var envelope struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(row, &envelope); err != nil {
-		return nil, fmt.Errorf("decode node search row: %w", err)
-	}
-	if len(envelope.Data) == 0 {
-		return nil, errors.New("decode node search row: the server sent back a whole object instead of the partial search result we asked for")
-	}
-	var named struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(envelope.Data, &named); err != nil {
-		return nil, fmt.Errorf("decode node search row: %w", err)
-	}
-	var data map[string]any
-	if err := json.Unmarshal(envelope.Data, &data); err != nil {
-		return nil, fmt.Errorf("decode node search row: %w", err)
-	}
-	node := &cinc.Node{Name: named.Name, Automatic: cinc.Attributes{}}
-	for _, attr := range attrs {
-		if value := data[attr]; value != nil {
-			setAttributePath(node.Automatic, strings.Split(attr, "."), value)
-		}
-	}
-	return node, nil
-}
-
-// setAttributePath stores value in attrs at path, creating the maps along it.
-func setAttributePath(attrs cinc.Attributes, path []string, value any) {
-	m := map[string]any(attrs)
-	for _, key := range path[:len(path)-1] {
-		next, ok := m[key].(map[string]any)
-		if !ok {
-			next = map[string]any{}
-			m[key] = next
-		}
-		m = next
-	}
-	m[path[len(path)-1]] = value
+	return c.Search.PartialNodes(ctx, query, paths)
 }
 
 func expandNodeSSHQuery(query string) string {
@@ -665,19 +607,19 @@ func expandNodeSSHQuery(query string) string {
 	return "tags:*" + query + "* OR roles:*" + query + "* OR fqdn:*" + query + "* OR addresses:*" + query + "*"
 }
 
-// nodeSSHHost reads the SSH host attribute from a node. The lookup follows
-// Chef's read precedence (automatic, override, normal, default) and accepts
-// dotted paths such as cloud.public_hostname, the way node[...] does in a
-// recipe. "name" is the node's own name, which isn't an attribute.
-func nodeSSHHost(node *cinc.Node, attr string) (string, error) {
+// nodeSSHHost reads the SSH host attribute from a partial search row. attr is
+// the projected path, possibly dotted such as cloud.public_hostname, whose
+// value the server has already resolved by Chef's read precedence. "name" is
+// the node's own name, which isn't an attribute.
+func nodeSSHHost(node *cinc.PartialNode, attr string) (string, error) {
 	if attr == "name" {
 		return node.Name, nil
 	}
-	value, ok := node.Attribute(attr)
-	if !ok {
+	value, ok := node.Value(attr)
+	if !ok || value == nil {
 		return "", fmt.Errorf("node %q has no %q attribute to connect to. Pick another with --attribute, or pass --attribute name to use the node name", node.Name, attr)
 	}
-	host, ok := node.AttributeScalar(attr)
+	host, ok := node.Scalar(attr)
 	if !ok {
 		return "", fmt.Errorf("node %q's %q attribute isn't a single value we can connect to%s", node.Name, attr, nestedAttributeHint(attr, value))
 	}

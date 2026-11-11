@@ -79,15 +79,19 @@ cinc node status 'role:web'`,
 	}
 }
 
-// nodeStatusOf summarizes one node's check-in and host facts, from a node
+// nodeStatusOf summarizes one node's check-in and host facts, from a row
 // returned by searchNodesPartial.
-func nodeStatusOf(node *cinc.Node, now time.Time) nodeStatus {
+func nodeStatusOf(node *cinc.PartialNode, now time.Time) nodeStatus {
+	scalar := func(path string) string {
+		s, _ := node.Scalar(path)
+		return s
+	}
 	status := nodeStatus{
 		Name:            node.Name,
-		Platform:        node.AttributeString("platform"),
-		PlatformVersion: node.AttributeString("platform_version"),
-		FQDN:            node.AttributeString("fqdn"),
-		IPAddress:       node.AttributeString("ipaddress"),
+		Platform:        scalar("platform"),
+		PlatformVersion: scalar("platform_version"),
+		FQDN:            scalar("fqdn"),
+		IPAddress:       scalar("ipaddress"),
 	}
 	// LastCheckin reports the zero time for a node that never checked in,
 	// which relativeCheckin renders as "never".

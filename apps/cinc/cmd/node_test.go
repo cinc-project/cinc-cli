@@ -918,47 +918,53 @@ func TestNodeEditCommandReadsFromFile(t *testing.T) {
 	}
 }
 
-func TestSearchRowAttributeFollowsChefPrecedence(t *testing.T) {
-	host := func(row, attr string) (string, error) {
-		var node cinc.Node
-		if err := json.Unmarshal([]byte(row), &node); err != nil {
-			t.Fatal(err)
-		}
-		return nodeSSHHost(&node, attr)
-	}
-	for _, tc := range []struct{ name, row, attr, want string }{
-		{"dotted path under automatic", `{"automatic":{"cloud":{"public_hostname":"web01.cloud.test"}}}`, "cloud.public_hostname", "web01.cloud.test"},
-		{"override beats default", `{"default":{"ipaddress":"10.0.0.1"},"override":{"ipaddress":"10.0.0.2"}}`, "ipaddress", "10.0.0.2"},
-		{"automatic beats normal", `{"normal":{"fqdn":"n.test"},"automatic":{"fqdn":"a.test"}}`, "fqdn", "a.test"},
-		{"first element of an array", `{"automatic":{"addresses":["10.0.0.3","10.0.0.4"]}}`, "addresses", "10.0.0.3"},
-		{"node name", `{"name":"web01","automatic":{}}`, "name", "web01"},
+// TestNodeSSHHostReadsProjectedAttribute checks nodeSSHHost reads the host
+// from a partial search row. The server has already merged the precedence
+// levels, so each value is keyed by the dotted path that was projected.
+func TestNodeSSHHostReadsProjectedAttribute(t *testing.T) {
+	for _, tc := range []struct {
+		name, attr, want string
+		data             map[string]any
+	}{
+		{"dotted path", "cloud.public_hostname", "web01.cloud.test", map[string]any{"cloud.public_hostname": "web01.cloud.test"}},
+		{"first element of an array", "addresses", "10.0.0.3", map[string]any{"addresses": []any{"10.0.0.3", "10.0.0.4"}}},
+		{"node name", "name", "web01", map[string]any{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := host(tc.row, tc.attr)
+			got, err := nodeSSHHost(&cinc.PartialNode{Name: "web01", Data: tc.data}, tc.attr)
 			if err != nil || got != tc.want {
-				t.Errorf("nodeSSHHost(%s, %q) = %q, %v; want %q", tc.row, tc.attr, got, err, tc.want)
+				t.Errorf("nodeSSHHost(%v, %q) = %q, %v; want %q", tc.data, tc.attr, got, err, tc.want)
 			}
 		})
 	}
-	_, err := host(`{"name":"web01","automatic":{}}`, "cloud.public_hostname")
-	if err == nil {
-		t.Fatal("want an error when the attribute is missing")
-	}
-	if !strings.Contains(err.Error(), "web01") || !strings.Contains(err.Error(), "cloud.public_hostname") {
-		t.Errorf("error = %q, want it to name the node and the attribute", err)
+	// The server reports an attribute the node doesn't have as null.
+	for name, data := range map[string]map[string]any{
+		"absent": {},
+		"null":   {"cloud.public_hostname": nil},
+	} {
+		t.Run("missing when "+name, func(t *testing.T) {
+			_, err := nodeSSHHost(&cinc.PartialNode{Name: "web01", Data: data}, "cloud.public_hostname")
+			if err == nil {
+				t.Fatal("want an error when the attribute is missing")
+			}
+			if !strings.Contains(err.Error(), `node "web01" has no "cloud.public_hostname" attribute`) {
+				t.Errorf("error = %q, want it to name the node and the attribute", err)
+			}
+		})
 	}
 }
 
 // TestNodeSSHTargetsReportsUndecodableRow checks that a search row that is not
-// a node is reported rather than skipped.
+// a partial search result (here, a whole node) is reported rather than
+// skipped.
 func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
-	srv, _ := partialNodeSearchServer(t, `{"name":5,"fqdn":"web01.example.test"}`)
+	srv, _ := nodeSearchServer(t, `{"name":"web01","chef_type":"node","automatic":{"fqdn":"web01.example.test"}}`)
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
 	root.SetArgs([]string{"node", "ssh", "name:web01", "uptime", "--ssh-user", "u", "--config", writeNodeConfig(t, srv.URL)})
-	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "decode node") {
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "not a partial-search row") {
 		t.Errorf("node ssh error = %v, want the decode failure", err)
 	}
 }
@@ -1034,7 +1040,7 @@ func TestNodeSSHTargetsReportsUnusableAttribute(t *testing.T) {
 // An attribute that holds an object can't be a host to connect to. Before,
 // its Go map text ("map[...]") went to SSH as the host name.
 func TestNodeSSHHostRejectsNonScalarAttribute(t *testing.T) {
-	node := &cinc.Node{Name: "web01", Automatic: cinc.Attributes{"cloud": map[string]any{"public_hostname": "web01.cloud.test"}}}
+	node := &cinc.PartialNode{Name: "web01", Data: map[string]any{"cloud": map[string]any{"public_hostname": "web01.cloud.test"}}}
 	_, err := nodeSSHHost(node, "cloud")
 	if err == nil {
 		t.Fatal("want an error for an attribute that holds an object")
