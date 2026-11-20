@@ -5,7 +5,7 @@
 // dependencies are exactly a release build's.
 module github.com/cinc-project/cinc-cli/integration
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/cinc-project/cinc-api v0.19.0
