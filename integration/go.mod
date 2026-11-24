@@ -10,7 +10,7 @@ go 1.27.4
 require (
 	github.com/cinc-project/cinc-api v0.19.0
 	github.com/cinc-project/cinc-cli v0.0.0
-	github.com/cinc-project/cinc-server-ng v0.20.2
+	github.com/cinc-project/cinc-server-ng v0.20.3
 	github.com/creack/pty v1.1.24
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.59.0
@@ -53,10 +53,10 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.61.1 // indirect
+	modernc.org/sqlite v1.62.0 // indirect
 )
 
 replace github.com/cinc-project/cinc-cli => ../
