@@ -660,10 +660,14 @@ func remoteOptions(flags nodeSSHFlags) remote.SSHOptions {
 
 func printRemoteResults(cmd *cobra.Command, results []remote.CommandResult) {
 	for _, result := range results {
-		writePrefixedLines(cmd.OutOrStdout(), result.Host, result.Stdout)
-		writePrefixedLines(cmd.OutOrStdout(), result.Host, result.Stderr)
+		// The host is whatever the node reported about itself; keep its
+		// terminal escapes off the screen. The command's own output is
+		// passed through as is, as ssh does.
+		host := remote.SanitizeLine(result.Host)
+		writePrefixedLines(cmd.OutOrStdout(), host, result.Stdout)
+		writePrefixedLines(cmd.OutOrStdout(), host, result.Stderr)
 		if result.Error != "" && result.Stdout == "" && result.Stderr == "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", result.Host, result.Error)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", host, remote.SanitizeLine(result.Error))
 		}
 	}
 }
@@ -755,6 +759,7 @@ func nodeBootstrapMissingError(target, user, nodeName string) error {
 // noHostsError explains a node ssh search that found nothing to connect to.
 func noHostsError(query, expanded, attribute string, matched int) error {
 	prog := progname.Get()
+	query, expanded = remote.SanitizeLine(query), remote.SanitizeLine(expanded)
 	if matched > 0 {
 		return fmt.Errorf("%d node(s) matched %q, but none has a value in its %s attribute to connect to. Pick another attribute with --attribute, such as --attribute ipaddress, or use --attribute name to connect by node name.", matched, query, attribute)
 	}
@@ -829,7 +834,7 @@ func remoteFailureError(results []remote.CommandResult, jsonOutput bool) error {
 	if len(skipped) > 0 {
 		fmt.Fprintf(&b, "\n\n%s weren't tried, because --exit-on-error stops starting new hosts after the first failure.", hostCount(len(skipped)))
 	}
-	return errors.New(b.String())
+	return errors.New(remote.SanitizeText(b.String()))
 }
 
 func hostCount(n int) string {
@@ -842,6 +847,10 @@ func hostCount(n int) string {
 // hostList names up to ten hosts, then says how many more there were.
 func hostList(hosts []string) string {
 	const shown = 10
+	hosts = slices.Clone(hosts)
+	for i, h := range hosts {
+		hosts[i] = remote.SanitizeLine(h)
+	}
 	if len(hosts) <= shown {
 		return strings.Join(hosts, ", ")
 	}
@@ -852,6 +861,7 @@ func hostList(hosts []string) string {
 // client it had already registered, which otherwise blocks the retry.
 func bootstrapFailedError(target, nodeName string, result remote.CommandResult) error {
 	prog := progname.Get()
+	target = remote.SanitizeLine(target)
 	name := remote.QuoteArg(nodeName)
 	cleanup := fmt.Sprintf(`Before connecting, bootstrap registered a client named %q on your Cinc Server, holding the key the node uses to talk to the server. A retry fails while that client exists, so delete it first:
   %s client delete %s`, nodeName, prog, name)
@@ -860,20 +870,20 @@ func bootstrapFailedError(target, nodeName string, result remote.CommandResult) 
 		if result.Hint != "" {
 			msg += "\n\n" + result.Hint
 		}
-		return fmt.Errorf("%s\n\nNothing was installed on %s. %s", msg, target, cleanup)
+		return errors.New(remote.SanitizeText(fmt.Sprintf("%s\n\nNothing was installed on %s. %s", msg, target, cleanup)))
 	}
 	msg := fmt.Sprintf("bootstrap failed on %s: the bootstrap script exited with status %d", target, result.ExitCode)
 	if result.Error != "" && !strings.HasPrefix(result.Error, "Process exited with status") {
 		msg += " (" + result.Error + ")"
 	}
-	if tail := lastLines(cmp.Or(result.Stderr, result.Stdout), 15); tail != "" {
+	if tail := lastLines(remote.SanitizeText(cmp.Or(result.Stderr, result.Stdout)), 15); tail != "" {
 		msg += ". The last lines it printed:\n" + tail
 	}
-	return fmt.Errorf(`%s
+	return errors.New(remote.SanitizeText(fmt.Sprintf(`%s
 
 The script installs Cinc Client on the host, then runs it once to register the node. %s
 If that first Cinc Client run got far enough to save the node, `+"`%s node show %s`"+` will find it. Delete it too before retrying:
-  %s node delete %s`, msg, cleanup, prog, name, prog, name)
+  %s node delete %s`, msg, cleanup, prog, name, prog, name)))
 }
 
 // lastLines returns the last n non-empty lines of text, indented.

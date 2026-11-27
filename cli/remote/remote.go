@@ -139,10 +139,10 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 func failed(result CommandResult, err error) CommandResult {
 	result.ExitCode = 255
 	if e, ok := errors.AsType[*Error](err); ok {
-		result.Reason, result.Error, result.Hint = e.Reason, e.Summary, e.Hint
+		result.Reason, result.Error, result.Hint = e.Reason, SanitizeText(e.Summary), SanitizeText(e.Hint)
 		return result
 	}
-	result.Error = err.Error()
+	result.Error = SanitizeText(err.Error())
 	return result
 }
 

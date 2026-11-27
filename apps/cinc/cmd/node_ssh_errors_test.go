@@ -264,3 +264,30 @@ func TestNodeBootstrapPolicyFlagErrorsExplainTheChoice(t *testing.T) {
 		})
 	}
 }
+
+// TestNodeSSHFailureOutputIsSanitized: hosts come from what nodes report
+// about themselves, so a hostile one must not inject terminal escapes into
+// the output or an unquoted command into the suggested fixes.
+func TestNodeSSHFailureOutputIsSanitized(t *testing.T) {
+	host := "evil;touch\x1b[2J"
+	useRunner(t, &hostRunner{results: map[string]remote.CommandResult{
+		host: {ExitCode: 255, Reason: remote.ReasonRefused, Error: host + " refused", Hint: "hint \x1b[31m"},
+	}})
+	out, err := runNode(t, "node", "ssh", host, "uptime", "--skip-search", "--ssh-user", "ubuntu", "--no-host-key-verify")
+	if err == nil {
+		t.Fatal("expected a failure")
+	}
+	if strings.Contains(out, "\x1b") || strings.Contains(err.Error(), "\x1b") {
+		t.Errorf("raw escape reached the terminal:\nstdout %q\nerr %q", out, err)
+	}
+}
+
+func TestBootstrapFailureSanitizesScriptOutputAndQuotesNames(t *testing.T) {
+	err := bootstrapFailedError("web01.example.com\x1b[2J", "web01;rm -rf ~", remote.CommandResult{
+		ExitCode: 1, Error: "Process exited with status 1", Stderr: "\x1b]0;owned\x07boom\r\n",
+	})
+	if strings.ContainsAny(err.Error(), "\x1b\x07\r") {
+		t.Errorf("raw control characters in:\n%q", err)
+	}
+	wantErrMentions(t, err, "boom", "cinc client delete 'web01;rm -rf ~'", "cinc node delete 'web01;rm -rf ~'")
+}

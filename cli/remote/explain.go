@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -47,9 +48,9 @@ type Error struct {
 
 func (e *Error) Error() string {
 	if e.Hint == "" {
-		return e.Summary
+		return SanitizeText(e.Summary)
 	}
-	return e.Summary + "\n\n" + e.Hint
+	return SanitizeText(e.Summary + "\n\n" + e.Hint)
 }
 
 func (e *Error) Unwrap() error { return e.Err }
@@ -121,7 +122,7 @@ func identityReadError(path string, err error) *Error {
 		e.Hint = "That's the path given to --ssh-identity-file. Check it for typos. SSH keys usually live in ~/.ssh, with names like id_ed25519 or id_rsa."
 	case errors.Is(err, fs.ErrPermission):
 		e.Summary = fmt.Sprintf("can't read the SSH key file %s: permission denied", path)
-		e.Hint = fmt.Sprintf("Your account isn't allowed to open it. Make it readable by you and nobody else:\n  chmod 600 %s", path)
+		e.Hint = fmt.Sprintf("Your account isn't allowed to open it. Make it readable by you and nobody else:\n  chmod 600 %s", QuoteArg(path))
 	default:
 		e.Summary = fmt.Sprintf("can't read the SSH key file %s: %v", path, err)
 	}
@@ -136,7 +137,7 @@ func identityParseError(path string, data []byte, err error) *Error {
 		e.Summary = fmt.Sprintf("the SSH key %s is protected by a passphrase, and we can't ask for it here", path)
 		e.Hint = fmt.Sprintf(`Load the key into your ssh-agent instead. The agent asks for the passphrase once, then signs logins for %s:
   ssh-add %s
-Then run the command again without --ssh-identity-file; the agent is used by default.`, progname.Get(), path)
+Then run the command again without --ssh-identity-file; the agent is used by default.`, progname.Get(), QuoteArg(path))
 		return e
 	}
 	if _, _, _, _, perr := ssh.ParseAuthorizedKey(data); perr == nil {
@@ -144,7 +145,7 @@ Then run the command again without --ssh-identity-file; the agent is used by def
 		e.Summary = fmt.Sprintf("%s is a public key, but --ssh-identity-file needs the private key", path)
 		e.Hint = "SSH keys come in pairs: the public half goes on the servers you log in to, and the private half stays with you."
 		if private != path {
-			e.Hint += fmt.Sprintf(" The private half is usually the same file without .pub:\n  --ssh-identity-file %s", private)
+			e.Hint += fmt.Sprintf(" The private half is usually the same file without .pub:\n  --ssh-identity-file %s", QuoteArg(private))
 		}
 		return e
 	}
@@ -173,9 +174,9 @@ func knownHostsLoadError(path string, err error) *Error {
 			Summary: fmt.Sprintf("can't check host keys: there's no known_hosts file at %s", path),
 			Hint: fmt.Sprintf(`Every SSH server has a host key that proves which machine it is. Before logging in, %s compares that key with the one in your known_hosts file, the list of servers you've connected to before, so a machine pretending to be one of yours can't collect your login. That file doesn't exist yet.
 
-It's created the first time you connect to a host with ssh and accept its key. Or add a host's key without logging in:
-  ssh-keyscan <host> >> %s
-%s`, progname.Get(), path, noVerifyHint),
+It's created the first time you connect to a host with ssh and accept its key. Or add a host's key without logging in, replacing HOST with its name:
+  ssh-keyscan HOST >> %s
+%s`, progname.Get(), QuoteArg(path), noVerifyHint),
 			Err: err,
 		}
 	}
@@ -188,6 +189,7 @@ It's created the first time you connect to a host with ssh and accept its key. O
 }
 
 func sshConfigError(host string, err error) *Error {
+	host = SanitizeLine(host)
 	return &Error{
 		Reason:  ReasonConfig,
 		Summary: fmt.Sprintf("can't read your SSH config: %v", err),
@@ -199,6 +201,7 @@ func sshConfigError(host string, err error) *Error {
 
 // connectError explains a failed TCP connection to host:port.
 func connectError(host string, opts SSHOptions, err error) *Error {
+	host = SanitizeLine(host)
 	port, timeout := opts.Port, opts.Timeout
 	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 		return &Error{
@@ -242,6 +245,7 @@ var attemptedMethods = regexp.MustCompile(`attempted methods \[([^\]]*)\]`)
 // host key the server offered, if it got that far; offered describes the
 // login methods we tried, for a rejected login.
 func handshakeError(host string, opts SSHOptions, knownHostsPath string, presented ssh.PublicKey, offered []string, err error) *Error {
+	host = SanitizeLine(host)
 	fingerprint := "(unknown)"
 	keyType := ""
 	if presented != nil {
@@ -261,7 +265,7 @@ Or add its key without logging in:
   ssh-keyscan %s%s >> %s
 %s`, progname.Get(), knownHostsPath, host, keyType, fingerprint,
 					sshCommand(opts.User, host, opts.Port),
-					portFlag(opts.Port), host, knownHostsPath,
+					portFlag(opts.Port), QuoteArg(host), QuoteArg(knownHostsPath),
 					noVerifyHint),
 				Err: err,
 			}
@@ -323,7 +327,7 @@ func hostKeyMismatchError(host string, opts SSHOptions, presented ssh.PublicKey,
 			Summary: fmt.Sprintf("%s's SSH host key doesn't match the one in your known_hosts file", host),
 			Hint: fmt.Sprintf(`%s line %d has a %s key for %s, but the server offered a %s key (%s). That's usually harmless: servers have several keys of different types, and ssh recorded a different one than we were offered. To record this one too, check that the fingerprint above is right, then run:
   ssh-keyscan -t %s %s%s >> %s`, want.Filename, want.Line, want.Key.Type(), host, presented.Type(), fingerprint,
-				presented.Type(), portFlag(opts.Port), host, want.Filename),
+				QuoteArg(presented.Type()), portFlag(opts.Port), QuoteArg(host), QuoteArg(want.Filename)),
 			Err: err,
 		}
 	}
@@ -358,7 +362,11 @@ func JoinWords(items []string) string {
 // QuoteArg quotes s for a POSIX shell, leaving it bare when it is made only
 // of characters a shell treats literally, so suggested commands stay
 // readable: web01.example.com and role:web need no quotes.
+//
+// It is for display: control characters and terminal escapes are removed
+// first, so a value from a remote host can't rewrite the screen.
 func QuoteArg(s string) string {
+	s = SanitizeLine(s)
 	if s == "" {
 		return "''"
 	}
@@ -368,4 +376,37 @@ func QuoteArg(s string) string {
 		}
 	}
 	return s
+}
+
+// terminalEscape matches CSI sequences (colors, cursor movement, clearing
+// the screen) and OSC sequences (window titles, hyperlinks).
+var terminalEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?`)
+
+// SanitizeText makes text from a remote host or the server safe to print:
+// it removes terminal escape sequences, control characters, and invisible
+// formatting characters such as right-to-left overrides, keeping newlines
+// and tabs. Host names come from what a node reports about itself, so a
+// compromised node could otherwise clear the screen or disguise a command.
+func SanitizeText(s string) string {
+	s = terminalEscape.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// SanitizeLine is SanitizeText for a value printed on one line: newlines and
+// tabs become spaces.
+func SanitizeLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return ' '
+		}
+		return r
+	}, SanitizeText(s))
 }

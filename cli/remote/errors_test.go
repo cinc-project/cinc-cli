@@ -347,3 +347,67 @@ func TestApplyOpenSSHConfigExplainsUnreadableConfig(t *testing.T) {
 	}
 	wantAll(t, "error", err.Error(), "bad line 3", "IdentityAgent", "web01.example.com", "--ssh-agent-socket")
 }
+
+// A host name from search is whatever the node reported about itself, and
+// the host key type is whatever the server sent. Neither may reach a
+// suggested command unquoted, or reach the terminal with escape sequences.
+const hostileHost = "evil;touch /tmp/pwned\x1b[2J"
+
+func TestSuggestedCommandsQuoteUntrustedHosts(t *testing.T) {
+	opts := SSHOptions{User: "ubuntu", Port: 22, Timeout: time.Second}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	khPath := "/home/a b/.ssh/known_hosts"
+	for name, e := range map[string]*Error{
+		"unknown host key": handshakeError(hostileHost, opts, khPath, signer.PublicKey(), nil, &knownhosts.KeyError{}),
+		"mismatch": handshakeError(hostileHost, opts, khPath, signer.PublicKey(), nil, &knownhosts.KeyError{
+			Want: []knownhosts.KnownKey{{Key: signer.PublicKey(), Filename: khPath, Line: 3}},
+		}),
+		"auth":    handshakeError(hostileHost, opts, khPath, nil, []string{"the password from --ssh-password"}, errors.New("ssh: unable to authenticate, attempted methods [none password], no supported methods remain")),
+		"timeout": connectError(hostileHost, opts, &net.OpError{Op: "dial", Err: timeoutErr{}}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := e.Error()
+			if strings.ContainsAny(got, "\x1b\r") {
+				t.Errorf("message carries a raw control character:\n%q", got)
+			}
+			for _, line := range strings.Split(got, "\n") {
+				if strings.Contains(line, "evil;touch") && strings.HasPrefix(strings.TrimSpace(line), "ssh") && !strings.Contains(line, "'") {
+					t.Errorf("suggested command leaves the host unquoted: %s", line)
+				}
+			}
+		})
+	}
+	keyscan := handshakeError(hostileHost, opts, khPath, signer.PublicKey(), nil, &knownhosts.KeyError{}).Hint
+	if !strings.Contains(keyscan, "ssh-keyscan 'evil;touch /tmp/pwned' >> '/home/a b/.ssh/known_hosts'") {
+		t.Errorf("ssh-keyscan should quote the host and path, got:\n%s", keyscan)
+	}
+}
+
+func TestIdentityFileCommandsQuoteThePath(t *testing.T) {
+	path := "/home/a b/.ssh/id;rm"
+	e := identityReadError(path, fs.ErrPermission)
+	if !strings.Contains(e.Hint, "chmod 600 '/home/a b/.ssh/id;rm'") {
+		t.Errorf("chmod should quote the path, got:\n%s", e.Hint)
+	}
+	e = identityParseError(path, []byte("x"), &ssh.PassphraseMissingError{})
+	if !strings.Contains(e.Hint, "ssh-add '/home/a b/.ssh/id;rm'") {
+		t.Errorf("ssh-add should quote the path, got:\n%s", e.Hint)
+	}
+}
+
+func TestSanitizeText(t *testing.T) {
+	got := SanitizeText("\x1b[31mred\x1b[0m\r\nnext\tline\x07‮")
+	if got != "red\nnext\tline" {
+		t.Errorf("SanitizeText = %q", got)
+	}
+	if got := SanitizeLine("a\nb\x1b]0;title\x07c"); got != "a bc" {
+		t.Errorf("SanitizeLine = %q", got)
+	}
+}
