@@ -162,7 +162,7 @@ Repository layout:
   implementations, in their own Go module. See
   [`integration/README.md`](integration/README.md).
 
-See [`CLAUDE.md`](CLAUDE.md) for conventions followed when developing
+See [`AGENTS.md`](AGENTS.md) for conventions followed when developing
 with Claude Code.
 
 ## License
