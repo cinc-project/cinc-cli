@@ -44,8 +44,19 @@ func loadPathCookbook(ctx context.Context, eng *rubyeval.Engine, policyfileDir, 
 		abs = filepath.Join(policyfileDir, declaredPath)
 	}
 	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("cinc: cookbook %q path source %q is not a directory: %w", name, declaredPath, err)
+	if err != nil {
+		shown, pfDir := absOr(abs), absOr(policyfileDir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, &explainedError{err: err, msg: fmt.Sprintf("cookbook %q has path: '%s' in the Policyfile, but there's nothing at %s. "+
+				"A path: source is relative to the directory the Policyfile is in (%s), so fix the path to point at the cookbook's directory",
+				name, declaredPath, shown, pfDir)}
+		}
+		return nil, fmt.Errorf("cookbook %q has path: '%s' in the Policyfile, but we can't open %s: %w", name, declaredPath, shown, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cookbook %q has path: '%s' in the Policyfile, but %s is a file. "+
+			"A path: source has to point at the cookbook's directory (the one holding its metadata.rb), not at an archive or a single file",
+			name, declaredPath, absOr(abs))
 	}
 
 	rel, err := filepath.Rel(policyfileDir, abs)
@@ -56,11 +67,11 @@ func loadPathCookbook(ctx context.Context, eng *rubyeval.Engine, policyfileDir, 
 
 	md, err := readCookbookMetadata(ctx, eng, abs)
 	if err != nil {
-		return nil, fmt.Errorf("cinc: cookbook %q: %w", name, err)
+		return nil, fmt.Errorf("cookbook %q: %w", name, err)
 	}
 	ver, err := ParseVersion(md.Version)
 	if err != nil {
-		return nil, fmt.Errorf("cinc: cookbook %q has invalid version %q: %w", name, md.Version, err)
+		return nil, fmt.Errorf("cookbook %q in %s sets a version we can't read: %w. Set it in the cookbook's metadata, for example version '1.2.3' in metadata.rb", name, abs, err)
 	}
 
 	so := newJSONObject()
@@ -78,6 +89,25 @@ func loadPathCookbook(ctx context.Context, eng *rubyeval.Engine, policyfileDir, 
 	}, nil
 }
 
+// explainedError is an error whose message already says everything the
+// wrapped error would, so it prints only msg; errors.Is and errors.As still
+// reach err.
+type explainedError struct {
+	err error
+	msg string
+}
+
+func (e *explainedError) Error() string { return e.msg }
+func (e *explainedError) Unwrap() error { return e.err }
+
+// absOr returns p made absolute for a message, or p itself if that fails.
+func absOr(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		return a
+	}
+	return p
+}
+
 // readCookbookMetadata loads a cookbook's metadata from dir. metadata.json wins
 // when present (chef reads it directly, and so does cinc-api); otherwise
 // metadata.rb is evaluated in the embedded CRuby engine. Dependency
@@ -88,9 +118,14 @@ func readCookbookMetadata(ctx context.Context, eng *rubyeval.Engine, dir string)
 	if errors.Is(err, fs.ErrNotExist) {
 		rbPath := filepath.Join(dir, "metadata.rb")
 		if _, err := os.Stat(rbPath); err == nil {
-			return eng.EvaluateMetadataFile(ctx, rbPath)
+			md, err := eng.EvaluateMetadataFile(ctx, rbPath)
+			if err != nil {
+				return nil, fmt.Errorf("we couldn't evaluate %s: %w", rbPath, err)
+			}
+			return md, nil
 		}
-		return nil, fmt.Errorf("no metadata.rb or metadata.json found in %s", dir)
+		return nil, fmt.Errorf("%s doesn't look like a cookbook: it has no metadata.rb or metadata.json. "+
+			"Every cookbook has one at its top level, naming it and setting its version, so point the path: source at the directory that holds it", dir)
 	}
 	if err != nil {
 		return nil, err
@@ -106,7 +141,7 @@ func readCookbookMetadata(ctx context.Context, eng *rubyeval.Engine, dir string)
 	for _, n := range slices.Sorted(maps.Keys(mj.Dependencies)) {
 		c, err := ParseConstraint(mj.Dependencies[n])
 		if err != nil {
-			return nil, fmt.Errorf("%s: dependency %q: %w", jsonPath, n, err)
+			return nil, fmt.Errorf("%s depends on %q with a version constraint we can't read: %w", jsonPath, n, err)
 		}
 		md.Dependencies = append(md.Dependencies, rubyeval.Dependency{Name: n, Constraint: normalizeConstraint(c)})
 	}

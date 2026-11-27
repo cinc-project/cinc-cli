@@ -245,7 +245,7 @@ func TestEnsureCookbookGitRejectsFlagInjection(t *testing.T) {
 			_, err := f.EnsureCookbook(context.Background(), "cb", cinc.CookbookLock{
 				CacheKey: "cb", SourceOptions: tc.opts,
 			})
-			if err == nil || !contains(err.Error(), "refusing") {
+			if err == nil || !contains(err.Error(), "we won't") {
 				t.Errorf("error = %v, want a refusal of the '-'-prefixed git argument", err)
 			}
 		})
@@ -298,7 +298,7 @@ func TestEnsureCookbookRejectsCacheKeyTraversal(t *testing.T) {
 		CacheKey:      "../../../../tmp/evil",
 		SourceOptions: map[string]any{"artifactserver": "https://x/d", "version": "1.0.0"},
 	})
-	if err == nil || !contains(err.Error(), "unsafe path component") {
+	if err == nil || !contains(err.Error(), "isn't a safe file name") {
 		t.Errorf("error = %v, want rejection of a traversal cache_key", err)
 	}
 }
@@ -335,7 +335,7 @@ func TestEnsureCookbookGitRejectsRelEscapingTheClone(t *testing.T) {
 		CacheKey:      "nested-" + sha,
 		SourceOptions: map[string]any{"git": repo, "revision": sha, "rel": "../outside"},
 	})
-	if err == nil || !contains(err.Error(), "escapes") {
+	if err == nil || !contains(err.Error(), "outside the repository") {
 		t.Errorf("error = %v, want rel rejected for escaping the repository", err)
 	}
 }

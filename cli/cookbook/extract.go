@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
 )
@@ -22,7 +23,16 @@ func ExtractArchive(r io.Reader, destDir string) (string, error) {
 		return "", err
 	}
 	if len(entries) != 1 || !entries[0].IsDir() {
-		return "", fmt.Errorf("the cookbook archive has %d top-level entries, but a cookbook archive holds exactly one directory", len(entries))
+		names := make([]string, 0, len(entries))
+		for i, e := range entries {
+			if i == 5 {
+				names = append(names, "...")
+				break
+			}
+			names = append(names, e.Name())
+		}
+		return "", fmt.Errorf("this doesn't look like a cookbook archive: a cookbook archive holds exactly one directory (named after the cookbook) at its top level, "+
+			"but this one has %d entries there (%s)", len(entries), strings.Join(names, ", "))
 	}
 	return filepath.Join(destDir, entries[0].Name()), nil
 }

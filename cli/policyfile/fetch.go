@@ -8,6 +8,7 @@ package policyfile
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	sm "github.com/cinc-project/cinc-supermarket-api"
 
 	"github.com/cinc-project/cinc-cli/cli/internal/tarball"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // Fetcher locates the cookbooks a Policyfile lock pins, fetching them from the
@@ -65,7 +67,8 @@ func (f *Fetcher) supermarketClient(base string) (*sm.Client, error) {
 func (f *Fetcher) EnsureCookbook(ctx context.Context, name string, lock cinc.CookbookLock) (string, error) {
 	kind, value, err := lock.Origin()
 	if err != nil {
-		return "", fmt.Errorf("cookbook %q: %w", name, err)
+		return "", fmt.Errorf("the Policyfile.lock.json entry for cookbook %q doesn't record a source we know how to fetch from (%w). "+
+			"Each cookbook lock needs a path, git, artifactserver or chef_server source; regenerate the lock from its Policyfile with `%s policy install`", name, err, progname.Get())
 	}
 
 	if kind == cinc.SourcePath {
@@ -74,18 +77,22 @@ func (f *Fetcher) EnsureCookbook(ctx context.Context, name string, lock cinc.Coo
 			dir = filepath.Join(f.LockDir, dir)
 		}
 		if _, err := os.Stat(dir); err != nil {
-			return "", fmt.Errorf("cookbook %q: path source %s: %w", name, dir, err)
+			return "", fmt.Errorf("the lock reads cookbook %q from the directory %s, but we can't open it (%w). "+
+				"A lock's path: source is relative to the lock file's directory (%s). If the cookbook moved, update the path: line in the Policyfile and run `%s policy install` again",
+				name, dir, err, f.LockDir, progname.Get())
 		}
 		return dir, nil
 	}
 
 	if lock.CacheKey == "" {
-		return "", fmt.Errorf("cookbook %q: %s source has no cache_key to cache under", name, kind)
+		return "", fmt.Errorf("the lock entry for cookbook %q has no cache_key. A %s source needs one so we know where to keep the download; "+
+			"the lock looks incomplete or hand-edited, so regenerate it from its Policyfile", name, kind)
 	}
 	// cache_key comes from the (untrusted) lock; keep it from escaping the cache.
 	dest, err := safeJoin(f.CacheRoot, lock.CacheKey)
 	if err != nil {
-		return "", fmt.Errorf("cookbook %q: %w", name, err)
+		return "", fmt.Errorf("the lock entry for cookbook %q has a cache_key we won't use: %w. "+
+			"A real Policyfile lock never has one like that, so the lock is damaged or hand-edited; regenerate it from its Policyfile", name, err)
 	}
 	if isDir(dest) {
 		return dest, nil // cache hit
@@ -108,7 +115,7 @@ func (f *Fetcher) EnsureCookbook(ctx context.Context, name string, lock cinc.Coo
 	}
 	if err != nil {
 		_ = os.RemoveAll(staging)
-		return "", fmt.Errorf("cookbook %q: %w", name, err)
+		return "", fmt.Errorf("we couldn't fetch cookbook %q from its %s source: %w", name, kind, err)
 	}
 	if err := os.Rename(staging, dest); err != nil {
 		_ = os.RemoveAll(staging)
@@ -123,7 +130,7 @@ func (f *Fetcher) EnsureCookbook(ctx context.Context, name string, lock cinc.Coo
 // asked for the cookbook by name and version, reconstructing the same request.
 func (f *Fetcher) fetchArtifactserver(ctx context.Context, name, artifactURL, version, dest string) error {
 	if version == "" {
-		return fmt.Errorf("artifactserver source has no version")
+		return fmt.Errorf("the lock doesn't record which version to download from %s. Regenerate the lock from its Policyfile so it pins one", artifactURL)
 	}
 	base, err := baseURL(artifactURL)
 	if err != nil {
@@ -150,7 +157,7 @@ func (f *Fetcher) fetchArtifactserver(ctx context.Context, name, artifactURL, ve
 // which writes the cookbook's files into dest.
 func (f *Fetcher) fetchChefServer(ctx context.Context, name, version, dest string) error {
 	if f.Chef == nil {
-		return fmt.Errorf("chef_server source requires a configured server connection")
+		return fmt.Errorf("it comes from a Cinc Server, and we don't have a server connection to download it with. Run `%s config create` to set one up", progname.Get())
 	}
 	if version == "" {
 		version = cinc.LatestVersion
@@ -165,7 +172,8 @@ func (f *Fetcher) fetchChefServer(ctx context.Context, name, version, dest strin
 func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL, dest string) error {
 	revision := lock.GitRef()
 	if revision == "" {
-		return fmt.Errorf("git source has no revision, ref, tag or branch to check out")
+		return fmt.Errorf("the lock doesn't say which commit of %s to check out. A git source needs a revision, ref, tag or branch; "+
+			"set one on the Policyfile's git: line (for example branch: 'main' or tag: 'v1.2.0') and regenerate the lock", repoURL)
 	}
 	// repoURL and revision come from the (potentially untrusted) lock. Reject
 	// values that begin with "-" so they cannot be smuggled in as git flags
@@ -173,10 +181,10 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 	// cannot use "--" (it would treat the revision as a pathspec), so the
 	// leading-dash rejection is its guard.
 	if strings.HasPrefix(repoURL, "-") {
-		return fmt.Errorf("refusing git source URL beginning with '-': %q", repoURL)
+		return fmt.Errorf("we won't clone the git URL %q: it starts with \"-\", so git would read it as a command-line option instead of a repository. Check the git URL in the lock", repoURL)
 	}
 	if strings.HasPrefix(revision, "-") {
-		return fmt.Errorf("refusing git revision beginning with '-': %q", revision)
+		return fmt.Errorf("we won't check out the git revision %q: it starts with \"-\", so git would read it as a command-line option instead of a branch, tag or commit. Check the revision in the lock", revision)
 	}
 	if err := validateGitURL(repoURL); err != nil {
 		return err
@@ -189,10 +197,11 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 	defer os.RemoveAll(clone)
 
 	if out, err := runGit(ctx, "", "clone", "--quiet", "--", repoURL, clone); err != nil {
-		return fmt.Errorf("git clone %s: %w: %s", repoURL, err, out)
+		return gitCloneErr(repoURL, out, err)
 	}
 	if out, err := runGit(ctx, clone, "checkout", "--quiet", revision); err != nil {
-		return fmt.Errorf("git checkout %s: %w: %s", revision, err, out)
+		return fmt.Errorf("we cloned %s but couldn't check out %q in it (%w). The branch, tag or commit may have been deleted, renamed or never pushed.\n\ngit said: %s",
+			repoURL, revision, err, strings.TrimSpace(out))
 	}
 
 	root := clone
@@ -207,13 +216,51 @@ func (f *Fetcher) fetchGit(ctx context.Context, lock cinc.CookbookLock, repoURL,
 		// names like cache keys.
 		root = filepath.Join(clone, sub)
 		if !tarball.Within(clone, root) {
-			return fmt.Errorf("refusing git source rel %q: it escapes the repository", sub)
+			return fmt.Errorf("we won't use the lock's rel %q for %s: it points outside the repository, and a cookbook has to be inside it", sub, repoURL)
 		}
 	}
 	if !hasCookbookMetadata(root) {
-		return fmt.Errorf("no cookbook (metadata.rb or metadata.json) found at %q in the git repository", root)
+		if sub := lock.GitSubdir(); sub != "" {
+			return fmt.Errorf("there's no cookbook in %q of the git repository %s at %s: that directory has no metadata.rb or metadata.json. "+
+				"Check the rel: option on the Policyfile's git: line names the cookbook's directory", sub, repoURL, revision)
+		}
+		return fmt.Errorf("there's no cookbook at the top level of the git repository %s at %s: it has no metadata.rb or metadata.json there. "+
+			"If the cookbook lives in a subdirectory, add rel: to the Policyfile's git: line, for example rel: 'cookbooks/<name>'", repoURL, revision)
 	}
 	return copyTree(root, dest)
+}
+
+// gitCloneErr explains a failed `git clone` of repoURL: git missing, then
+// the likely cause read from git's output, then git's own words.
+func gitCloneErr(repoURL, out string, err error) error {
+	if errors.Is(err, exec.ErrNotFound) {
+		return fmt.Errorf("git isn't installed, or isn't on your PATH (%w). %s runs git to fetch cookbooks from git sources, so install git and try again", err, progname.Get())
+	}
+	msg := fmt.Sprintf("we couldn't clone %s", repoURL)
+	if hint := gitCloneHint(out); hint != "" {
+		msg += ". " + hint
+	}
+	return fmt.Errorf("%s (%w).\n\ngit said: %s", msg, err, strings.TrimSpace(out))
+}
+
+// gitCloneHint reads git's clone output for the common failures and says
+// what to do about each; it returns "" when it doesn't recognize the output.
+func gitCloneHint(out string) string {
+	low := strings.ToLower(out)
+	switch {
+	case strings.Contains(low, "permission denied (publickey"):
+		return "The server refused your SSH key: check that `ssh -T` works for that host and that your key has access to the repository"
+	case strings.Contains(low, "authentication failed"), strings.Contains(low, "could not read username"),
+		strings.Contains(low, "could not read password"), strings.Contains(low, "terminal prompts disabled"):
+		return "The server wants credentials we couldn't supply: set up a git credential helper or an access token for that host, or use an SSH URL"
+	case strings.Contains(low, "repository not found"), strings.Contains(low, "does not exist"),
+		strings.Contains(low, "does not appear to be a git repository"), strings.Contains(low, "not found"):
+		return "The repository isn't there, or you don't have access to it: check the URL, and that your account can see the repository"
+	case strings.Contains(low, "could not resolve host"), strings.Contains(low, "could not resolve hostname"),
+		strings.Contains(low, "connection refused"), strings.Contains(low, "timed out"):
+		return "We couldn't reach the git server: check the host name in the URL and your network connection"
+	}
+	return ""
 }
 
 // runGit runs `git args...` (optionally in dir) and returns its combined
@@ -248,11 +295,11 @@ func validateGitURL(repoURL string) error {
 		case "https", "http", "git", "ssh", "file":
 			return nil
 		default:
-			return fmt.Errorf("refusing git source URL with unsupported scheme: %q", repoURL)
+			return fmt.Errorf("we won't clone %q: git sources have to use https://, http://, ssh://, git:// or file:// URLs (or the user@host:path form), and %s:// isn't one of those", repoURL, before)
 		}
 	}
 	if m := transportHelperRe.FindString(repoURL); m != "" {
-		return fmt.Errorf("refusing git source URL using transport helper %q: %q", strings.TrimSuffix(m, "::"), repoURL)
+		return fmt.Errorf("we won't clone %q: the %q prefix asks git to run a transport helper program, which can execute arbitrary commands, so a lock can't use one. Use an https:// or ssh:// URL instead", repoURL, m)
 	}
 	return nil
 }
@@ -265,12 +312,12 @@ func validateGitURL(repoURL string) error {
 func safeJoin(base string, components ...string) (string, error) {
 	for _, c := range components {
 		if c == "" || c == "." || c == ".." || strings.ContainsAny(c, `/\`) {
-			return "", fmt.Errorf("unsafe path component %q", c)
+			return "", fmt.Errorf("%q isn't a safe file name: it's empty, \".\" or \"..\", or contains a slash", c)
 		}
 	}
 	joined := filepath.Join(append([]string{base}, components...)...)
 	if !tarball.Within(base, joined) {
-		return "", fmt.Errorf("path %q escapes %q", joined, base)
+		return "", fmt.Errorf("%s would land outside %s", joined, base)
 	}
 	return joined, nil
 }
@@ -287,7 +334,7 @@ func hasCookbookMetadata(dir string) bool {
 func baseURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return "", fmt.Errorf("invalid artifactserver URL %q", raw)
+		return "", fmt.Errorf("the lock's artifactserver URL %q isn't a full URL with a scheme and host (like https://supermarket.example.com/...)", raw)
 	}
 	return u.Scheme + "://" + u.Host, nil
 }

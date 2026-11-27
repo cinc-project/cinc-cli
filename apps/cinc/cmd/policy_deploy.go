@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/policyfile"
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 const defaultLockFile = "Policyfile.lock.json"
@@ -46,7 +49,7 @@ cinc policy push prod Policyfile.lock.json`,
 				lockPath = args[1]
 			}
 
-			lock, lockJSON, err := cinc.LoadPolicyfileLock(lockPath)
+			lock, lockJSON, err := loadPolicyLock(lockPath)
 			if err != nil {
 				return err
 			}
@@ -92,7 +95,7 @@ cinc policy export Policyfile.lock.json ./bundle --archive`,
 			if len(args) >= 1 {
 				lockPath = args[0]
 			}
-			lock, lockJSON, err := cinc.LoadPolicyfileLock(lockPath)
+			lock, lockJSON, err := loadPolicyLock(lockPath)
 			if err != nil {
 				return err
 			}
@@ -199,7 +202,7 @@ cinc policy push-archive prod ./appserver`,
 func resolvePushArchivePath(arg string) (string, error) {
 	if arg != "" {
 		if _, err := os.Stat(arg); err != nil {
-			return "", fmt.Errorf("we couldn't find the bundle %q to push. Pass a .tar.gz archive or an extracted bundle directory, or run `cinc policy export --archive` to create one", arg)
+			return "", fmt.Errorf("we couldn't find the bundle %q to push. Pass a .tar.gz archive or an extracted bundle directory, or run `%s policy export --archive` to create one", arg, progname.Get())
 		}
 		return arg, nil
 	}
@@ -210,13 +213,38 @@ func resolvePushArchivePath(arg string) (string, error) {
 	slices.Sort(matches)
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("we couldn't find a bundle to push here. Pass the .tar.gz archive (or extracted bundle directory) to deploy, e.g. `cinc policy push-archive GROUP appserver.tar.gz`")
+		return "", fmt.Errorf("we couldn't find a bundle to push here. Pass the .tar.gz archive (or extracted bundle directory) to deploy, e.g. `%s policy push-archive GROUP appserver.tar.gz`", progname.Get())
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("we found several .tar.gz archives here (%s) and aren't sure which to push. Name the one you mean, e.g. `cinc policy push-archive GROUP %s`", strings.Join(matches, ", "), matches[0])
+		return "", fmt.Errorf("we found several .tar.gz archives here (%s) and aren't sure which to push. Name the one you mean, e.g. `%s policy push-archive GROUP %s`", strings.Join(matches, ", "), progname.Get(), matches[0])
 	}
 }
+
+// loadPolicyLock reads the Policyfile lock at path, explaining a missing
+// one: what a lock is and the command that writes it.
+func loadPolicyLock(path string) (*cinc.PolicyRevision, []byte, error) {
+	lock, data, err := cinc.LoadPolicyfileLock(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		prog := progname.Get()
+		return nil, nil, &explainedError{err: err, msg: fmt.Sprintf("we couldn't find a Policyfile lock at %s.\n\n"+
+			"A lock (Policyfile.lock.json) records the exact version of every cookbook a policy uses, and it's what gets deployed. "+
+			"`%s policy install` writes one next to your Policyfile.rb, so run that first, or pass the path of a lock you already have",
+			path, prog)}
+	}
+	return lock, data, err
+}
+
+// explainedError is an error whose message already says everything the
+// wrapped error would, so it prints only msg; errors.Is and errors.As still
+// reach err.
+type explainedError struct {
+	err error
+	msg string
+}
+
+func (e *explainedError) Error() string { return e.msg }
+func (e *explainedError) Unwrap() error { return e.err }
 
 // lockNeedsServer reports whether any cookbook the lock pins is fetched from
 // the Cinc/Chef server rather than a path, git, or artifact source.
@@ -252,7 +280,7 @@ func fetchLockCookbooks(ctx context.Context, fetcher *policyfile.Fetcher, lock *
 		}
 		cb, err := cinc.LocalCookbookFromDir(dir, cl.Version)
 		if err != nil {
-			return nil, fmt.Errorf("cinc: load cookbook %q from %s: %w", name, dir, err)
+			return nil, fmt.Errorf("we couldn't read cookbook %q from %s, where its source put it: %w", name, dir, err)
 		}
 		cookbooks[name] = cb
 	}

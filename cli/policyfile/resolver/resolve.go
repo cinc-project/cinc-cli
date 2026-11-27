@@ -63,7 +63,7 @@ func Resolve(ctx context.Context, eng *rubyeval.Engine, eval *rubyeval.Evaluated
 		eng = rubyeval.NewEngine()
 	}
 	if len(eval.IncludedPolicies) > 0 {
-		return nil, fmt.Errorf("cinc: include_policy is not yet supported by the resolver")
+		return nil, includePolicyErr(eval.IncludedPolicies)
 	}
 
 	// Load every declared cookbook from its source. Only path: sources resolve
@@ -99,7 +99,7 @@ func Resolve(ctx context.Context, eng *rubyeval.Engine, eval *rubyeval.Evaluated
 	// Every cookbook in the solution must have been located (path-only today).
 	for name := range solution {
 		if _, ok := cookbooks[name]; !ok {
-			return nil, fmt.Errorf("cinc: cookbook %q is required transitively but no source provides it", name)
+			return nil, &NoSolutionError{Cookbook: name}
 		}
 	}
 
@@ -134,9 +134,10 @@ func buildDemands(eval *rubyeval.EvaluatedPolicy, cookbooks map[string]*cookbook
 	names := demandCookbookNames(eval, cookbooks)
 	demands := make([]demand, 0, len(names))
 	for _, name := range names {
-		var raw string
+		var raw, from string
 		if info, ok := cookbooks[name]; ok && info.fixed {
 			raw = "= " + info.verStr
+			from = pathOriginPrefix + info.source
 		} else if spec, ok := eval.Cookbooks[name]; ok {
 			raw = spec.VersionConstraint
 		} else {
@@ -144,9 +145,9 @@ func buildDemands(eval *rubyeval.EvaluatedPolicy, cookbooks map[string]*cookbook
 		}
 		c, err := ParseConstraint(raw)
 		if err != nil {
-			return nil, fmt.Errorf("cinc: cookbook %q has invalid constraint %q: %w", name, raw, err)
+			return nil, fmt.Errorf("the Policyfile's version constraint for cookbook %q can't be used: %w", name, err)
 		}
-		demands = append(demands, demand{name: name, constraint: c})
+		demands = append(demands, demand{name: name, constraint: c, from: from})
 	}
 	return demands, nil
 }
@@ -305,7 +306,7 @@ func revisionID(eval *rubyeval.EvaluatedPolicy, lock *jsonObject, cookbooks map[
 func attributeObjects(rawEval []byte) (def, ovr any, err error) {
 	parsed, err := parseOrdered(rawEval)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cinc: parse evaluation output: %w", err)
+		return nil, nil, fmt.Errorf("the embedded Ruby engine returned attributes we couldn't read (%w). That's a bug in cinc rather than in your Policyfile; please report it along with the Policyfile", err)
 	}
 	root, ok := parsed.(*jsonObject)
 	if !ok {
@@ -323,13 +324,39 @@ func orDefaultObject(v any) any {
 	return v
 }
 
-// unsupportedSourceErr reports an honest error for a cookbook whose source the
-// resolver does not yet handle.
+// unsupportedSourceErr explains a cookbook line whose source the resolver
+// does not handle yet, with the path: line that works instead.
 func unsupportedSourceErr(name string, opts map[string]any) error {
+	fix := fmt.Sprintf(`For now the resolver only reads cookbooks from a local directory. To go
+ahead, get a copy of the cookbook onto disk and point the Policyfile at it
+(the path is relative to the Policyfile):
+
+  cookbook '%s', path: '../%s'`, name, name)
 	for _, k := range []string{"git", "github", "supermarket", "artifactserver", "chef_server"} {
-		if _, ok := opts[k]; ok {
-			return fmt.Errorf("cinc: cookbook %q uses a %s source, which the resolver can't resolve yet; only path: sources are supported", name, k)
+		if v, ok := opts[k]; ok {
+			where := ""
+			if s, ok := v.(string); ok && s != "" {
+				where = fmt.Sprintf(" (%s)", s)
+			}
+			return fmt.Errorf("cookbook %q comes from a %s source%s, and the resolver can't fetch cookbooks from %s sources yet.\n\n%s", name, k, where, k, fix)
 		}
 	}
-	return fmt.Errorf("cinc: cookbook %q has no resolvable source (only path: sources are supported yet)", name)
+	return fmt.Errorf("cookbook %q has a cookbook line in the Policyfile, but the line doesn't say where to get it. "+
+		"A default_source (such as :supermarket) isn't used to fetch cookbooks yet, so each cookbook needs a source of its own.\n\n%s", name, fix)
+}
+
+// includePolicyErr explains that include_policy can't be resolved yet and
+// what to do instead.
+func includePolicyErr(included []rubyeval.IncludedPolicy) error {
+	names := make([]string, len(included))
+	for i, p := range included {
+		names[i] = fmt.Sprintf("%q", p.Name)
+	}
+	return fmt.Errorf(`this Policyfile uses include_policy (for %s), and the resolver can't merge in other policies yet.
+
+To go ahead, copy the run_list entries and cookbooks you need from the
+included policy into this Policyfile, give each cookbook a path: source, and
+remove the include_policy line:
+
+  cookbook 'name', path: '../name'`, strings.Join(names, ", "))
 }

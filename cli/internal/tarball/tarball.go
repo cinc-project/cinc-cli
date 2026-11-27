@@ -6,6 +6,7 @@ package tarball
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,7 +56,13 @@ func Extract(r io.Reader, dest string, opts Options) error {
 
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("open gzip: %w", err)
+		if errors.Is(err, io.EOF) {
+			return fmt.Errorf("the archive is empty (%w). Get a fresh copy of it and try again", err)
+		}
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return damaged(err)
+		}
+		return fmt.Errorf("this file isn't a gzip-compressed tar archive (a .tar.gz or .tgz), so we can't unpack it (%w). Check you have the right file, and that it wasn't saved as an HTML error page or a .zip", err)
 	}
 	defer func() { _ = gz.Close() }() // read handle
 
@@ -67,7 +74,7 @@ func Extract(r io.Reader, dest string, opts Options) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("read tar: %w", err)
+			return damaged(err)
 		}
 		name := filepath.ToSlash(hdr.Name)
 		if opts.StripTopLevel {
@@ -77,7 +84,8 @@ func Extract(r io.Reader, dest string, opts Options) error {
 		}
 		rel := filepath.FromSlash(name)
 		if Escapes(rel) {
-			return fmt.Errorf("archive entry %q escapes the destination directory", hdr.Name)
+			return fmt.Errorf("the archive contains %q, which would be written outside the directory we're unpacking into, so we stopped and didn't extract it. "+
+				"A legitimate archive never does this, so don't trust the file", hdr.Name)
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
@@ -90,6 +98,16 @@ func Extract(r io.Reader, dest string, opts Options) error {
 			}
 		}
 	}
+}
+
+// damaged explains a read failure partway through the archive: a cut-off
+// file (the usual cause: an interrupted download or copy), or one that is
+// gzip but not a valid tar inside.
+func damaged(err error) error {
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("the archive ends partway through (%w), so it was probably cut off while it was being downloaded or copied. Get a fresh copy and try again", err)
+	}
+	return fmt.Errorf("the archive is damaged, or the gzip file doesn't hold a tar archive (%w). Get a fresh copy and try again", err)
 }
 
 // stripTopLevel drops the first segment of a slash-separated entry name,
@@ -118,6 +136,9 @@ func writeFile(root *os.Root, r io.Reader, rel, name string, total *int64) error
 	}
 	if err := boundedCopy(f, r, name, total); err != nil {
 		_ = f.Close() // already returning an error
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return damaged(err)
+		}
 		return fmt.Errorf("write %s: %w", rel, err)
 	}
 	if err := f.Close(); err != nil {

@@ -28,7 +28,8 @@ func OpenBundle(path string) (string, func(), error) {
 		return "", noop, err
 	}
 	if info.IsDir() {
-		return path, noop, nil
+		dir, err := bundleRoot(path, path)
+		return dir, noop, err
 	}
 
 	tmp, err := os.MkdirTemp("", "cinc-push-archive-")
@@ -40,7 +41,7 @@ func OpenBundle(path string) (string, func(), error) {
 		cleanup()
 		return "", noop, err
 	}
-	dir, err := bundleRoot(tmp)
+	dir, err := bundleRoot(tmp, path)
 	if err != nil {
 		cleanup()
 		return "", noop, err
@@ -61,11 +62,14 @@ func LoadBundleCookbooks(dir string, lock *cinc.PolicyRevision) (map[string]*cin
 		// escaping the bundle's cookbooks directory.
 		cbDir, err := safeJoin(dir, "cookbooks", name+"-"+ddi)
 		if err != nil {
-			return nil, fmt.Errorf("policyfile: cookbook %q: %w", name, err)
+			return nil, fmt.Errorf("the bundle's lock names cookbook %q with identifier %q, which we won't use as a directory name: %w. "+
+				"The lock is damaged or hand-edited; export the bundle again with `%s policy export --archive`", name, ddi, err, progname.Get())
 		}
 		cb, err := cinc.LocalCookbookFromDir(cbDir, cl.Version)
 		if err != nil {
-			return nil, fmt.Errorf("policyfile: load cookbook %q from %s: %w", name, cbDir, err)
+			rel := filepath.Join("cookbooks", name+"-"+ddi)
+			return nil, fmt.Errorf("we couldn't load cookbook %q from the bundle: the lock says it's in %s, and reading it failed (%w). "+
+				"The bundle looks incomplete; export it again with `%s policy export --archive`", name, rel, err, progname.Get())
 		}
 		cookbooks[name] = cb
 	}
@@ -81,7 +85,7 @@ func extractBundleTarball(archivePath, dest string) error {
 	}
 	defer func() { _ = f.Close() }() // read handle
 	if err := tarball.Extract(f, dest, tarball.Options{}); err != nil {
-		return fmt.Errorf("policyfile: extract %s: %w", archivePath, err)
+		return fmt.Errorf("we couldn't unpack %s: %w", archivePath, err)
 	}
 	return nil
 }
@@ -89,8 +93,8 @@ func extractBundleTarball(archivePath, dest string) error {
 // bundleRoot returns the directory holding the bundle's Policyfile.lock.json. An
 // archive written by Export wraps everything in a single top-level directory, so
 // the lock is one level down; a bundle extracted some other way may have it at
-// the root.
-func bundleRoot(dir string) (string, error) {
+// the root. given is the path the user named, for the error.
+func bundleRoot(dir, given string) (string, error) {
 	if fileExists(filepath.Join(dir, BundleLockName)) {
 		return dir, nil
 	}
@@ -103,7 +107,8 @@ func bundleRoot(dir string) (string, error) {
 			return filepath.Join(dir, e.Name()), nil
 		}
 	}
-	return "", fmt.Errorf("policyfile: the archive doesn't contain a %s — is it a `%s policy export` bundle?", BundleLockName, progname.Get())
+	return "", fmt.Errorf("%s isn't a policy bundle: it has no %s, at its top level or one directory down. "+
+		"A bundle holds a policy's lock and every cookbook it pins, and `%s policy export --archive` makes one from a lock", given, BundleLockName, progname.Get())
 }
 
 func fileExists(p string) bool {
