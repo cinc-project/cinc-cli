@@ -67,7 +67,7 @@ lint:
 
 ## fmt: format all Go source
 fmt:
-	gofmt -w apps
+	gofmt -w apps cli integration tools
 
 ## tidy: tidy go module dependencies
 tidy:
