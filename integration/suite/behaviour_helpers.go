@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -302,6 +303,11 @@ func (p validateProfile) wantCheck(t *testing.T, name string, passed bool) valid
 	return c
 }
 
+// usageDump matches cobra's usage block, which starts with "Usage:" on a
+// line of its own. An error that quotes the usage line inline, as the
+// argument-count errors do ("Usage: `cinc version [flags]`"), is fine.
+var usageDump = regexp.MustCompile(`(?m)^Usage:\s*$`)
+
 // behStderrLine returns r's trimmed stderr, failing the case unless it is a
 // single error: one "Error: ..." message and no usage dump. The message may
 // run over several lines when it explains a concept and lists the steps
@@ -309,7 +315,7 @@ func (p validateProfile) wantCheck(t *testing.T, name string, passed bool) valid
 func behStderrLine(t *testing.T, r result) string {
 	t.Helper()
 	line := strings.TrimSpace(r.stderr)
-	if strings.Count(line, "Error: ") != 1 || strings.Contains(line, "Usage:") {
+	if strings.Count(line, "Error: ") != 1 || usageDump.MatchString(line) {
 		t.Errorf("want a single error message on stderr: %s", r)
 	}
 	if !strings.HasPrefix(line, "Error: ") {
