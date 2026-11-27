@@ -1,6 +1,7 @@
 package suite
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -91,7 +92,7 @@ func testRoleCreateFromFile(t *testing.T, _ Target, c *cli) {
 	wantSlice(t, "run list", r.RunList, []string{"recipe[base]", "role[common]"})
 	wantSlice(t, "env run list", r.EnvRunLists[env], []string{"recipe[base]", "recipe[prod::tuning]"})
 	app, _ := r.DefaultAttributes["app"].(map[string]any)
-	if app["port"] != float64(8080) {
+	if app["port"] != json.Number("8080") {
 		t.Errorf("default_attributes.app.port = %v, want 8080 (role: %+v)", app["port"], r)
 	}
 	app, _ = r.OverrideAttributes["app"].(map[string]any)

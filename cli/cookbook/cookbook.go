@@ -51,7 +51,7 @@ func Locate(name, cookbookPath string) (string, error) {
 func Load(dir string, skipChefignore bool) (*cinc.LocalCookbook, error) {
 	var opts []cinc.LocalCookbookOption
 	if skipChefignore {
-		opts = append(opts, cinc.SkipChefignore())
+		opts = append(opts, cinc.WithSkipChefignore())
 	}
 	cb, err := cinc.LocalCookbookFromDir(dir, "", opts...)
 	if errors.Is(err, cinc.ErrMetadataVersionNotLiteral) {

@@ -8,7 +8,7 @@ module github.com/cinc-project/cinc-cli/integration
 go 1.27.4
 
 require (
-	github.com/cinc-project/cinc-api v0.19.0
+	github.com/cinc-project/cinc-api v1.0.0
 	github.com/cinc-project/cinc-cli v0.0.0
 	github.com/cinc-project/cinc-server-ng v0.22.0
 	github.com/creack/pty v1.1.24

@@ -31,7 +31,7 @@ func newEnvironmentKind() Kind {
 			}
 			return CreateResult{Name: e.Name}, nil
 		},
-		updateFn: func(ctx context.Context, c *cinc.Client, e *cinc.Environment) error {
+		updateFn: func(ctx context.Context, c *cinc.Client, _ string, e *cinc.Environment) error {
 			_, _, err := c.Environments.Update(ctx, e)
 			return err
 		},

@@ -30,7 +30,7 @@ func newRoleKind() Kind {
 			}
 			return CreateResult{Name: r.Name}, nil
 		},
-		updateFn: func(ctx context.Context, c *cinc.Client, r *cinc.Role) error {
+		updateFn: func(ctx context.Context, c *cinc.Client, _ string, r *cinc.Role) error {
 			_, _, err := c.Roles.Update(ctx, r)
 			return err
 		},

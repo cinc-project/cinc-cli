@@ -102,7 +102,7 @@ func runSearch(ctx context.Context, c *cinc.Client, index, query string, rowsCap
 		}
 		res = page
 	} else {
-		all, err := c.Search.SearchAll(ctx, index, query, opts...)
+		all, err := c.Search.Collect(ctx, index, query, opts...)
 		if err != nil {
 			return nil, err
 		}

@@ -7,9 +7,8 @@ Remove members from a permission
 Remove users, clients, or groups from one permission's ACE (or all five with `all`).
 
 <perm> is one of create, read, update, delete, grant, or all.
---user and --client both target the ACE's actor list (the server treats users
-and clients as one actor namespace); --group targets its group list. Each flag is
-repeatable, and at least one is required.
+--user, --client, and --group each name one kind of member, so a user and a client
+that share a name stay separate. Each flag is repeatable, and at least one is required.
 
 ```
 cinc user acl revoke <perm> <name> [flags]
@@ -26,10 +25,10 @@ cinc user acl revoke update alice --user alice
 ### Options
 
 ```
-      --client stringArray   client to add or remove (repeatable; targets the actor list)
-      --group stringArray    group to add or remove (repeatable; targets the group list)
+      --client stringArray   client to add or remove (repeatable)
+      --group stringArray    group to add or remove (repeatable)
   -h, --help[=true|false]    help for revoke
-      --user stringArray     user to add or remove (repeatable; targets the actor list)
+      --user stringArray     user to add or remove (repeatable)
 ```
 
 ### Options inherited from parent commands

@@ -12,7 +12,7 @@ import (
 
 func TestUserSummaryFields(t *testing.T) {
 	u := &cinc.User{
-		UserName:    "alice",
+		Username:    "alice",
 		DisplayName: "Alice Liddell",
 		Email:       "alice@example.com",
 		FirstName:   "Alice",
@@ -46,7 +46,7 @@ func TestUserSummaryFields(t *testing.T) {
 
 func TestUserSummaryFieldsEmpty(t *testing.T) {
 	got := map[string]string{}
-	for _, f := range userSummaryFields(&cinc.User{UserName: "bare"}, "User") {
+	for _, f := range userSummaryFields(&cinc.User{Username: "bare"}, "User") {
 		got[f.Label] = f.Value
 	}
 	if got["Email"] != "—" {

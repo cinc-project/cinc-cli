@@ -42,6 +42,7 @@ var aclFamily = family{cases: []testCase{
 	{"acls/forbidden-message", []string{"node acl show", "node acl grant", "node acl revoke"}, testACLForbiddenMessage},
 	{"acls/missing-object", []string{"node acl show", "node acl grant", "role acl show", "databag acl show"}, testACLMissingObject},
 	{"acls/unknown-member", []string{"node acl grant"}, testACLUnknownMember},
+	{"acls/same-named-user-and-client", []string{"node acl grant", "node acl revoke", "node acl show"}, testACLSameNamedUserAndClient},
 }}
 
 // aclCovers is the three acl leaves of one noun.
@@ -105,6 +106,15 @@ func (a aclActor) flag() []string {
 		return []string{"--user", a.name}
 	}
 	return []string{"--client", a.name}
+}
+
+// in reports whether ace names a, in its users or its clients list as fits
+// a's kind. acl show reads the granular form, which keeps the two apart.
+func (a aclActor) in(ace cinc.ACE) bool {
+	if a.user {
+		return slices.Contains(ace.Users, a.name)
+	}
+	return slices.Contains(ace.Clients, a.name)
 }
 
 // as runs the binary signed as a, returning whatever happened.
@@ -178,10 +188,10 @@ func pushACLPolicy(c *cli) (policy, group string) {
 	c.t.Helper()
 	policy, group = uniqueName(c.t, "policy"), uniqueName(c.t, "pg")
 	cookbook := "t_pcb_" + randomHex(c.t, 4)
-	identifier := randomHex(c.t, 20)
 	dir := c.t.TempDir()
 	writeFile(c.t, filepath.Join(dir, "cookbooks", cookbook, "metadata.rb"), fmt.Sprintf("name '%s'\nversion '1.0.0'\n", cookbook))
 	writeFile(c.t, filepath.Join(dir, "cookbooks", cookbook, "recipes", "default.rb"), "log 'deployed'\n")
+	identifier := cookbookID(c.t, filepath.Join(dir, "cookbooks", cookbook))
 	lock, err := json.MarshalIndent(map[string]any{
 		"name":        policy,
 		"revision_id": randomHex(c.t, 32),
@@ -190,7 +200,7 @@ func pushACLPolicy(c *cli) (policy, group string) {
 			cookbook: map[string]any{
 				"version":                   "1.0.0",
 				"identifier":                identifier,
-				"dotted_decimal_identifier": "1.0.0",
+				"dotted_decimal_identifier": dottedDecimal(identifier),
 				"source_options":            map[string]any{"path": "cookbooks/" + cookbook},
 			},
 		},
@@ -264,17 +274,17 @@ func aclRoundTrip(n aclNoun) func(*testing.T, Target, *cli) {
 		}
 
 		acl := showACL(c, n.noun, name)
-		for _, perm := range cinc.ACLPerms {
+		for _, perm := range cinc.ACLPerms() {
 			ace, _ := acl.ACEFor(perm)
-			if len(ace.Actors) == 0 && len(ace.Groups) == 0 {
+			if len(ace.Users)+len(ace.Clients)+len(ace.Groups) == 0 {
 				t.Errorf("%s ACE of a new %s is empty: %+v", perm, n.noun, acl)
 			}
 		}
-		if slices.Contains(acl.Grant.Actors, who.name) {
+		if who.in(acl.Grant) {
 			t.Fatalf("a fresh actor already holds grant: %+v", acl.Grant)
 		}
 		human := c.run(aclArgs(n.noun, "show", "", name)...)
-		for _, perm := range cinc.ACLPerms {
+		for _, perm := range cinc.ACLPerms() {
 			if !strings.Contains(human, perm) {
 				t.Errorf("%s acl show is missing the %s permission:\n%s", n.noun, perm, human)
 			}
@@ -292,11 +302,11 @@ func aclRoundTrip(n aclNoun) func(*testing.T, Target, *cli) {
 			t.Cleanup(func() { c.exec(runOpts{}, revoke...) })
 		}
 		wantEqual(t, "grant output", c.run(grant...), fmt.Sprintf("Granted grant on %s to %s\n", target, who.name))
-		if acl := showACL(c, n.noun, name); !slices.Contains(acl.Grant.Actors, who.name) {
-			t.Fatalf("after grant, grant actors = %v, want %s", acl.Grant.Actors, who.name)
+		if acl := showACL(c, n.noun, name); !who.in(acl.Grant) {
+			t.Fatalf("after grant, grant = %+v, want %s", acl.Grant, who.name)
 		}
 		// Only the grant ACE changed.
-		if acl := showACL(c, n.noun, name); slices.Contains(acl.Read.Actors, who.name) {
+		if acl := showACL(c, n.noun, name); who.in(acl.Read) {
 			t.Errorf("granting grant also changed read: %+v", acl.Read)
 		}
 
@@ -305,7 +315,7 @@ func aclRoundTrip(n aclNoun) func(*testing.T, Target, *cli) {
 			t.Fatalf("after grant, the actor still cannot read the ACL: %s", r)
 		}
 		var seen cinc.ACL
-		if err := json.Unmarshal([]byte(r.stdout), &seen); err != nil || !slices.Contains(seen.Grant.Actors, who.name) {
+		if err := json.Unmarshal([]byte(r.stdout), &seen); err != nil || !who.in(seen.Grant) {
 			t.Errorf("the actor's own view of the ACL = %q (%v), want it to list the actor", r.stdout, err)
 		}
 
@@ -314,8 +324,8 @@ func aclRoundTrip(n aclNoun) func(*testing.T, Target, *cli) {
 		}
 
 		wantEqual(t, "revoke output", c.run(revoke...), fmt.Sprintf("Revoked grant on %s from %s\n", target, who.name))
-		if acl := showACL(c, n.noun, name); slices.Contains(acl.Grant.Actors, who.name) {
-			t.Errorf("after revoke, grant actors = %v, want %s gone", acl.Grant.Actors, who.name)
+		if acl := showACL(c, n.noun, name); who.in(acl.Grant) {
+			t.Errorf("after revoke, grant = %+v, want %s gone", acl.Grant, who.name)
 		}
 		wantDenied(t, who.as(c, showAs...))
 	}
@@ -330,7 +340,7 @@ func testACLShowShape(t *testing.T, tgt Target, c *cli) {
 	createNode(c, name)
 	var raw map[string]map[string]any
 	c.json(&raw, "node", "acl", "show", name)
-	for _, perm := range cinc.ACLPerms {
+	for _, perm := range cinc.ACLPerms() {
 		ace, ok := raw[perm]
 		if !ok {
 			t.Errorf("acl show is missing %q: %v", perm, raw)
@@ -342,11 +352,11 @@ func testACLShowShape(t *testing.T, tgt Target, c *cli) {
 			}
 		}
 	}
-	if len(raw) != len(cinc.ACLPerms) {
-		t.Errorf("acl show has %d permissions, want %d: %v", len(raw), len(cinc.ACLPerms), raw)
+	if len(raw) != len(cinc.ACLPerms()) {
+		t.Errorf("acl show has %d permissions, want %d: %v", len(raw), len(cinc.ACLPerms()), raw)
 	}
 	acl := showACL(c, "node", name)
-	if !slices.Contains(acl.Grant.Actors, tgt.Admin) && !slices.Contains(acl.Grant.Groups, "admins") {
+	if !slices.Contains(acl.Grant.Users, tgt.Admin) && !slices.Contains(acl.Grant.Groups, "admins") {
 		t.Errorf("grant ACE of a node the admin created = %+v, want the admin or the admins group", acl.Grant)
 	}
 	// A client reads nodes through the clients group: that is how
@@ -420,7 +430,7 @@ func testACLGrantAll(t *testing.T, _ Target, c *cli) {
 	wantEqual(t, "grant all output", out,
 		fmt.Sprintf("Granted create, read, update, delete, grant on role %q to %s\n", role, group))
 	acl := showACL(c, "role", role)
-	for _, perm := range cinc.ACLPerms {
+	for _, perm := range cinc.ACLPerms() {
 		if ace, _ := acl.ACEFor(perm); !slices.Contains(ace.Groups, group) {
 			t.Errorf("after grant all, %s groups = %v, want %s", perm, ace.Groups, group)
 		}
@@ -438,7 +448,7 @@ func testACLGrantAll(t *testing.T, _ Target, c *cli) {
 	wantEqual(t, "revoke all output", out,
 		fmt.Sprintf("Revoked create, read, update, grant on role %q from %s\n", role, group))
 	acl = showACL(c, "role", role)
-	for _, perm := range cinc.ACLPerms {
+	for _, perm := range cinc.ACLPerms() {
 		if ace, _ := acl.ACEFor(perm); slices.Contains(ace.Groups, group) {
 			t.Errorf("after revoke all, %s groups still has %s", perm, group)
 		}
@@ -459,8 +469,8 @@ func testACLMultipleMembers(t *testing.T, _ Target, c *cli) {
 		fmt.Sprintf("Granted grant on environment %q to %s, %s, %s\n", env, a.name, b.name, group))
 	acl := showACL(c, "environment", env)
 	for _, n := range []string{a.name, b.name} {
-		if !slices.Contains(acl.Grant.Actors, n) {
-			t.Errorf("grant actors = %v, want %s", acl.Grant.Actors, n)
+		if !slices.Contains(acl.Grant.Clients, n) {
+			t.Errorf("grant clients = %v, want %s", acl.Grant.Clients, n)
 		}
 	}
 	if !slices.Contains(acl.Grant.Groups, group) {
@@ -474,7 +484,7 @@ func testACLMultipleMembers(t *testing.T, _ Target, c *cli) {
 
 	c.run(append([]string{"environment", "acl", "revoke", "grant", env}, members...)...)
 	acl = showACL(c, "environment", env)
-	if slices.Contains(acl.Grant.Actors, a.name) || slices.Contains(acl.Grant.Actors, b.name) ||
+	if a.in(acl.Grant) || b.in(acl.Grant) ||
 		slices.Contains(acl.Grant.Groups, group) {
 		t.Errorf("after revoke, grant = %+v", acl.Grant)
 	}
@@ -625,5 +635,32 @@ func testACLUnknownMember(t *testing.T, _ Target, c *cli) {
 	}
 	if after := showACL(c, "node", name); fmt.Sprint(before) != fmt.Sprint(after) {
 		t.Errorf("a refused grant changed the ACL:\nbefore %+v\nafter  %+v", before, after)
+	}
+}
+
+// testACLSameNamedUserAndClient grants and revokes a member user and a client
+// that share a name. A flat actors list naming them is ambiguous, and erchef
+// refuses it with a 422, so --user and --client must each reach only their
+// own kind.
+func testACLSameNamedUserAndClient(t *testing.T, _ Target, c *cli) {
+	node := uniqueName(t, "node")
+	createNode(c, node)
+	u := createUser(c)
+	joinOrg(c, u)
+	c.run("client", "create", u.name, "--key-file", filepath.Join(t.TempDir(), "client.pem"))
+	c.cleanup("client", "delete", u.name)
+	user, client := aclActor{name: u.name, user: true}, aclActor{name: u.name}
+
+	c.run("node", "acl", "grant", "read", node, "--client", u.name)
+	if acl := showACL(c, "node", node); !client.in(acl.Read) || user.in(acl.Read) {
+		t.Fatalf("after granting the client, read = %+v, want the client only", acl.Read)
+	}
+	c.run("node", "acl", "grant", "read", node, "--user", u.name)
+	if acl := showACL(c, "node", node); !client.in(acl.Read) || !user.in(acl.Read) {
+		t.Fatalf("after granting the user too, read = %+v, want both", acl.Read)
+	}
+	c.run("node", "acl", "revoke", "read", node, "--client", u.name)
+	if acl := showACL(c, "node", node); client.in(acl.Read) || !user.in(acl.Read) {
+		t.Errorf("after revoking the client, read = %+v, want the user only", acl.Read)
 	}
 }

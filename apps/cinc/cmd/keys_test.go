@@ -509,30 +509,29 @@ func TestUserKeyListUsesUserScope(t *testing.T) {
 	}
 }
 
-// reregisterServer handles the DELETE of the default key followed by the
-// POST that recreates it, recording both so tests can assert the sequence.
-func reregisterServer(t *testing.T, name, privKey string, sawDelete, sawCreate *bool, createBody *[]byte) *httptest.Server {
+// reregisterServer handles the PUT that regenerates the default key in
+// place, recording its body. It answers as erchef does
+// (oc_chef_wm_named_key:finalize_update_body): the request body less
+// create_key, plus the new pair. Any other request to the keys is a failure,
+// since regenerating in place never deletes or recreates the key.
+func reregisterServer(t *testing.T, name, privKey string, sawRegenerate *bool, regenerateBody *[]byte) *httptest.Server {
 	t.Helper()
 	base := "/organizations/acme/clients/" + name + "/keys"
 	mux := http.NewServeMux()
 	mux.HandleFunc(base+"/default", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodDelete {
-			t.Errorf("method on %s = %q, want DELETE", r.URL.Path, r.Method)
+		if r.Method != http.MethodPut {
+			t.Errorf("method on %s = %q, want PUT", r.URL.Path, r.Method)
 		}
-		*sawDelete = true
+		*sawRegenerate = true
+		body, _ := io.ReadAll(r.Body)
+		*regenerateBody = body
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"name":"default"}`)
+		_, _ = io.WriteString(w, `{"name":"default","private_key":"`+strings.ReplaceAll(privKey, "\n", `\n`)+
+			`","public_key":"-----BEGIN PUBLIC KEY-----\nNEWPUB\n-----END PUBLIC KEY-----\n"}`)
 	})
 	mux.HandleFunc(base, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method on %s = %q, want POST", r.URL.Path, r.Method)
-		}
-		*sawCreate = true
-		body, _ := io.ReadAll(r.Body)
-		*createBody = body
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(w, `{"private_key":"`+strings.ReplaceAll(privKey, "\n", `\n`)+`"}`)
+		t.Errorf("%s %s: reregister should regenerate the key in place", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -541,9 +540,9 @@ func reregisterServer(t *testing.T, name, privKey string, sawDelete, sawCreate *
 
 func TestClientReregisterRegeneratesDefaultKey(t *testing.T) {
 	const privKey = "-----BEGIN RSA PRIVATE KEY-----\nNEW\n-----END RSA PRIVATE KEY-----\n"
-	var sawDelete, sawCreate bool
-	var createBody []byte
-	srv := reregisterServer(t, "worker-01", privKey, &sawDelete, &sawCreate, &createBody)
+	var sawRegenerate bool
+	var regenerateBody []byte
+	srv := reregisterServer(t, "worker-01", privKey, &sawRegenerate, &regenerateBody)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -553,15 +552,15 @@ func TestClientReregisterRegeneratesDefaultKey(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("cinc client reregister: %v", err)
 	}
-	if !sawDelete || !sawCreate {
-		t.Errorf("reregister calls: delete=%v create=%v, want both true", sawDelete, sawCreate)
+	if !sawRegenerate {
+		t.Error("reregister never sent the PUT that regenerates the default key")
 	}
 	var sent cinc.Key
-	if err := json.Unmarshal(createBody, &sent); err != nil {
-		t.Fatalf("unmarshal create body: %v", err)
+	if err := json.Unmarshal(regenerateBody, &sent); err != nil {
+		t.Fatalf("unmarshal regenerate body: %v", err)
 	}
 	if sent.Name != "default" || !sent.CreateKey {
-		t.Errorf("recreate body = %+v, want name=default create_key=true", sent)
+		t.Errorf("regenerate body = %+v, want name=default create_key=true", sent)
 	}
 	if got := buf.String(); got != privKey {
 		t.Errorf("stdout = %q, want the new private key", got)
@@ -570,9 +569,9 @@ func TestClientReregisterRegeneratesDefaultKey(t *testing.T) {
 
 func TestClientReregisterWritesKeyToFile(t *testing.T) {
 	const privKey = "-----BEGIN RSA PRIVATE KEY-----\nNEW\n-----END RSA PRIVATE KEY-----\n"
-	var sawDelete, sawCreate bool
-	var createBody []byte
-	srv := reregisterServer(t, "worker-01", privKey, &sawDelete, &sawCreate, &createBody)
+	var sawRegenerate bool
+	var regenerateBody []byte
+	srv := reregisterServer(t, "worker-01", privKey, &sawRegenerate, &regenerateBody)
 
 	keyPath := filepath.Join(t.TempDir(), "worker-01.pem")
 	root := newRootCmd()

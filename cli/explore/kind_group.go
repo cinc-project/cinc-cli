@@ -74,8 +74,8 @@ func (k groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited
 	}
 	// Pin the selected group, so an edited name in the JSON can't send
 	// the update to a different one.
-	g.Name = name
-	_, _, err := c.Groups.Update(ctx, &g)
+	g.Name, g.GroupName = name, name
+	_, _, err := c.Groups.Update(ctx, name, &g)
 	k.invalidateAdmins(c, name)
 	return err
 }

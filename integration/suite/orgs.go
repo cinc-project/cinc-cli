@@ -122,7 +122,7 @@ func acceptInvite(c *cli, u testUser, org string) {
 	if i < 0 {
 		c.t.Fatalf("%s has no invitation to %s: %+v", u.name, org, invites)
 	}
-	if _, err := api.Associations.RespondInvite(ctx, u.name, invites[i].ID, true); err != nil {
+	if _, err := api.Associations.AcceptInvite(ctx, u.name, invites[i].ID); err != nil {
 		c.t.Fatalf("%s accepting the invitation to %s: %v", u.name, org, err)
 	}
 }

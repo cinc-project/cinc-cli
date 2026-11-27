@@ -54,7 +54,7 @@ cinc user edit alice`,
 				if updated, err = readJSONFile[cinc.User](inputFile); err != nil {
 					return err
 				}
-				if err := checkFileName(inputFile, "user", "username", updated.UserName, name); err != nil {
+				if err := checkFileName(inputFile, "user", "username", updated.Username, name); err != nil {
 					return err
 				}
 			} else {
@@ -72,9 +72,9 @@ cinc user edit alice`,
 				}
 				updated = *edited
 			}
-			updated.UserName = name
+			updated.Username = name
 
-			if _, _, err := c.Users.Update(cmd.Context(), &updated); err != nil {
+			if _, err := c.Users.Update(cmd.Context(), name, &updated); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated user %q\n", name)
@@ -121,7 +121,7 @@ cinc user create alice --email alice@example.com --public-key alice.pub`,
 				return err
 			}
 			req := &cinc.User{
-				UserName:    args[0],
+				Username:    args[0],
 				DisplayName: flags.displayName,
 				Email:       flags.email,
 				FirstName:   flags.firstName,
@@ -140,7 +140,7 @@ cinc user create alice --email alice@example.com --public-key alice.pub`,
 			if err != nil {
 				return err
 			}
-			return emitPrivateKey(cmd, fmt.Sprintf("Created user %q", req.UserName), "key", created.ChefKey.PrivateKey, flags.keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created user %q", req.Username), "key", created.ChefKey.PrivateKey, flags.keyFile)
 		},
 	}
 	cmd.Flags().StringVar(&flags.email, "email", "", "user's email address")

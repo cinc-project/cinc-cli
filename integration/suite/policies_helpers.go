@@ -215,11 +215,24 @@ func dottedDecimal(id string) string {
 	return strings.Join(parts, ".")
 }
 
-// identifier returns a random 40-hex cookbook identifier or revision id, the
-// shape chef computes.
+// identifier returns a random 40-hex revision id, the shape chef computes.
+// A cookbook lock pins cookbookID instead, as a push checks it against the
+// cookbook's files.
 func identifier(t *testing.T) string {
 	t.Helper()
 	return randomHex(t, 20)
+}
+
+// cookbookID returns the identifier of the cookbook in dir, computed from its
+// files as chef does: what a lock must pin for a push of it to be accepted.
+func cookbookID(t *testing.T, dir string) string {
+	t.Helper()
+	cb, err := cinc.LocalCookbookFromDir(dir, "")
+	if err != nil {
+		t.Fatalf("load cookbook %s: %v", dir, err)
+	}
+	id, _ := cb.Identifiers()
+	return id
 }
 
 // pathPolicy writes a lock for policy with one path-sourced cookbook of its
@@ -232,7 +245,7 @@ func pathPolicy(t *testing.T, dir, policy, cookbook, version string) (string, te
 		revision: identifier(t),
 		runList:  []string{"recipe[" + cookbook + "::default]"},
 		cookbooks: []lockCookbook{{
-			name: cookbook, version: version, identifier: identifier(t),
+			name: cookbook, version: version, identifier: cookbookID(t, filepath.Join(dir, "cookbooks", cookbook)),
 			sourceOptions: map[string]any{"path": "cookbooks/" + cookbook},
 		}},
 	}

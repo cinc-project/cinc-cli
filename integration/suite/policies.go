@@ -220,7 +220,7 @@ func testPolicyChefServerSource(t *testing.T, tgt Target, c *cli) {
 		name: policy, revision: identifier(t),
 		runList: []string{"recipe[" + cb + "::default]"},
 		cookbooks: []lockCookbook{{
-			name: cb, version: "1.4.2", identifier: identifier(t),
+			name: cb, version: "1.4.2", identifier: cookbookID(t, filepath.Join(repo, cb)),
 			cacheKey:      cb + "-1.4.2-chefserver",
 			sourceOptions: map[string]any{"chef_server": c.orgURL(tgt.Org), "version": "1.4.2"},
 		}},
@@ -284,6 +284,7 @@ func pushGitCookbook(t *testing.T, tgt Target, c *cli, sub string, extra map[str
 	gitRun(t, repo, "add", "-A")
 	gitRun(t, repo, append(commit, "-m", "cookbook")...)
 	sha := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
+	pinned := cookbookID(t, filepath.Join(repo, sub))
 	writeFile(t, filepath.Join(repo, sub, "recipes", "default.rb"), "log 'not pinned'\n")
 	gitRun(t, repo, append(commit, "-am", "later")...)
 
@@ -293,7 +294,7 @@ func pushGitCookbook(t *testing.T, tgt Target, c *cli, sub string, extra map[str
 		name: policy, revision: identifier(t),
 		runList: []string{"recipe[" + cb + "::default]"},
 		cookbooks: []lockCookbook{{
-			name: cb, version: "3.0.0", identifier: identifier(t),
+			name: cb, version: "3.0.0", identifier: pinned,
 			cacheKey: cb + "-" + sha, sourceOptions: opts,
 		}},
 	}
@@ -327,7 +328,7 @@ func twoRevisions(t *testing.T, tgt Target, c *cli) (policy, from, to, cb string
 	revA = policyLock{
 		name: policy, revision: identifier(t),
 		runList: []string{"recipe[" + cb + "::default]"},
-		cookbooks: []lockCookbook{{name: cb, version: "1.0.0", identifier: identifier(t),
+		cookbooks: []lockCookbook{{name: cb, version: "1.0.0", identifier: cookbookID(t, filepath.Join(dirA, "cookbooks", cb)),
 			sourceOptions: map[string]any{"path": "cookbooks/" + cb}}},
 		defaults: map[string]any{cb: map[string]any{"port": 80, "user": "web"}},
 	}
@@ -338,7 +339,7 @@ func twoRevisions(t *testing.T, tgt Target, c *cli) (policy, from, to, cb string
 	revB = policyLock{
 		name: policy, revision: identifier(t),
 		runList: []string{"recipe[" + cb + "::default]", "recipe[" + cb + "::ssl]"},
-		cookbooks: []lockCookbook{{name: cb, version: "1.1.0", identifier: identifier(t),
+		cookbooks: []lockCookbook{{name: cb, version: "1.1.0", identifier: cookbookID(t, filepath.Join(dirB, "cookbooks", cb)),
 			sourceOptions: map[string]any{"path": "cookbooks/" + cb}}},
 		defaults: map[string]any{cb: map[string]any{"port": 443, "user": "web"}},
 	}
@@ -774,6 +775,9 @@ func testPolicyForbidden(t *testing.T, tgt Target, c *cli) {
 	writeCookbook(t, dir, "cookbooks/"+cb, cb, "1.0.0")
 	lock := revA
 	lock.revision = identifier(t)
+	// writeCookbook's recipe is unique, so pin this copy's own files.
+	lock.cookbooks = []lockCookbook{revA.cookbooks[0]}
+	lock.cookbooks[0].identifier = cookbookID(t, filepath.Join(dir, "cookbooks", cb))
 	wantForbidden(c.fail(append([]string{"policy", "push", group, lock.write(t, dir)}, as...)...))
 
 	wantEqual(t, "group revision", showPolicyGroup(c, group).Policies[policy].RevisionID, revA.revision)

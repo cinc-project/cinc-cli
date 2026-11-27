@@ -46,9 +46,9 @@ func pushArchiveServer(t *testing.T, identifier string, uploadedArtifact, associ
 
 // exportBundle runs `cinc policy export` on a path-sourced lock to produce a
 // real bundle directory and its .tar.gz, returning both paths.
-func exportBundle(t *testing.T, identifier string) (dir, archive string) {
+func exportBundle(t *testing.T) (dir, archive string) {
 	t.Helper()
-	lockPath := writePolicyLockFixture(t, identifier)
+	lockPath := writePolicyLockFixture(t)
 	dir = filepath.Join(t.TempDir(), "appserver")
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
@@ -60,12 +60,12 @@ func exportBundle(t *testing.T, identifier string) (dir, archive string) {
 }
 
 func TestPolicyPushArchiveCommandDirectoryInput(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000001"
+	identifier := baseCookbookIdentifier(t)
 	var uploadedArtifact, associated bool
 	var associateBody []byte
 	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
 
-	bundleDir, _ := exportBundle(t, identifier)
+	bundleDir, _ := exportBundle(t)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -89,12 +89,12 @@ func TestPolicyPushArchiveCommandDirectoryInput(t *testing.T) {
 }
 
 func TestPolicyPushArchiveCommandTarballInput(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000002"
+	identifier := baseCookbookIdentifier(t)
 	var uploadedArtifact, associated bool
 	var associateBody []byte
 	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
 
-	_, archive := exportBundle(t, identifier)
+	_, archive := exportBundle(t)
 
 	root := newRootCmd()
 	var buf bytes.Buffer
@@ -119,12 +119,7 @@ func TestPolicyPushArchiveCommandTarballInput(t *testing.T) {
 // the only name on hand is its directory, base-<identifier>. The artifact
 // must still land under the lock's name, base.
 func TestPolicyPushArchiveUploadsUnderLockName(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000004"
-	var uploadedArtifact, associated bool
-	var associateBody []byte
-	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
-
-	bundleDir, _ := exportBundle(t, identifier)
+	bundleDir, _ := exportBundle(t)
 	dirs, err := filepath.Glob(filepath.Join(bundleDir, "cookbooks", "base-*"))
 	if err != nil || len(dirs) != 1 {
 		t.Fatalf("bundle cookbook dirs = %v, %v; want one base-* dir", dirs, err)
@@ -132,6 +127,17 @@ func TestPolicyPushArchiveUploadsUnderLockName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dirs[0], "metadata.rb"), []byte("name File.basename(__dir__)\nversion '1.0.0'\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The new metadata.rb changes the cookbook's content, so pin it afresh,
+	// and move it to the base-<dotted identifier> directory a bundle uses.
+	identifier := repinLock(t, filepath.Join(bundleDir, "Policyfile.lock.json"), dirs[0])
+	_, dotted := cookbookIdentifiers(t, dirs[0])
+	if err := os.Rename(dirs[0], filepath.Join(bundleDir, "cookbooks", "base-"+dotted)); err != nil {
+		t.Fatal(err)
+	}
+
+	var uploadedArtifact, associated bool
+	var associateBody []byte
+	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
@@ -147,12 +153,12 @@ func TestPolicyPushArchiveUploadsUnderLockName(t *testing.T) {
 // TestPolicyPushArchiveDefaultsToCwdArchive omits the archive argument; the
 // command should discover the single .tar.gz in the working directory.
 func TestPolicyPushArchiveDefaultsToCwdArchive(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000003"
+	identifier := baseCookbookIdentifier(t)
 	var uploadedArtifact, associated bool
 	var associateBody []byte
 	srv := pushArchiveServer(t, identifier, &uploadedArtifact, &associated, &associateBody)
 
-	_, archive := exportBundle(t, identifier)
+	_, archive := exportBundle(t)
 	work := t.TempDir()
 	data, err := os.ReadFile(archive)
 	if err != nil {

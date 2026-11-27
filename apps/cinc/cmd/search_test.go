@@ -203,12 +203,13 @@ func TestSearchStartWithoutRowsReturnsEveryRemainingMatch(t *testing.T) {
 		map[string]any{"name": "a"}, map[string]any{"name": "b"}, map[string]any{"name": "c"},
 		map[string]any{"name": "d"}, map[string]any{"name": "e"},
 	}
-	// The server answers at most two rows per page, whatever was asked for.
+	// Like erchef, the server answers up to the rows asked for from start.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/search/node", func(w http.ResponseWriter, r *http.Request) {
 		start, _ := strconv.Atoi(r.URL.Query().Get("start"))
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("rows"))
 		page := rows[min(start, len(rows)):]
-		page = page[:min(2, len(page))]
+		page = page[:min(pageSize, len(page))]
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"total": len(rows), "start": start, "rows": page})
 	})

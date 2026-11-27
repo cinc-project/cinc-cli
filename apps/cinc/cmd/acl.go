@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -127,7 +128,7 @@ func newACLShowCmd(scope aclScope) *cobra.Command {
 				return err
 			}
 			name := aclName(scope, cmdArgs)
-			acl, _, err := c.ACLs.GetTarget(cmd.Context(), scope.target(name))
+			acl, _, err := c.ACLs.Get(cmd.Context(), scope.target(name))
 			if err != nil {
 				return explainACLError(err, scope.describe(c, name), "")
 			}
@@ -160,9 +161,8 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 			"Add users, clients, or groups to one permission's ACE (or all five with `all`).",
 			"Remove users, clients, or groups from one permission's ACE (or all five with `all`).") +
 			"\n\n<perm> is one of create, read, update, delete, grant, or all.\n" +
-			"--user and --client both target the ACE's actor list (the server treats users\n" +
-			"and clients as one actor namespace); --group targets its group list. Each flag is\n" +
-			"repeatable, and at least one is required.",
+			"--user, --client, and --group each name one kind of member, so a user and a client\n" +
+			"that share a name stay separate. Each flag is repeatable, and at least one is required.",
 		Example: aclExample(scope, verb),
 		Args:    args,
 		RunE: func(cmd *cobra.Command, cmdArgs []string) error {
@@ -170,8 +170,8 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 			if _, err := cinc.ExpandPerm(perm); err != nil {
 				return fmt.Errorf("%q isn't a permission we know. Use one of create, read, update, delete, grant, or all", perm)
 			}
-			actors := append(append([]string{}, users...), clients...)
-			if len(actors) == 0 && len(groups) == 0 {
+			m := cinc.ACLMembers{Users: users, Clients: clients, Groups: groups}
+			if len(users)+len(clients)+len(groups) == 0 {
 				return fmt.Errorf("we need at least one member to %s: pass --user, --client, or --group", verb)
 			}
 			c, err := resolveClient(cmd)
@@ -180,20 +180,20 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 			}
 			name := aclName(scope, cmdArgs)
 			target := scope.describe(c, name)
-			members := strings.Join(append(actors, groups...), ", ")
+			members := aclMembersPhrase(m)
 
 			change := c.ACLs.Revoke
 			if grant {
 				change = c.ACLs.Grant
 			}
-			changed, err := change(cmd.Context(), scope.target(name), perm, actors, groups)
+			changed, err := change(cmd.Context(), scope.target(name), perm, m)
 			if err != nil {
 				return explainACLChangeError(err, grant, target, members)
 			}
 
 			out := cmd.OutOrStdout()
 			if len(changed) == 0 {
-				plural := len(actors)+len(groups) > 1
+				plural := len(users)+len(clients)+len(groups) > 1
 				has := cases(plural, "already have", "already has")
 				if !grant {
 					has = cases(plural, "don't have", "doesn't have")
@@ -206,9 +206,9 @@ func newACLChangeCmd(scope aclScope, grant bool) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringArrayVar(&users, "user", nil, "user to add or remove (repeatable; targets the actor list)")
-	cmd.Flags().StringArrayVar(&clients, "client", nil, "client to add or remove (repeatable; targets the actor list)")
-	cmd.Flags().StringArrayVar(&groups, "group", nil, "group to add or remove (repeatable; targets the group list)")
+	cmd.Flags().StringArrayVar(&users, "user", nil, "user to add or remove (repeatable)")
+	cmd.Flags().StringArrayVar(&clients, "client", nil, "client to add or remove (repeatable)")
+	cmd.Flags().StringArrayVar(&groups, "group", nil, "group to add or remove (repeatable)")
 	return cmd
 }
 
@@ -286,6 +286,12 @@ func serverMessage(err error) string {
 		}
 	}
 	return err.Error()
+}
+
+// aclMembersPhrase lists m's users, clients and groups for messages, in that
+// order.
+func aclMembersPhrase(m cinc.ACLMembers) string {
+	return strings.Join(slices.Concat(m.Users, m.Clients, m.Groups), ", ")
 }
 
 // aclName returns the object name from the positional args, or "" for a
