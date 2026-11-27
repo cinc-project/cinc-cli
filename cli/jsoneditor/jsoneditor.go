@@ -15,7 +15,6 @@ package jsoneditor
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -31,11 +30,11 @@ func Run(initial []byte, validate func([]byte) error) ([]byte, error) {
 	}
 	final, err := tea.NewProgram(runner{m: New(initial, validate)}, tea.WithAltScreen()).Run()
 	if err != nil {
-		return nil, fmt.Errorf("cinc: edit failed: %w", err)
+		return nil, RunFailed(err)
 	}
 	r := final.(runner)
 	if r.m.aborted {
-		return nil, fmt.Errorf("cinc: edit aborted")
+		return nil, ErrAborted
 	}
 	return r.m.committed, nil
 }

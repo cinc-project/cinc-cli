@@ -17,7 +17,7 @@ cinc client key create worker-01 rotation --key-file rotation.pem
 Register a public key you already have; the server generates nothing.
 
 ```bash
-cinc client key create worker-01 laptop --public-key ~/.ssh/id_rsa.pub
+cinc client key create worker-01 laptop --public-key laptop.pub
 ```
 
 Add a key that expires on a given date.

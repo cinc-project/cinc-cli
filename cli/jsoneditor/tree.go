@@ -3,7 +3,9 @@ package jsoneditor
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -41,16 +43,28 @@ type member struct {
 }
 
 // parseTree decodes b into an ordered tree. It rejects malformed JSON and
-// any trailing data after the top-level value.
+// any trailing data after the top-level value. Errors say where in b the
+// problem is (see DescribeJSONError), since the editor shows them to the
+// user as-is.
 func parseTree(b []byte) (*node, error) {
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, errors.New("the document is empty. It needs at least {} (an empty object)")
+	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 	n, err := parseValue(dec)
+	if errors.Is(err, io.EOF) {
+		err = io.ErrUnexpectedEOF // a value started but never finished
+	}
 	if err != nil {
-		return nil, err
+		return nil, DescribeJSONError(b, err)
 	}
 	if dec.More() {
-		return nil, fmt.Errorf("unexpected trailing data after JSON value")
+		end := int(dec.InputOffset())
+		rest := b[end:]
+		at := end + len(rest) - len(bytes.TrimLeft(rest, " \t\r\n"))
+		line, col := lineCol(b, at)
+		return nil, fmt.Errorf("line %d, column %d: there's more text after the JSON value ends. A document holds exactly one value, so remove the extra text, or wrap everything in one {...} or [...]", line, col)
 	}
 	return n, nil
 }
@@ -77,7 +91,7 @@ func parseFromToken(dec *json.Decoder, tok json.Token) (*node, error) {
 				}
 				key, ok := keyTok.(string)
 				if !ok {
-					return nil, fmt.Errorf("object key is not a string")
+					return nil, fmt.Errorf("object keys have to be text in double quotes, but found %v", keyTok)
 				}
 				val, err := parseValue(dec)
 				if err != nil {
@@ -103,7 +117,7 @@ func parseFromToken(dec *json.Decoder, tok json.Token) (*node, error) {
 			}
 			return n, nil
 		default:
-			return nil, fmt.Errorf("unexpected delimiter %q", t)
+			return nil, fmt.Errorf("found a stray %q where a value should start", t)
 		}
 	case string:
 		return scalarNode(kindString, t)
@@ -114,7 +128,7 @@ func parseFromToken(dec *json.Decoder, tok json.Token) (*node, error) {
 	case nil:
 		return &node{kind: kindNull, scalar: "null"}, nil
 	default:
-		return nil, fmt.Errorf("unexpected token %T", tok)
+		return nil, fmt.Errorf("found something that isn't a JSON value (%v)", tok)
 	}
 }
 

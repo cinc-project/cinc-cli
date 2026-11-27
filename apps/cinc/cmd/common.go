@@ -21,6 +21,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/jsoneditor"
 	"github.com/cinc-project/cinc-cli/cli/printer"
 	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/setup"
@@ -106,50 +107,55 @@ func resolveFormat(cmd *cobra.Command) (printer.Format, error) {
 // a newline works the same for cinc, knife and chef-client; a file that is
 // empty once stripped is refused, as Chef refuses it. --secret and
 // --secret-file are mutually exclusive.
-func resolveSecret(cmd *cobra.Command, profile config.Profile) ([]byte, error) {
+func resolveSecret(cmd *cobra.Command, profile config.Profile) (secret []byte, source string, err error) {
 	literal, _ := cmd.Flags().GetString("secret")
 	file, _ := cmd.Flags().GetString("secret-file")
 	if literal != "" && file != "" {
-		return nil, errors.New("can't use --secret and --secret-file together — pick one")
+		return nil, "", errors.New("can't use --secret and --secret-file together, since we can only use one secret. Keep the one that holds the right secret and drop the other.")
 	}
 	if literal != "" {
-		return []byte(literal), nil
+		return []byte(literal), "the --secret value", nil
 	}
 	if file != "" {
-		return readSecretFile(file)
+		return readSecretFile(file, "--secret-file")
 	}
 	if env := os.Getenv("CINC_SECRET_FILE"); env != "" {
-		return readSecretFile(env)
+		return readSecretFile(env, "$CINC_SECRET_FILE")
 	}
 	if env := os.Getenv("CHEF_SECRET_FILE"); env != "" {
-		return readSecretFile(env)
+		return readSecretFile(env, "$CHEF_SECRET_FILE")
 	}
 	if profile.SecretFile != "" {
 		path, err := config.ExpandHome(profile.SecretFile)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return readSecretFile(path)
+		return readSecretFile(path, fmt.Sprintf("secret_file in your %q profile", profileNameForCommand(cmd)))
 	}
-	return nil, errors.New("we need an encrypted data bag secret but couldn't find one. Pass --secret-file <path> (or --secret <literal>), set $CINC_SECRET_FILE, or add a secret_file key to your credentials profile.")
+	return nil, "", errors.New("we need an encrypted data bag secret but couldn't find one. Pass --secret-file <path> (or --secret <literal>), set $CINC_SECRET_FILE, or add a secret_file key to your credentials profile.")
 }
 
 // readSecretFile reads a secret file the way Chef's load_secret does (see
 // cinc.LoadDataBagSecret: the ends are stripped, the contents must be
-// UTF-8). A file we can't read, or one with nothing left once stripped,
-// becomes a conversational message.
-func readSecretFile(path string) ([]byte, error) {
+// UTF-8). from names the setting that pointed at path, such as
+// "--secret-file". It returns the secret with a description of where it
+// came from, for messages that need to say which secret was used. A file
+// we can't read, or one with nothing left once stripped, becomes a
+// conversational message.
+func readSecretFile(path, from string) ([]byte, string, error) {
 	secret, err := cinc.LoadDataBagSecret(path)
 	var pathErr *fs.PathError
 	switch {
 	case errors.Is(err, cinc.ErrEmptyDataBagSecret):
-		return nil, fmt.Errorf("the data bag secret file at %s is empty. Put the shared secret in it, or point --secret-file at the right file.", path)
+		return nil, "", fmt.Errorf("the data bag secret file at %s (from %s) is empty. Put the shared secret in it, or point %s at the right file.", path, from, from)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, "", fmt.Errorf("the data bag secret file %s doesn't exist. It's set by %s, so check that path, or point %s at the file that holds your secret. (%w)", path, from, from, err)
 	case errors.As(err, &pathErr):
-		return nil, fmt.Errorf("we couldn't read the data bag secret at %s: %w", path, pathErr.Err)
+		return nil, "", fmt.Errorf("we couldn't read the data bag secret at %s (from %s): %w", path, from, pathErr.Err)
 	case err != nil:
-		return nil, fmt.Errorf("we can't use the data bag secret at %s: %w", path, err)
+		return nil, "", fmt.Errorf("we can't use the data bag secret at %s (from %s): %w", path, from, err)
 	}
-	return secret, nil
+	return secret, fmt.Sprintf("%s (from %s)", path, from), nil
 }
 
 // readJSONFile reads the JSON document a --file flag points at into a T.
@@ -160,16 +166,22 @@ func readSecretFile(path string) ([]byte, error) {
 func readJSONFile[T any](path string) (T, error) {
 	var v T
 	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return v, fmt.Errorf("there's no file at %s. Check the path you gave --file. (%w)", path, err)
+	}
 	if err != nil {
 		return v, fmt.Errorf("we couldn't read %s: %w", path, err)
 	}
 	v, err = decodeStrictJSON[T](data)
 	var unknown *unknownFieldError
-	if errors.As(err, &unknown) {
+	var typeErr *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &unknown):
 		return v, fmt.Errorf("%s has a field we don't recognize, %q. Check the spelling, or remove it.", path, unknown.key)
-	}
-	if err != nil {
-		return v, fmt.Errorf("%s isn't valid JSON: %w", path, err)
+	case errors.As(err, &typeErr):
+		return v, fmt.Errorf("%s has a value of the wrong type: %w", path, jsoneditor.DescribeJSONError(data, err))
+	case err != nil:
+		return v, fmt.Errorf("%s isn't valid JSON: %w", path, jsoneditor.DescribeJSONError(data, err))
 	}
 	return v, nil
 }

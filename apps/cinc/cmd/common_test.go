@@ -450,7 +450,7 @@ func TestResolveSecretExpandsTildeInSecretFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "secret"), []byte("s3cret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolveSecret(fakeCmd("", "", "", new(bytes.Buffer)), config.Profile{SecretFile: "~/secret"})
+	got, _, err := resolveSecret(fakeCmd("", "", "", new(bytes.Buffer)), config.Profile{SecretFile: "~/secret"})
 	if err != nil {
 		t.Fatalf("resolveSecret: %v", err)
 	}

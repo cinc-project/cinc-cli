@@ -571,7 +571,7 @@ func testACLBadInput(t *testing.T, _ Target, c *cli) {
 	}
 	// A wrong argument count is a usage error, not a request.
 	r = c.fail("node", "acl", "grant", "read")
-	if !strings.Contains(r.stderr, "arg") {
+	if !strings.Contains(r.stderr, "needs <name>") {
 		t.Errorf("grant without an object name should be a usage error: %s", r)
 	}
 }

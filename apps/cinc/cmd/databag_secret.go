@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newDataBagSecretCmd builds the `cinc databag secret` command group:
@@ -55,12 +56,12 @@ func addSecretFlags(cmd *cobra.Command) {
 // resolveSecretClient resolves the profile once and returns both the data
 // bag secret and a server client for it. The secret comes first, so a
 // missing or unusable secret fails before anything talks to the server.
-func resolveSecretClient(cmd *cobra.Command) ([]byte, *cinc.Client, error) {
+func resolveSecretClient(cmd *cobra.Command) (*dataBagSecret, *cinc.Client, error) {
 	profile, err := resolveProfile(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
-	secret, err := resolveSecret(cmd, profile)
+	secret, source, err := resolveSecret(cmd, profile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -68,7 +69,14 @@ func resolveSecretClient(cmd *cobra.Command) ([]byte, *cinc.Client, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return secret, c, nil
+	return &dataBagSecret{key: secret, source: source}, c, nil
+}
+
+// dataBagSecret is a resolved data bag secret and where it came from, so
+// a failed decrypt can say which secret it tried.
+type dataBagSecret struct {
+	key    []byte
+	source string // e.g. "the --secret value" or "/path (from --secret-file)"
 }
 
 // newDataBagSecretCreateCmd builds `cinc databag secret create <bag> <id>`.
@@ -93,7 +101,7 @@ cinc databag secret create passwords mysql --secret-file ~/.cinc/secret`,
 			if err != nil {
 				return err
 			}
-			if _, _, err := c.DataBags.Items(bag).CreateEncrypted(cmd.Context(), item, secret); err != nil {
+			if _, _, err := c.DataBags.Items(bag).CreateEncrypted(cmd.Context(), item, secret.key); err != nil {
 				return encryptItemError(err, bag, id)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created encrypted item %q in data bag %q\n", id, bag)
@@ -126,9 +134,9 @@ cinc databag secret show passwords mysql --secret-file ~/.cinc/secret`,
 				return err
 			}
 			bag, id := args[0], args[1]
-			plain, _, err := c.DataBags.Items(bag).GetDecrypted(cmd.Context(), id, secret)
+			plain, _, err := c.DataBags.Items(bag).GetDecrypted(cmd.Context(), id, secret.key)
 			if err != nil {
-				return decryptItemError(err, bag, id)
+				return decryptItemError(cmd, err, bag, id, secret.source)
 			}
 			return printer.New(cmd.OutOrStdout(), format).Value(plain)
 		},
@@ -165,9 +173,9 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 					return err
 				}
 			} else {
-				plain, _, err := items.GetDecrypted(cmd.Context(), id, secret)
+				plain, _, err := items.GetDecrypted(cmd.Context(), id, secret.key)
 				if err != nil {
-					return decryptItemError(err, bag, id)
+					return decryptItemError(cmd, err, bag, id, secret.source)
 				}
 				edited, err := editDataBagItem(plain)
 				if err != nil {
@@ -179,7 +187,7 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 				}
 				updated = edited
 			}
-			if _, _, err := items.UpdateEncrypted(cmd.Context(), updated, secret); err != nil {
+			if _, _, err := items.UpdateEncrypted(cmd.Context(), updated, secret.key); err != nil {
 				return encryptItemError(err, bag, id)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated encrypted item %q in bag %q\n", id, bag)
@@ -198,21 +206,28 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret`,
 // through unchanged.
 func encryptItemError(err error, bag, id string) error {
 	if errors.Is(err, cinc.ErrAlreadyEncrypted) {
-		return fmt.Errorf("item %q for data bag %q already holds encrypted values, and encrypting them again would make it unreadable. Give us the plaintext values instead (`cinc databag secret show %s %s` prints them), or store the encrypted item as-is with `cinc databag item create` or `edit`.", id, bag, bag, id)
+		return fmt.Errorf("item %[1]q for data bag %[2]q already holds encrypted values, and encrypting them again would make it unreadable. Give us the plaintext values instead (`%[3]s databag secret show %[2]s %[1]s` prints them), or store the encrypted item as-is with `%[3]s databag item create` or `edit`.", id, bag, progname.Get())
 	}
 	return err
 }
 
 // decryptItemError turns a Decrypt failure into a conversational message.
-// A not-encrypted item points the user at the plaintext command; an
-// authentication failure suggests a wrong secret. Anything else passes
-// through unchanged.
-func decryptItemError(err error, bag, id string) error {
+// A not-encrypted item points the user at the plaintext commands; an
+// authentication failure explains shared secrets, says which secret we
+// tried (source), and how to point cinc at the right one. Anything else
+// passes through unchanged.
+func decryptItemError(cmd *cobra.Command, err error, bag, id, source string) error {
+	prog := progname.Get()
 	switch {
 	case errors.Is(err, cinc.ErrNotEncrypted):
-		return fmt.Errorf("item %q in data bag %q isn't encrypted — read it with `cinc databag item show %s %s` instead.", id, bag, bag, id)
+		return fmt.Errorf("item %[1]q in data bag %[2]q isn't encrypted, so there's nothing to decrypt. Read it with `%[3]s databag item show %[2]s %[1]s`, or change it with `%[3]s databag item edit %[2]s %[1]s`.", id, bag, prog)
 	case errors.Is(err, cinc.ErrDataBagAuth):
-		return fmt.Errorf("couldn't decrypt item %q in data bag %q — wrong secret? Check your --secret-file or the secret_file key in your profile.", id, bag)
+		return fmt.Errorf(`couldn't decrypt item %q in data bag %q with the secret we used, %s. That's probably the wrong secret for this item.
+
+An encrypted data bag item is locked with a shared secret: a piece of text chosen by whoever encrypted it. Only that exact text unlocks the item, so any other secret, even one that works for a different data bag, fails like this.
+
+To fix it, get the secret this item was encrypted with (whoever set up the data bag has it), save it in a file, and pass it with --secret-file <path>. To use it every time, add secret_file = "<path>" to your %q profile in %s.`,
+			id, bag, source, profileNameForCommand(cmd), resolveConfigPath(cmd))
 	}
 	return err
 }

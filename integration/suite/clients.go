@@ -133,13 +133,17 @@ func testClientCreateMissingPublicKeyFile(t *testing.T, _ Target, c *cli) {
 }
 
 // testClientCreateInvalidPublicKey registers something that is not a public
-// key. erchef validates the PEM and answers 400; nothing is created.
+// key. The CLI refuses it before anything reaches the server, and says what
+// a public key file looks like; nothing is created.
 func testClientCreateInvalidPublicKey(t *testing.T, _ Target, c *cli) {
 	name := uniqueName(t, "client")
 	c.cleanup("client", "delete", name)
 	bad := filepath.Join(t.TempDir(), "bad.pub")
 	writeFile(t, bad, "this is not a public key\n")
-	wantStatus(t, c.fail("client", "create", name, "--public-key", bad), 400)
+	r := c.fail("client", "create", name, "--public-key", bad)
+	if !strings.Contains(r.stderr, bad) || !strings.Contains(r.stderr, "doesn't look like a public key") {
+		t.Errorf("the error should say the file isn't a public key: %s", r)
+	}
 	wantNotFound(t, c.fail("client", "show", name))
 }
 

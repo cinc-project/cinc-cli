@@ -313,7 +313,7 @@ func testUserPasswordPrompt(t *testing.T, _ Target, c *cli) {
 	}
 
 	r := c.exec(runOpts{stdin: "\n"}, "user", "password", u.name)
-	wantFailure(t, r, "non-empty password")
+	wantFailure(t, r, "password can't be empty")
 }
 
 // testUserPasswordTooShort checks erchef's password rule: fewer than 6

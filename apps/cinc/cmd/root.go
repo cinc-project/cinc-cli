@@ -64,6 +64,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newSearchCmd())
 	root.AddCommand(newExploreCmd())
 
+	explainArgErrors(root)
 	return root
 }
 

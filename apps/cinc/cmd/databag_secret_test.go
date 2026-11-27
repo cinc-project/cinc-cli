@@ -381,3 +381,69 @@ func TestDataBagSecretErrorsWhenNoSecret(t *testing.T) {
 		t.Errorf("error should point at --secret-file and the secret_file key: %v", err)
 	}
 }
+
+// A wrong secret should say where the secret came from, how shared
+// secrets work, and how to point cinc at the right one.
+func TestDataBagSecretWrongSecretExplainsWhereItLooked(t *testing.T) {
+	current := encryptedItem(t, cinc.DataBagItem{"id": "mysql", "password": "hunter2"}, "right-secret")
+	var gotPut cinc.DataBagItem
+	var gotPath string
+	srv := databagItemServer(t, "passwords", "mysql", current, &gotPut, &gotPath)
+	cfg := writeDataBagConfig(t, srv.URL)
+	secretPath := writeSecretFile(t, "wrong-secret")
+
+	for _, tc := range []struct {
+		flags []string
+		from  string
+	}{
+		{[]string{"--secret", "wrong-secret"}, "the --secret value"},
+		{[]string{"--secret-file", secretPath}, secretPath + " (from --secret-file)"},
+	} {
+		root := newRootCmd()
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(append([]string{"databag", "secret", "show", "passwords", "mysql", "--config", cfg}, tc.flags...))
+		wantAll(t, root.Execute(),
+			`couldn't decrypt item "mysql" in data bag "passwords"`,
+			"wrong secret",
+			tc.from,
+			"shared secret",
+			"--secret-file <path>",
+			"secret_file",
+			cfg,
+		)
+	}
+}
+
+func TestDataBagSecretNotEncryptedHasNoEmDash(t *testing.T) {
+	var gotPut cinc.DataBagItem
+	var gotPath string
+	srv := databagItemServer(t, "passwords", "mysql", cinc.DataBagItem{"id": "mysql", "password": "plain"}, &gotPut, &gotPath)
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"databag", "secret", "show", "passwords", "mysql",
+		"--secret", "x", "--config", writeDataBagConfig(t, srv.URL)})
+	wantAll(t, root.Execute(), "isn't encrypted", "cinc databag item show passwords mysql", "cinc databag item edit passwords mysql")
+}
+
+func TestDataBagSecretMissingSecretFileNamesItsSource(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope")
+	t.Setenv("CINC_SECRET_FILE", missing)
+	t.Setenv("CHEF_SECRET_FILE", "")
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"databag", "secret", "show", "passwords", "mysql", "--config", writeDataBagConfig(t, "http://127.0.0.1:1")})
+	err := root.Execute()
+	wantAll(t, err, missing, "doesn't exist", "$CINC_SECRET_FILE")
+}
+
+func TestDataBagSecretBothFlagsHasNoEmDash(t *testing.T) {
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"databag", "secret", "show", "passwords", "mysql",
+		"--secret", "a", "--secret-file", writeSecretFile(t, "b"), "--config", writeDataBagConfig(t, "http://127.0.0.1:1")})
+	wantAll(t, root.Execute(), "can't use --secret and --secret-file together", "only use one")
+}

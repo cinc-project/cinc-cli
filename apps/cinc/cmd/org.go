@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newOrgCmd builds the `cinc org` command group, the cinc equivalent of
@@ -159,6 +160,9 @@ Create an org and stream the validator key to stdout.
 cinc org create acme "Acme Corporation"`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkKeyFileDest("--filename", keyFile); err != nil {
+				return err
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
@@ -170,7 +174,8 @@ cinc org create acme "Acme Corporation"`,
 			if err != nil {
 				return err
 			}
-			return emitPrivateKey(cmd, fmt.Sprintf("Created organization %q", args[0]), "validator key", created.PrivateKey, keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created organization %q", args[0]), "validator key", created.PrivateKey, keyFile,
+				fmt.Sprintf("make a new one by reregistering the %s-validator client in the new organization (`%s client reregister %s-validator --key-file <path>`, with a profile that points at that organization)", args[0], progname.Get(), args[0]))
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "filename", "f", "", "write the generated validator private key to this file instead of stdout")

@@ -3,6 +3,7 @@ package printer
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,10 @@ func TestParseFormat(t *testing.T) {
 		}
 		if err == nil {
 			t.Errorf("ParseFormat(%q) should have returned an error", tc.in)
+			continue
+		}
+		if !strings.Contains(err.Error(), "human or json") || strings.Contains(err.Error(), "printer:") {
+			t.Errorf("ParseFormat(%q) error = %q, want a plain message listing human and json", tc.in, err)
 		}
 	}
 }

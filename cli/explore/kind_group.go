@@ -3,7 +3,6 @@ package explore
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	cinc "github.com/cinc-project/cinc-api"
 )
@@ -70,7 +69,7 @@ func groupSummaryFields(g *cinc.Group) []summaryField {
 func (k groupKind) Save(ctx context.Context, c *cinc.Client, name string, edited []byte) error {
 	var g cinc.Group
 	if err := json.Unmarshal(edited, &g); err != nil {
-		return fmt.Errorf("parse edited group: %w", err)
+		return editedJSONError("group", edited, err)
 	}
 	// Pin the selected group, so an edited name in the JSON can't send
 	// the update to a different one.

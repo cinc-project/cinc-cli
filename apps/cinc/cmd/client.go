@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	cinc "github.com/cinc-project/cinc-api"
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newClientCmd builds the `cinc client` command group.
@@ -41,6 +41,9 @@ func newClientReregisterCmd() *cobra.Command {
 cinc client reregister worker-01 --key-file worker-01.pem`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkKeyFileDest("--key-file", keyFile); err != nil {
+				return err
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
@@ -51,9 +54,12 @@ cinc client reregister worker-01 --key-file worker-01.pem`,
 				return err
 			}
 			if key.PrivateKey == "" {
-				return fmt.Errorf("cinc: server returned no private key when reregistering %q", name)
+				// The server answered success but left out the key, so the
+				// old default key may already be gone with no replacement.
+				return fmt.Errorf("the server accepted the reregister for client %[1]q but didn't send back a new private key, so we have nothing to save. Its old default key may no longer work.\n\nRun `%[2]s client key list %[1]s` to see the client's keys now, then try `%[2]s client reregister %[1]s` again. If it keeps happening, ask whoever runs your Cinc server to check its logs.", name, progname.Get())
 			}
-			return emitPrivateKey(cmd, fmt.Sprintf("Reregistered client %q", name), "key", key.PrivateKey, keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Reregistered client %q", name), "key", key.PrivateKey, keyFile,
+				fmt.Sprintf("run `%s client reregister %s` again with a --key-file path you can write to", progname.Get(), name))
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "key-file", "f", "", "write the new private key to this file instead of stdout")
@@ -171,23 +177,27 @@ Register a public key you already have; the server generates no key.
 cinc client create worker-01 --public-key worker-01.pub`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			req := &cinc.APIClient{Name: args[0], Validator: validator}
+			if publicKeyFile != "" {
+				pub, err := readPublicKey(publicKeyFile, req.Name)
+				if err != nil {
+					return err
+				}
+				req.PublicKey = pub
+			}
+			if err := checkKeyFileDest("--key-file", keyFile); err != nil {
+				return err
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
-			}
-			req := &cinc.APIClient{Name: args[0], Validator: validator}
-			if publicKeyFile != "" {
-				pem, err := os.ReadFile(publicKeyFile)
-				if err != nil {
-					return fmt.Errorf("cinc: read public key: %w", err)
-				}
-				req.PublicKey = string(pem)
 			}
 			created, _, err := c.Clients.Create(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return emitPrivateKey(cmd, fmt.Sprintf("Created client %q", req.Name), "key", created.ChefKey.PrivateKey, keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created client %q", req.Name), "key", created.ChefKey.PrivateKey, keyFile,
+				fmt.Sprintf("run `%s client reregister %s --key-file <path>` to make a new one", progname.Get(), req.Name))
 		},
 	}
 	cmd.Flags().BoolVar(&validator, "validator", false, "create a validator client")

@@ -428,7 +428,7 @@ func (m Model) saveStructural() Model {
 func (m Model) save(candidate []byte) Model {
 	parsed, err := parseTree(candidate)
 	if err != nil {
-		m.errMsg = err.Error()
+		m.errMsg = "not saved yet: " + err.Error()
 		return m
 	}
 	canonical := parsed.bytes()

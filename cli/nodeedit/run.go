@@ -1,8 +1,6 @@
 package nodeedit
 
 import (
-	"fmt"
-
 	tea "github.com/charmbracelet/bubbletea"
 	cinc "github.com/cinc-project/cinc-api"
 
@@ -22,11 +20,11 @@ func Run(node *cinc.Node) (*cinc.Node, bool, error) {
 	}
 	final, err := tea.NewProgram(runner{m: m}, tea.WithAltScreen()).Run()
 	if err != nil {
-		return nil, false, fmt.Errorf("cinc: node edit failed: %w", err)
+		return nil, false, jsoneditor.RunFailed(err)
 	}
 	r := final.(runner)
 	if r.m.aborted {
-		return nil, false, fmt.Errorf("cinc: edit aborted")
+		return nil, false, jsoneditor.ErrAborted
 	}
 	return r.m.result, r.m.changed, nil
 }
