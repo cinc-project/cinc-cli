@@ -339,7 +339,13 @@ client_key      = %q
 		t.Fatal("expected an error when the key file is unreadable")
 	}
 	msg := err.Error()
-	for _, want := range []string{keyPath, cfgPath, "permission"} {
+	for _, want := range []string{
+		"can't read your client key",
+		keyPath,
+		cfgPath,
+		"permission",
+		"chmod 600 " + keyPath,
+	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error %q must mention %q", msg, want)
 		}
@@ -413,8 +419,24 @@ client_key      = "~/missing.pem"
 	if want := filepath.Join(home, "missing.pem"); !strings.Contains(err.Error(), want) {
 		t.Errorf("error %q should name the expanded path %s", err, want)
 	}
-	if !strings.Contains(err.Error(), "can't find your client key") {
-		t.Errorf("error %q should be the friendly missing-key message", err)
+	// Someone who has never used Cinc should learn what the key is for,
+	// which settings point at it, and what to do next.
+	for _, want := range []string{
+		"can't find your client key",
+		`"default" profile`,
+		cfgPath,
+		"https://x.example.com",
+		`"tim"`,
+		"signs every request",
+		"client_key",
+		"cinc config create",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got:\n%s", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "—") {
+		t.Errorf("error should not use an em dash, got:\n%s", err)
 	}
 }
 
