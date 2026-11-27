@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
 
 	cinc "github.com/cinc-project/cinc-api"
 
@@ -104,7 +105,7 @@ type responseExplainer struct {
 // said is the line that keeps the server's own words and the request in
 // the message.
 func (e responseExplainer) said() string {
-	msg := e.er.ServerMessage()
+	msg := e.serverMessage()
 	if msg == "" {
 		msg = "(no message)"
 	}
@@ -127,10 +128,17 @@ func (e responseExplainer) on() string {
 	return ""
 }
 
+// serverMessage is what the server said, with control characters and
+// terminal escape sequences removed: it is printed to the user's terminal,
+// and a hostile server could otherwise repaint or retitle it.
+func (e responseExplainer) serverMessage() string {
+	return sanitize(e.er.ServerMessage())
+}
+
 // actor is the name the request was signed as: the one the server quoted
-// back, else the profile's client_name.
+// back when it is a plain Chef name, else the profile's client_name.
 func (e responseExplainer) actor() string {
-	if m := quotedName.FindStringSubmatch(e.er.ServerMessage()); m != nil {
+	if m := quotedName.FindStringSubmatch(e.serverMessage()); m != nil && chefName.MatchString(m[1]) {
 		return m[1]
 	}
 	return e.t.ClientName
@@ -145,8 +153,10 @@ func (e responseExplainer) who() string {
 }
 
 // actorArg is the signer as a command argument, or placeholder.
+// It is only ever a plain Chef name, since users paste these commands
+// into a shell.
 func (e responseExplainer) actorArg(placeholder string) string {
-	if a := e.actor(); a != "" {
+	if a := e.actor(); chefName.MatchString(a) {
 		return a
 	}
 	return placeholder
@@ -183,11 +193,32 @@ func (e responseExplainer) cmd(args string) string {
 // organization 'acme'".
 var quotedName = regexp.MustCompile(`'([^']+)'`)
 
+// chefName is the character set of a Chef client, user or object name.
+// Only a name that matches goes into a suggested command.
+var chefName = regexp.MustCompile(`^[A-Za-z0-9_.:-]+$`)
+
+// ansiEscape matches terminal escape sequences: CSI (colors, cursor
+// movement, screen clears), OSC (window titles, hyperlinks), and any other
+// two-byte escape.
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]?`)
+
+// sanitize removes escape sequences from s and turns any other control
+// character into a space, so server text can't drive the terminal.
+func sanitize(s string) string {
+	s = ansiEscape.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 // missingPerm picks the permission out of "missing delete permission".
 var missingPerm = regexp.MustCompile(`missing (\w+) permission`)
 
 func (e responseExplainer) badRequest() string {
-	msg := strings.TrimSpace(e.er.ServerMessage())
+	msg := strings.TrimSpace(e.serverMessage())
 	if msg == "" {
 		return fmt.Sprintf("the server refused the request as invalid without saying why (400 from %s %s). Check the names and values you gave and try again.",
 			e.er.Method, e.er.Path)
@@ -197,7 +228,7 @@ func (e responseExplainer) badRequest() string {
 }
 
 func (e responseExplainer) unauthorized() string {
-	lower := strings.ToLower(e.er.ServerMessage())
+	lower := strings.ToLower(e.serverMessage())
 	who := e.who()
 	key := "the client key"
 	if e.t.KeyPath != "" {
@@ -251,7 +282,7 @@ That usually means one of these:
 }
 
 func (e responseExplainer) forbidden() string {
-	msg := e.er.ServerMessage()
+	msg := e.serverMessage()
 	if strings.Contains(msg, "not associated with organization") && e.s.org != "" {
 		return fmt.Sprintf(`%s isn't a member of organization %q%s.
 
@@ -293,7 +324,7 @@ The server knows who you are; it's the permissions that stop you. Each object ha
 }
 
 func (e responseExplainer) notFound() string {
-	lower := strings.ToLower(e.er.ServerMessage())
+	lower := strings.ToLower(e.serverMessage())
 	s := e.s
 	if s.org != "" && (strings.Contains(lower, "cannot find org") || strings.Contains(lower, "cannot find organization") ||
 		(strings.Contains(lower, "organization") && strings.Contains(lower, "does not exist"))) {
@@ -319,7 +350,7 @@ Everything on a Cinc server lives inside an organization, and the organization c
 func (e responseExplainer) conflict() string {
 	s := e.s
 	switch {
-	case strings.Contains(e.er.ServerMessage(), "is frozen") && s.name != "":
+	case strings.Contains(e.serverMessage(), "is frozen") && s.name != "":
 		return fmt.Sprintf("%s is frozen, so it can't be replaced.\n\n%s\n\nBump the version in the cookbook's metadata.rb and upload it again.",
 			s.phrase(), e.said())
 	case s.kind == "member":
