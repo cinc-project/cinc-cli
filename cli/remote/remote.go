@@ -52,6 +52,13 @@ type CommandResult struct {
 	// --exit-on-error stopped the run first. It is not a failure: the host
 	// was not asked to do anything, so nothing is known about it.
 	Skipped bool `json:"skipped,omitempty"`
+	// Reason classifies a failure that happened before the command could
+	// run, such as an unknown host key or a refused connection; it is one of
+	// the Reason constants. It is empty when the command itself ran.
+	Reason string `json:"reason,omitempty"`
+	// Hint explains Reason: why it happens and what to do about it. Error
+	// holds the one-line summary.
+	Hint string `json:"hint,omitempty"`
 }
 
 // Runner executes a command on a target.
@@ -62,48 +69,51 @@ type Runner interface {
 // NativeRunner is a Runner backed by golang.org/x/crypto/ssh.
 type NativeRunner struct{}
 
-// Run executes command on target through SSH.
+// Run executes command on target through SSH. A failure before the command
+// could run comes back with Reason and Hint set, explaining it.
 func (NativeRunner) Run(ctx context.Context, target Target, command string, opts SSHOptions) CommandResult {
 	result := CommandResult{Host: target.Host}
 	var err error
 	opts, err = applyOpenSSHConfig(target.Host, opts)
 	if err != nil {
-		result.ExitCode = 255
-		result.Error = err.Error()
-		return result
+		return failed(result, err)
 	}
 	config, closeAgent, err := clientConfig(opts)
 	if err != nil {
-		result.ExitCode = 255
-		result.Error = err.Error()
-		return result
+		return failed(result, err)
 	}
 	// Held open for the duration of the session: the agent signs during the
 	// handshake, and releasing it here keeps a fleet-wide run from exhausting
 	// the process file descriptor limit one host at a time.
 	defer closeAgent()
-	host := net.JoinHostPort(target.Host, strconv.Itoa(opts.Port))
-	dialer := net.Dialer{Timeout: opts.Timeout}
+	// Remember the key the server offers, so a host key error can show its
+	// fingerprint for the user to check.
+	var presented ssh.PublicKey
+	verify := config.HostKeyCallback
+	config.HostKeyCallback = func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		presented = key
+		return verify(hostname, remote, key)
+	}
+	host := net.JoinHostPort(target.Host, strconv.Itoa(config.port))
+	dialer := net.Dialer{Timeout: config.Timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", host)
 	if err != nil {
-		result.ExitCode = 255
-		result.Error = fmt.Sprintf("dial ssh: %v", err)
-		return result
+		return failed(result, connectError(target.Host, opts.withDefaults(), err))
 	}
 	defer func() { _ = conn.Close() }()
-	sshConn, chans, reqs, err := ssh.NewClientConn(conn, host, config)
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, host, config.ClientConfig)
 	if err != nil {
-		result.ExitCode = 255
-		result.Error = fmt.Sprintf("ssh handshake: %v", err)
-		return result
+		return failed(result, handshakeError(target.Host, opts.withDefaults(), config.knownHosts, presented, config.offered, err))
 	}
 	client := ssh.NewClient(sshConn, chans, reqs)
 	defer func() { _ = client.Close() }()
 	session, err := client.NewSession()
 	if err != nil {
-		result.ExitCode = 255
-		result.Error = fmt.Sprintf("new ssh session: %v", err)
-		return result
+		return failed(result, &Error{
+			Reason:  ReasonSession,
+			Summary: fmt.Sprintf("logged in to %s, but couldn't start a session to run the command: %v", target.Host, err),
+			Err:     err,
+		})
 	}
 	defer func() { _ = session.Close() }()
 	var stdout, stderr bytes.Buffer
@@ -125,13 +135,56 @@ func (NativeRunner) Run(ctx context.Context, target Target, command string, opts
 	return result
 }
 
+// failed records err on result as a failure before the command ran.
+func failed(result CommandResult, err error) CommandResult {
+	result.ExitCode = 255
+	if e, ok := errors.AsType[*Error](err); ok {
+		result.Reason, result.Error, result.Hint = e.Reason, e.Summary, e.Hint
+		return result
+	}
+	result.Error = err.Error()
+	return result
+}
+
+// withDefaults fills in the port and timeout used when none is set.
+func (o SSHOptions) withDefaults() SSHOptions {
+	if o.Port == 0 {
+		o.Port = 22
+	}
+	if o.Timeout == 0 {
+		o.Timeout = 30 * time.Second
+	}
+	return o
+}
+
+// CheckOptions checks everything about opts that doesn't depend on which
+// host is being reached: a user is set, the identity file is a usable
+// private key, and known_hosts can be read when host keys are verified.
+// Callers run it before doing anything with a side effect, so a typo in
+// --ssh-identity-file doesn't surface only after work has started, and
+// doesn't repeat once per host.
+func CheckOptions(opts SSHOptions) error {
+	if opts.User == "" {
+		return missingUserError()
+	}
+	if opts.IdentityFile != "" {
+		if _, err := loadSigner(opts.IdentityFile); err != nil {
+			return err
+		}
+	}
+	if _, _, err := hostKeyCallback(opts.VerifyHost); err != nil {
+		return err
+	}
+	return nil
+}
+
 func applyOpenSSHConfig(host string, opts SSHOptions) (SSHOptions, error) {
 	if !opts.UseAgent || opts.AgentSocket != "" {
 		return opts, nil
 	}
 	identityAgent, err := sshConfigGet(host, "IdentityAgent")
 	if err != nil {
-		return opts, fmt.Errorf("read ssh config IdentityAgent: %w", err)
+		return opts, sshConfigError(host, err)
 	}
 	if strings.EqualFold(identityAgent, "none") {
 		opts.UseAgent = false
@@ -183,47 +236,74 @@ func RunMany(ctx context.Context, runner Runner, targets []Target, command strin
 	return results
 }
 
+// sshClientConfig is an ssh.ClientConfig plus what an error message needs
+// to explain a failed connection.
+type sshClientConfig struct {
+	*ssh.ClientConfig
+	port int
+	// knownHosts is the known_hosts file host keys are checked against.
+	knownHosts string
+	// offered describes, in words, each login method we will try.
+	offered []string
+}
+
 // clientConfig assembles the SSH client configuration. The returned cleanup
 // releases the agent connection the auth methods hold; it is always non-nil
 // and safe to defer.
-func clientConfig(opts SSHOptions) (*ssh.ClientConfig, func(), error) {
+func clientConfig(opts SSHOptions) (*sshClientConfig, func(), error) {
 	noop := func() {}
 	if opts.User == "" {
-		return nil, noop, fmt.Errorf("ssh user is required")
+		return nil, noop, missingUserError()
 	}
-	if opts.Port == 0 {
-		opts.Port = 22
-	}
-	if opts.Timeout == 0 {
-		opts.Timeout = 30 * time.Second
-	}
-	auth, cleanup, err := authMethods(opts)
+	opts = opts.withDefaults()
+	auth, offered, cleanup, err := authMethods(opts)
 	if err != nil {
 		return nil, noop, err
 	}
 	if len(auth) == 0 {
 		cleanup()
-		return nil, noop, fmt.Errorf("no SSH authentication method configured")
+		return nil, noop, noAuthMethodError(opts)
 	}
-	hostKeyCallback, err := hostKeyCallback(opts.VerifyHost)
+	hostKeyCallback, knownHosts, err := hostKeyCallback(opts.VerifyHost)
 	if err != nil {
 		cleanup()
 		return nil, noop, err
 	}
-	return &ssh.ClientConfig{
-		User:            opts.User,
-		Auth:            auth,
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         opts.Timeout,
+	return &sshClientConfig{
+		ClientConfig: &ssh.ClientConfig{
+			User:            opts.User,
+			Auth:            auth,
+			HostKeyCallback: hostKeyCallback,
+			Timeout:         opts.Timeout,
+		},
+		port:       opts.Port,
+		knownHosts: knownHosts,
+		offered:    offered,
 	}, cleanup, nil
 }
 
-// authMethods builds the authentication methods for one connection. The agent
-// method holds an open unix socket for as long as authentication may need it,
-// so the returned cleanup closes it; it is always non-nil and safe to defer.
-func authMethods(opts SSHOptions) ([]ssh.AuthMethod, func(), error) {
+// loadSigner reads and parses a private key file.
+func loadSigner(path string) (ssh.Signer, error) {
+	path = expandHome(path)
+	key, err := os.ReadFile(path)
+	if err != nil {
+		return nil, identityReadError(path, err)
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, identityParseError(path, key, err)
+	}
+	return signer, nil
+}
+
+// authMethods builds the authentication methods for one connection, and a
+// description of each for error messages. The agent method holds an open
+// unix socket for as long as authentication may need it, so the returned
+// cleanup closes it; it is always non-nil and safe to defer.
+func authMethods(opts SSHOptions) ([]ssh.AuthMethod, []string, func(), error) {
 	var (
 		methods []ssh.AuthMethod
+		offered []string
 		conns   []net.Conn
 	)
 	cleanup := func() {
@@ -232,17 +312,13 @@ func authMethods(opts SSHOptions) ([]ssh.AuthMethod, func(), error) {
 		}
 	}
 	if opts.IdentityFile != "" {
-		key, err := os.ReadFile(expandHome(opts.IdentityFile))
+		signer, err := loadSigner(opts.IdentityFile)
 		if err != nil {
 			cleanup()
-			return nil, func() {}, fmt.Errorf("read ssh identity file: %w", err)
-		}
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			cleanup()
-			return nil, func() {}, fmt.Errorf("parse ssh identity file: %w", err)
+			return nil, nil, func() {}, err
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
+		offered = append(offered, "the key in "+expandHome(opts.IdentityFile))
 	}
 	if opts.UseAgent {
 		// Only the first agent that answers is used. Every key an agent holds
@@ -256,6 +332,7 @@ func authMethods(opts SSHOptions) ([]ssh.AuthMethod, func(), error) {
 			}
 			conns = append(conns, conn)
 			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+			offered = append(offered, "the keys in your ssh-agent ("+sock+")")
 			break
 		}
 	}
@@ -267,8 +344,9 @@ func authMethods(opts SSHOptions) ([]ssh.AuthMethod, func(), error) {
 			}
 			return answers, nil
 		}))
+		offered = append(offered, "the password from --ssh-password")
 	}
-	return methods, cleanup, nil
+	return methods, offered, cleanup, nil
 }
 
 // agentSocketCandidates lists agent sockets in the order they should be
@@ -299,19 +377,23 @@ func agentSocketCandidates(explicit string) []string {
 	return paths
 }
 
-func hostKeyCallback(verify bool) (ssh.HostKeyCallback, error) {
+// hostKeyCallback checks host keys against ~/.ssh/known_hosts, or accepts
+// any key when verify is off. It also returns the known_hosts path, for
+// error messages.
+func hostKeyCallback(verify bool) (ssh.HostKeyCallback, string, error) {
 	if !verify {
-		return ssh.InsecureIgnoreHostKey(), nil
+		return ssh.InsecureIgnoreHostKey(), "", nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("locate home directory: %w", err)
+		return nil, "", homeDirError(err)
 	}
-	callback, err := knownhosts.New(filepath.Join(home, ".ssh", "known_hosts"))
+	path := filepath.Join(home, ".ssh", "known_hosts")
+	callback, err := knownhosts.New(path)
 	if err != nil {
-		return nil, fmt.Errorf("load known_hosts: %w", err)
+		return nil, "", knownHostsLoadError(path, err)
 	}
-	return callback, nil
+	return callback, path, nil
 }
 
 func expandHome(path string) string {

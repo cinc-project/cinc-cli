@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/rubylit"
 )
 
@@ -24,28 +25,39 @@ type BootstrapOptions struct {
 	BootstrapVersion string
 }
 
-// BootstrapCommand builds the shell command executed on the target.
-func BootstrapCommand(opts BootstrapOptions) (string, error) {
+// ValidateBootstrapOptions checks the values the bootstrap script embeds,
+// apart from the client key. The command calls it before registering a
+// client on the server, so a value the script would refuse doesn't leave a
+// client behind.
+func ValidateBootstrapOptions(opts BootstrapOptions) error {
 	if opts.NodeName == "" {
-		return "", fmt.Errorf("node name is required")
+		return fmt.Errorf("bootstrap needs a node name, the name the Cinc Server will know this machine by. Pass one with --node-name, such as --node-name web01.")
 	}
 	if opts.ServerURL == "" {
-		return "", fmt.Errorf("server URL is required")
-	}
-	if opts.ClientKeyPEM == "" {
-		return "", fmt.Errorf("client key is required")
+		return fmt.Errorf("bootstrap needs your Cinc Server's URL to write into the node's client.rb, and your profile doesn't set one. Set cinc_server_url in your profile, or run `%s config create`.", progname.Get())
 	}
 	// rubylit.Quote keeps these out of Ruby's reach, but the client.rb it builds
 	// is delivered inside a shell heredoc one layer down. A newline can close
 	// that heredoc early and turn the remainder into commands run through
 	// sudo on the target, so reject it here rather than try to escape it.
-	for _, field := range []struct{ name, value string }{
-		{"node name", opts.NodeName},
-		{"server URL", opts.ServerURL},
+	for _, field := range []struct{ name, value, fix string }{
+		{"node name", opts.NodeName, "Pass a single-line name with --node-name."},
+		{"server URL", opts.ServerURL, "Fix cinc_server_url in your profile."},
 	} {
 		if strings.ContainsAny(field.value, "\n\r") {
-			return "", fmt.Errorf("refusing a %s containing a newline: %q", field.name, field.value)
+			return fmt.Errorf("the %s %q contains a line break (a newline), which bootstrap can't allow: the rest of the value would run as shell commands on the target. %s", field.name, field.value, field.fix)
 		}
+	}
+	return nil
+}
+
+// BootstrapCommand builds the shell command executed on the target.
+func BootstrapCommand(opts BootstrapOptions) (string, error) {
+	if err := ValidateBootstrapOptions(opts); err != nil {
+		return "", err
+	}
+	if opts.ClientKeyPEM == "" {
+		return "", fmt.Errorf("bootstrap needs the new client's private key to install on the node, and none was given.")
 	}
 	if opts.BootstrapURL == "" {
 		opts.BootstrapURL = DefaultBootstrapURL
