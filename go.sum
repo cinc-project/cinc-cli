@@ -30,8 +30,8 @@ github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSg
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
 github.com/cinc-project/cinc-api v0.19.0 h1:CrNhBm2gafAWnz0gFqqaF8ma/E84AFabtVaiEETpxoM=
 github.com/cinc-project/cinc-api v0.19.0/go.mod h1:LtNxs1SialgPnjXNjl579rpL75DHMyp9SfYvPP/UvWE=
-github.com/cinc-project/cinc-supermarket-api v0.6.0 h1:y/CzPsjeQWjbcfb3MFfwyw//kmF+hbY1eFkCSyMMJRs=
-github.com/cinc-project/cinc-supermarket-api v0.6.0/go.mod h1:EAxUjVWn4otvz06+I9rbfIivivUrOxj7tAEKKnjIdug=
+github.com/cinc-project/cinc-supermarket-api v1.0.0 h1:fd13UBhaGgnv7hqQQKRdIpjF8Yxxhcp5/GW8R40Hdqw=
+github.com/cinc-project/cinc-supermarket-api v1.0.0/go.mod h1:Jq3bmo/YWVx3cVI0NuG1MxX/9bJyurb5JYbn5pHuG6c=
 github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSEFgwIwO+UVM8=
 github.com/clipperhouse/displaywidth v0.11.0/go.mod h1:bkrFNkf81G8HyVqmKGxsPufD3JhNl3dSqnGhOoSD/o0=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=

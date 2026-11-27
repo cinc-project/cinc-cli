@@ -39,9 +39,9 @@ const (
 func (s sortOrder) orderParam() string {
 	switch s {
 	case sortMostDownloaded:
-		return "most_downloaded"
+		return sm.OrderMostDownloaded
 	case sortRecentlyUpdated:
-		return "recently_updated"
+		return sm.OrderRecentlyUpdated
 	default:
 		return ""
 	}

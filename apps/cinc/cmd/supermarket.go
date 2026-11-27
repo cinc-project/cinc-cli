@@ -53,6 +53,9 @@ cinc supermarket list`,
 			if err != nil {
 				return err
 			}
+			if err := supermarket.ValidateListOrder(order); err != nil {
+				return err
+			}
 			client, err := supermarket.NewAnonymous(resolveSupermarketSite(cmd, site))
 			if err != nil {
 				return err
@@ -70,7 +73,7 @@ cinc supermarket list`,
 		},
 	}
 	cmd.Flags().StringVar(&site, "supermarket-site", "", "URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)")
-	cmd.Flags().StringVar(&order, "order", "", "sort order: recently_updated, recently_added, most_downloaded, most_followed")
+	cmd.Flags().StringVar(&order, "order", "", "sort order: "+strings.Join(supermarket.ListOrders, ", "))
 	cmd.Flags().StringVar(&user, "user", "", "only show cookbooks owned by this Supermarket username")
 	cmd.Flags().IntVar(&limit, "limit", 0, "cap the number of entries returned (default: all)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "include maintainer and latest version per cookbook")

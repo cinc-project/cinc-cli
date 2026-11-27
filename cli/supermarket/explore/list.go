@@ -70,8 +70,13 @@ func applyCookbooksLoaded(m model, msg cookbooksLoadedMsg) (tea.Model, tea.Cmd) 
 		m.browse.previewName = ""
 	}
 	m.browse.start = msg.page.Start
+	// A short page is the last one. Supermarket's search total is the size
+	// of the whole catalog, so in search mode we count what has loaded.
+	m.browse.hasMore = msg.page.HasMore() && len(msg.page.Items) >= pageSize
 	m.browse.total = msg.page.Total
-	m.browse.hasMore = msg.page.HasMore()
+	if msg.mode == modeSearch {
+		m.browse.total = len(m.browse.items)
+	}
 	m.browse.loading = false
 	m.browse.loadingMore = false
 	if !msg.append {
@@ -408,7 +413,11 @@ func renderHeader(m model, width int) string {
 	sorts := renderSortBar(m)
 	stats := ""
 	if m.browse.total > 0 {
-		stats = m.styles.Status.Render(fmt.Sprintf("%d results", m.browse.total))
+		count := fmt.Sprintf("%d results", m.browse.total)
+		if m.browse.mode == modeSearch && m.browse.hasMore {
+			count = fmt.Sprintf("%d+ results", m.browse.total)
+		}
+		stats = m.styles.Status.Render(count)
 	}
 	sortLine := lipgloss.JoinHorizontal(lipgloss.Top, sorts, strings.Repeat(" ", spacerWidth(width, sorts, stats)), stats)
 

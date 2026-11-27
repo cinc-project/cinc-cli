@@ -3,6 +3,7 @@ package explore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,54 @@ func TestApplyCookbooksLoadedPopulatesItems(t *testing.T) {
 	}
 	if got.loading {
 		t.Error("loading should be false after load")
+	}
+}
+
+func TestApplyCookbooksLoadedSearchIgnoresCatalogTotal(t *testing.T) {
+	m := newTestModel(t, &fakeClient{})
+	m.browse.mode = modeSearch
+	m.browse.query = "nginx"
+	msg := cookbooksLoadedMsg{
+		mode: modeSearch, query: "nginx",
+		// Supermarket reports the whole catalog as the search total.
+		page: sm.Page[sm.CookbookSummary]{
+			Start: 0, Total: 4000,
+			Items: []sm.CookbookSummary{cookbookSummary("nginx", "x"), cookbookSummary("nginx_simple", "y")},
+		},
+	}
+	next, _ := applyCookbooksLoaded(m, msg)
+	got := next.(model)
+	if got.browse.hasMore {
+		t.Error("hasMore = true, want false: a short page is the last page")
+	}
+	if got.browse.total != 2 {
+		t.Errorf("total = %d, want 2", got.browse.total)
+	}
+	if header := renderHeader(got, 120); !strings.Contains(header, "2 results") {
+		t.Errorf("header = %q, want it to show 2 results", header)
+	}
+}
+
+func TestApplyCookbooksLoadedSearchFullPageShowsOpenEndedCount(t *testing.T) {
+	m := newTestModel(t, &fakeClient{})
+	m.browse.mode = modeSearch
+	m.browse.query = "a"
+	items := make([]sm.CookbookSummary, pageSize)
+	for i := range items {
+		items[i] = cookbookSummary(fmt.Sprintf("cb-%02d", i), "x")
+	}
+	msg := cookbooksLoadedMsg{
+		mode: modeSearch, query: "a",
+		page: sm.Page[sm.CookbookSummary]{Start: 0, Total: 4000, Items: items},
+	}
+	next, _ := applyCookbooksLoaded(m, msg)
+	got := next.(model)
+	if !got.browse.hasMore {
+		t.Error("hasMore = false, want true after a full page")
+	}
+	want := fmt.Sprintf("%d+ results", pageSize)
+	if header := renderHeader(got, 120); !strings.Contains(header, want) {
+		t.Errorf("header = %q, want it to show %q", header, want)
 	}
 }
 
