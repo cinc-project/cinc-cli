@@ -19,8 +19,11 @@ package explore
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	sm "github.com/cinc-project/cinc-supermarket-api"
+
+	"github.com/cinc-project/cinc-cli/cli/supermarket"
 )
 
 // sortOrder identifies one of the three sort modes the TUI exposes.
@@ -73,38 +76,49 @@ type apiClient interface {
 
 // realClient adapts *sm.Client to apiClient. It is the only place in
 // the explore package that talks to the supermarket library.
-type realClient struct{ c *sm.Client }
+type realClient struct {
+	c    *sm.Client
+	site string
+}
 
 func newRealClient(site string) (*realClient, error) {
+	if err := supermarket.ValidateSite(site); err != nil {
+		return nil, err
+	}
 	c, err := sm.NewClient(sm.Config{BaseURL: site}, sm.WithUserAgent("cinc-cli"))
 	if err != nil {
 		return nil, err
 	}
-	return &realClient{c: c}, nil
+	return &realClient{c: c, site: site}, nil
 }
 
 func (r *realClient) List(ctx context.Context, opts sm.ListOptions) (sm.Page[sm.CookbookSummary], error) {
 	page, _, err := r.c.Cookbooks.List(ctx, opts)
-	return page, err
+	if err != nil {
+		return page, supermarket.RequestError(r.site, "list cookbooks", err)
+	}
+	return page, nil
 }
 
 func (r *realClient) Search(ctx context.Context, opts sm.SearchOptions) (sm.Page[sm.CookbookSummary], error) {
 	page, _, err := r.c.Search.Cookbooks(ctx, opts)
-	return page, err
+	if err != nil {
+		return page, supermarket.RequestError(r.site, fmt.Sprintf("search for %q", opts.Q), err)
+	}
+	return page, nil
 }
 
 func (r *realClient) Get(ctx context.Context, name string) (*sm.Cookbook, error) {
 	cb, _, err := r.c.Cookbooks.Get(ctx, name)
 	if err != nil {
 		if errors.Is(err, sm.ErrNotFound) {
-			return nil, errNotFound
+			return nil, fmt.Errorf("%q isn't on %s anymore; it may have been removed or renamed (%w)", name, r.site, errNotFound)
 		}
-		return nil, err
+		return nil, supermarket.RequestError(r.site, "look up "+name, err)
 	}
 	return cb, nil
 }
 
-// errNotFound is the sentinel the detail and preview flows compare
-// against so the UI can show a friendly "no longer on Supermarket"
-// message instead of a raw 404.
-var errNotFound = errors.New("explore: cookbook not found")
+// errNotFound is the sentinel Get wraps for a cookbook Supermarket doesn't
+// have, so callers can tell "gone" apart from "couldn't ask".
+var errNotFound = errors.New("not found")

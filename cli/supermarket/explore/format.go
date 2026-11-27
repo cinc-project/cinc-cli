@@ -62,3 +62,15 @@ func formatRelativeTime(t time.Time, now time.Time) string {
 	}
 	return t.Format("2006-01-02")
 }
+
+// headline returns the first line of err's message. The CLI's errors
+// explain themselves over several paragraphs, and the TUI's error spots
+// have room for one line, so they show the opening sentence, which says
+// what went wrong on its own.
+func headline(err error) string {
+	msg := err.Error()
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = msg[:i]
+	}
+	return strings.TrimSpace(msg)
+}

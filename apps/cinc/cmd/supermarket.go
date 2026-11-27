@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cinc-project/cinc-cli/cli/config"
 	"github.com/cinc-project/cinc-cli/cli/printer"
 	"github.com/cinc-project/cinc-cli/cli/supermarket"
 	"github.com/cinc-project/cinc-cli/cli/supermarket/explore"
@@ -498,7 +499,8 @@ cinc supermarket share nginx 'Web Servers'`,
 				if profileErr != nil {
 					return profileErr
 				}
-				client, clientErr := supermarket.New(profile, site)
+				client, clientErr := supermarket.New(profile, site,
+					supermarket.WithProfileSource(supermarketProfileName(cmd), resolveConfigPath(cmd)))
 				if clientErr != nil {
 					return clientErr
 				}
@@ -521,6 +523,23 @@ cinc supermarket share nginx 'Web Servers'`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "build the cookbook tarball without uploading it")
 	cmd.Flags().BoolVar(&noChefignore, "no-chefignore", false, "do not exclude files matched by the cookbook's chefignore file")
 	return cmd
+}
+
+// supermarketProfileName names the profile selectSupermarketProfile picks
+// (an explicit --profile or environment profile, else [supermarket], else
+// [default]), so share's error messages can say which section to edit. It
+// runs after the profile has already loaded, so a failure to reload just
+// falls through to "default".
+func supermarketProfileName(cmd *cobra.Command) string {
+	if name := explicitProfile(cmd); name != "" {
+		return name
+	}
+	if cfg, err := config.Load(resolveConfigPath(cmd)); err == nil {
+		if _, err := cfg.Profile("supermarket"); err == nil {
+			return "supermarket"
+		}
+	}
+	return "default"
 }
 
 // renderShareResult writes the friendly, checkmarked summary of a cookbook

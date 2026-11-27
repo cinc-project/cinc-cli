@@ -172,3 +172,17 @@ func TestInstallConfirmWithoutInstallerShowsError(t *testing.T) {
 		t.Error("no command should fire without an installer")
 	}
 }
+
+// TestInstallDoneShowsTheHeadlineOfAMultilineError keeps the footer to one
+// line: CLI errors explain themselves in paragraphs, and the footer has
+// room only for the first sentence.
+func TestInstallDoneShowsTheHeadlineOfAMultilineError(t *testing.T) {
+	m := newTestModel(t, &fakeClient{})
+	m.browse.installing = true
+
+	err := errors.New("can't find your client key at /k.pem.\n\nLonger explanation.\n  - step")
+	next, _ := m.Update(installDoneMsg{name: "nginx", err: err})
+	if got := next.(model).browse.installErr; got != "can't find your client key at /k.pem. Run `cinc supermarket install nginx` for the details." {
+		t.Errorf("installErr = %q, want the first line and where to see the rest", got)
+	}
+}
