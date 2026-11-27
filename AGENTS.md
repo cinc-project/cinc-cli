@@ -135,7 +135,8 @@ those when you're changing policyfile code.
   returns what the server actually sends, quirks included. A fixture written
   to match the client's expectations passes while the real server breaks it:
   Supermarket's `total` is the whole catalog on search, and fixtures that
-  reported the match count hid that for months.
+  reported the match count hid that until cinc-supermarket-api v1.0.0
+  documented it.
 - **Test seams are swappable package-level vars**, each documented at its
   declaration. Reach for the existing one rather than restructuring, and
   restore it with `t.Cleanup`.
