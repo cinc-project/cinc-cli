@@ -883,7 +883,7 @@ func behWantUnauthorized(t *testing.T, r result) string {
 	if r.exitCode == 0 || !hasStatus(line, 401) {
 		t.Errorf("want a 401: %s", r)
 	}
-	if !strings.Contains(line, "client key") || !(strings.Contains(line, "client_key") || strings.Contains(line, "client_name")) {
+	if !strings.Contains(line, "client key") || (!strings.Contains(line, "client_key") && !strings.Contains(line, "client_name")) {
 		t.Errorf("a 401 should point the user at the client_key or client_name setting to fix: %s", r)
 	}
 	if strings.TrimSpace(r.stdout) != "" {
