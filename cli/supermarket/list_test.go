@@ -149,6 +149,46 @@ func TestListVerboseLeavesVersionEmptyForUnknownCookbook(t *testing.T) {
 	}
 }
 
+func TestListByOwnerTotalCountsTheirCookbooksNotTheCatalog(t *testing.T) {
+	calls := 0
+	srv := listFixtureServer(t, listFixture{
+		Cookbooks:    []sumEntry{{Name: "apache2"}, {Name: "nginx"}, {Name: "mysql"}},
+		CatalogTotal: 4000,
+		Calls:        &calls,
+	})
+	defer srv.Close()
+
+	client := mustAnonymousClient(t, srv.URL)
+	result, err := client.List(context.Background(), ListOptions{User: "sous-chefs"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if result.Total != 3 {
+		t.Fatalf("Total = %d, want 3 (the owner's cookbooks, not the catalog size)", result.Total)
+	}
+	if calls != 1 {
+		t.Fatalf("list requests = %d, want 1: a short page is the last page", calls)
+	}
+}
+
+func TestListUnfilteredKeepsServerTotalWhenLimited(t *testing.T) {
+	all := make([]sumEntry, 0, 175)
+	for i := range 175 {
+		all = append(all, sumEntry{Name: fmt.Sprintf("cb-%03d", i)})
+	}
+	srv := listFixtureServer(t, listFixture{Cookbooks: all})
+	defer srv.Close()
+
+	client := mustAnonymousClient(t, srv.URL)
+	result, err := client.List(context.Background(), ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Entries) != 10 || result.Total != 175 {
+		t.Fatalf("len = %d, Total = %d, want 10 and 175", len(result.Entries), result.Total)
+	}
+}
+
 // sumEntry mirrors the CookbookSummary payload Supermarket returns.
 type sumEntry struct {
 	Name        string
@@ -159,6 +199,12 @@ type sumEntry struct {
 type listFixture struct {
 	Cookbooks []sumEntry
 	Universe  map[string][]string
+	// CatalogTotal, when set, is reported as "total" instead of the number
+	// of cookbooks served. Production Supermarket does this for a list
+	// filtered by owner.
+	CatalogTotal int
+	// Calls, when set, counts the /api/v1/cookbooks requests served.
+	Calls *int
 }
 
 func listFixtureServer(t *testing.T, f listFixture) *httptest.Server {
@@ -166,6 +212,9 @@ func listFixtureServer(t *testing.T, f listFixture) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/cookbooks":
+			if f.Calls != nil {
+				*f.Calls++
+			}
 			q := r.URL.Query()
 			start, _ := strconv.Atoi(q.Get("start"))
 			items, _ := strconv.Atoi(q.Get("items"))
@@ -184,9 +233,13 @@ func listFixtureServer(t *testing.T, f listFixture) *httptest.Server {
 					"cookbook":             "/api/v1/cookbooks/" + c.Name,
 				})
 			}
+			total := len(f.Cookbooks)
+			if f.CatalogTotal > 0 {
+				total = f.CatalogTotal
+			}
 			writeJSON(w, map[string]any{
 				"start": start,
-				"total": len(f.Cookbooks),
+				"total": total,
 				"items": items_,
 			})
 		case "/universe":
@@ -195,7 +248,7 @@ func listFixtureServer(t *testing.T, f listFixture) *httptest.Server {
 				out[name] = map[string]map[string]any{}
 				for _, v := range versions {
 					out[name][v] = map[string]any{
-						"location_type": "supermarket",
+						"location_type": "opscode",
 						"location_path": "https://example.test",
 						"dependencies":  map[string]string{},
 					}

@@ -21,6 +21,9 @@ type SearchOptions struct {
 }
 
 // SearchResult is the full set of entries the server (or limit) yielded.
+// Total is the number of matches found: Supermarket's own search total is
+// the size of the whole catalog. When Limit cut the walk short it is a
+// lower bound.
 type SearchResult struct {
 	Entries []ListEntry `json:"entries"`
 	Total   int         `json:"total"`
@@ -46,34 +49,16 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) (SearchResult, 
 }
 
 func (c *Client) paginateSearch(ctx context.Context, opts SearchOptions) ([]ListEntry, int, error) {
-	var (
-		entries []ListEntry
-		total   int
-		start   int
-	)
-	for {
+	entries, total, err := walkPages(func(start int) (sm.Page[sm.CookbookSummary], error) {
 		page, _, err := c.api.Search.Cookbooks(ctx, sm.SearchOptions{
 			Q:     opts.Query,
 			Start: start,
 			Items: listPageSize,
 		})
-		if err != nil {
-			return nil, 0, fmt.Errorf("supermarket: search %q: %w", opts.Query, err)
-		}
-		total = page.Total
-		for _, item := range page.Items {
-			entries = append(entries, ListEntry{
-				Name:        item.Name,
-				Maintainer:  item.Maintainer,
-				Description: item.Description,
-			})
-			if opts.Limit > 0 && len(entries) >= opts.Limit {
-				return entries, total, nil
-			}
-		}
-		if !page.HasMore() {
-			return entries, total, nil
-		}
-		start = page.NextStart()
+		return page, err
+	}, opts.Limit, false)
+	if err != nil {
+		return nil, 0, fmt.Errorf("supermarket: search %q: %w", opts.Query, err)
 	}
+	return entries, total, nil
 }

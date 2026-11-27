@@ -158,3 +158,42 @@ func newSupermarketIndexServer(t *testing.T, cookbooks []indexCookbook, universe
 		}
 	}))
 }
+
+func TestSupermarketListRejectsUnknownOrderBeforeAnyRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s: --order should be rejected first", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"supermarket", "list", "--supermarket-site", srv.URL, "--order", "most_popular"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected an error for an unknown --order")
+	}
+	if !strings.Contains(err.Error(), "most_popular") || !strings.Contains(err.Error(), "by_name") {
+		t.Fatalf("error = %q, want it to name the bad value and list the valid ones", err)
+	}
+}
+
+func TestSupermarketListSendsByNameOrder(t *testing.T) {
+	var gotOrder string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotOrder = r.URL.Query().Get("order")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"start":0,"total":0,"items":[]}`))
+	}))
+	defer srv.Close()
+
+	root := newRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"supermarket", "list", "--supermarket-site", srv.URL, "--order", "by_name"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if gotOrder != "by_name" {
+		t.Fatalf("order = %q, want by_name", gotOrder)
+	}
+}

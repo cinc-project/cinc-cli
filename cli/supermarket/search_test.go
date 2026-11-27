@@ -71,6 +71,51 @@ func TestSearchHonorsLimit(t *testing.T) {
 	}
 }
 
+func TestSearchTotalCountsMatchesNotTheCatalog(t *testing.T) {
+	calls := 0
+	srv := searchFixtureServer(t, searchFixture{
+		ExpectQuery:  "nginx",
+		Cookbooks:    []sumEntry{{Name: "nginx"}, {Name: "nginx_simple"}},
+		CatalogTotal: 4000,
+		Calls:        &calls,
+	})
+	defer srv.Close()
+
+	client := mustAnonymousClient(t, srv.URL)
+	result, err := client.Search(context.Background(), SearchOptions{Query: "nginx"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 2 {
+		t.Fatalf("Total = %d, want 2 (the matches, not the catalog size)", result.Total)
+	}
+	if calls != 1 {
+		t.Fatalf("search requests = %d, want 1: a short page is the last page", calls)
+	}
+}
+
+func TestSearchPaginatesToTheEndWhenTotalIsTheCatalog(t *testing.T) {
+	all := make([]sumEntry, 0, 175)
+	for i := range 175 {
+		all = append(all, sumEntry{Name: fmt.Sprintf("nginx-%03d", i)})
+	}
+	calls := 0
+	srv := searchFixtureServer(t, searchFixture{ExpectQuery: "nginx", Cookbooks: all, CatalogTotal: 4000, Calls: &calls})
+	defer srv.Close()
+
+	client := mustAnonymousClient(t, srv.URL)
+	result, err := client.Search(context.Background(), SearchOptions{Query: "nginx"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(result.Entries) != 175 || result.Total != 175 {
+		t.Fatalf("len = %d, Total = %d, want 175 and 175", len(result.Entries), result.Total)
+	}
+	if calls != 2 {
+		t.Fatalf("search requests = %d, want 2", calls)
+	}
+}
+
 func TestSearchRejectsEmptyQuery(t *testing.T) {
 	client := mustAnonymousClient(t, "https://supermarket.example.test")
 	if _, err := client.Search(context.Background(), SearchOptions{}); err == nil {
@@ -100,6 +145,12 @@ type searchFixture struct {
 	ExpectQuery string
 	Cookbooks   []sumEntry
 	Universe    map[string][]string
+	// CatalogTotal, when set, is reported as "total" instead of the match
+	// count. Production Supermarket reports the size of the whole catalog
+	// on search, not the number of matches.
+	CatalogTotal int
+	// Calls, when set, counts the /api/v1/search requests served.
+	Calls *int
 }
 
 func searchFixtureServer(t *testing.T, f searchFixture) *httptest.Server {
@@ -107,6 +158,9 @@ func searchFixtureServer(t *testing.T, f searchFixture) *httptest.Server {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/search":
+			if f.Calls != nil {
+				*f.Calls++
+			}
 			q := r.URL.Query()
 			if got := q.Get("q"); got != f.ExpectQuery {
 				t.Errorf("q = %q, want %q", got, f.ExpectQuery)
@@ -128,9 +182,13 @@ func searchFixtureServer(t *testing.T, f searchFixture) *httptest.Server {
 					"cookbook":             "/api/v1/cookbooks/" + c.Name,
 				})
 			}
+			total := len(f.Cookbooks)
+			if f.CatalogTotal > 0 {
+				total = f.CatalogTotal
+			}
 			writeJSON(w, map[string]any{
 				"start": start,
-				"total": len(f.Cookbooks),
+				"total": total,
 				"items": items_,
 			})
 		case "/universe":
@@ -139,7 +197,7 @@ func searchFixtureServer(t *testing.T, f searchFixture) *httptest.Server {
 				out[name] = map[string]map[string]any{}
 				for _, v := range versions {
 					out[name][v] = map[string]any{
-						"location_type": "supermarket",
+						"location_type": "opscode",
 						"location_path": "https://example.test",
 					}
 				}
