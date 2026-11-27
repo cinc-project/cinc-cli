@@ -60,7 +60,9 @@ func syntaxError(data []byte, syn *json.SyntaxError) error {
 	if strings.Contains(syn.Error(), "looking for beginning of value") && at >= 0 && at < len(data) {
 		if r, _ := utf8.DecodeRune(data[at:]); unicode.IsLetter(r) {
 			word := data[at:]
-			if end := bytes.IndexFunc(word, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' && r != '.' }); end >= 0 {
+			if end := bytes.IndexFunc(word, func(r rune) bool {
+				return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' && r != '.'
+			}); end >= 0 {
 				word = word[:end]
 			}
 			msg += fmt.Sprintf(". Text values go in double quotes, like %q", word)
