@@ -403,7 +403,7 @@ func TestIdentityFileCommandsQuoteThePath(t *testing.T) {
 }
 
 func TestSanitizeText(t *testing.T) {
-	got := SanitizeText("\x1b[31mred\x1b[0m\r\nnext\tline\x07‮")
+	got := SanitizeText("\x1b[31mred\x1b[0m\r\nnext\tline\x07\u202e")
 	if got != "red\nnext\tline" {
 		t.Errorf("SanitizeText = %q", got)
 	}
