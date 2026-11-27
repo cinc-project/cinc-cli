@@ -1,6 +1,7 @@
 package suite
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -113,11 +114,11 @@ func testEnvironmentCreateFromFile(t *testing.T, _ Target, c *cli) {
 		t.Errorf("cookbook_versions = %v, want %v", e.CookbookVersions, constraints)
 	}
 	app, _ := e.DefaultAttributes["app"].(map[string]any)
-	if app["port"] != float64(8080) {
+	if app["port"] != json.Number("8080") {
 		t.Errorf("default_attributes.app.port = %v, want 8080 (environment: %+v)", app["port"], e)
 	}
 	app, _ = e.OverrideAttributes["app"].(map[string]any)
-	if app["workers"] != float64(4) {
+	if app["workers"] != json.Number("4") {
 		t.Errorf("override_attributes.app.workers = %v, want 4 (environment: %+v)", app["workers"], e)
 	}
 }

@@ -356,7 +356,7 @@ func summaryCmd(ctx context.Context, s Summarizable, c *cinc.Client, name string
 // handler can switch the view to that index and render the banner.
 func searchCmd(ctx context.Context, c *cinc.Client, kind Kind, index, query string, reqID uint64) tea.Cmd {
 	return func() tea.Msg {
-		rows, err := c.Search.SearchAll(ctx, index, query)
+		rows, err := c.Search.Collect(ctx, index, query)
 		if err != nil {
 			return searchLoadedMsg{reqID: reqID, index: index, query: query, kind: kind, err: err}
 		}

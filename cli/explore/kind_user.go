@@ -19,7 +19,7 @@ func newUserKind(admins *adminsCache) Kind {
 	return editorKind[cinc.User]{
 		title: "Users",
 		summaryFn: func(ctx context.Context, c *cinc.Client, u *cinc.User) []summaryField {
-			return userSummaryFields(u, userType(ctx, admins, c, u.UserName))
+			return userSummaryFields(u, userType(ctx, admins, c, u.Username))
 		},
 		listFn: func(ctx context.Context, c *cinc.Client) (map[string]string, error) {
 			index, _, err := c.Users.List(ctx)
@@ -34,10 +34,13 @@ func newUserKind(admins *adminsCache) Kind {
 			if err != nil {
 				return CreateResult{}, err
 			}
-			return CreateResult{Name: u.UserName, Secret: result.ChefKey.PrivateKey}, nil
+			return CreateResult{Name: u.Username, Secret: result.ChefKey.PrivateKey}, nil
 		},
-		updateFn: func(ctx context.Context, c *cinc.Client, u *cinc.User) error {
-			_, _, err := c.Users.Update(ctx, u)
+		updateFn: func(ctx context.Context, c *cinc.Client, name string, u *cinc.User) error {
+			// Pin the selected user: a different username in the body would
+			// rename them.
+			u.Username = name
+			_, err := c.Users.Update(ctx, name, u)
 			return err
 		},
 		deleteFn: func(ctx context.Context, c *cinc.Client, name string) error {

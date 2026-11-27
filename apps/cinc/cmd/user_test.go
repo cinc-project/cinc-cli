@@ -348,10 +348,10 @@ func TestUserPasswordCommandEndToEnd(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method {
 		case http.MethodGet:
-			_ = json.NewEncoder(w).Encode(cinc.User{UserName: "anna", Email: "anna@example.test", DisplayName: "Anna Admin"})
+			_ = json.NewEncoder(w).Encode(cinc.User{Username: "anna", Email: "anna@example.test", DisplayName: "Anna Admin"})
 		case http.MethodPut:
 			_ = json.NewDecoder(r.Body).Decode(&putBody)
-			_ = json.NewEncoder(w).Encode(cinc.User{UserName: "anna", Email: "anna@example.test"})
+			_ = json.NewEncoder(w).Encode(cinc.User{Username: "anna", Email: "anna@example.test"})
 		default:
 			t.Errorf("unexpected method %q", r.Method)
 		}
@@ -391,7 +391,7 @@ client_key      = %q
 
 func TestUserShowCommandEndToEnd(t *testing.T) {
 	user := cinc.User{
-		UserName:    "alice",
+		Username:    "alice",
 		DisplayName: "Alice Admin",
 		Email:       "alice@example.test",
 		FirstName:   "Alice",
@@ -431,7 +431,7 @@ client_key      = %q
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("show output is not valid JSON: %v\noutput: %s", err, buf.String())
 	}
-	if got.UserName != "alice" || got.Email != "alice@example.test" {
+	if got.Username != "alice" || got.Email != "alice@example.test" {
 		t.Errorf("show returned %+v, want username=alice email=alice@example.test", got)
 	}
 }
@@ -470,7 +470,7 @@ func withStubUserEditor(t *testing.T, stub func(*cinc.User) (*cinc.User, error))
 
 func TestUserEditCommandPutsEditorResult(t *testing.T) {
 	var gotPut cinc.User
-	current := cinc.User{UserName: "alice", DisplayName: "Alice Admin", Email: "alice@example.test"}
+	current := cinc.User{Username: "alice", DisplayName: "Alice Admin", Email: "alice@example.test"}
 	srv := userItemServer(t, "alice", current, &gotPut)
 
 	withStubUserEditor(t, func(in *cinc.User) (*cinc.User, error) {
@@ -497,7 +497,7 @@ client_key      = %q
 	if err := root.Execute(); err != nil {
 		t.Fatalf("cinc user edit: %v", err)
 	}
-	if gotPut.UserName != "alice" || gotPut.DisplayName != "Alice Operator" {
+	if gotPut.Username != "alice" || gotPut.DisplayName != "Alice Operator" {
 		t.Errorf("PUT body = %+v, want username=alice display_name=Alice Operator", gotPut)
 	}
 	if got := buf.String(); got != "Updated user \"alice\"\n" {
@@ -507,7 +507,7 @@ client_key      = %q
 
 func TestUserEditCommandReadsFromFile(t *testing.T) {
 	var gotPut cinc.User
-	current := cinc.User{UserName: "alice", DisplayName: "Alice Admin"}
+	current := cinc.User{Username: "alice", DisplayName: "Alice Admin"}
 	srv := userItemServer(t, "alice", current, &gotPut)
 
 	withStubUserEditor(t, func(*cinc.User) (*cinc.User, error) {
@@ -516,7 +516,7 @@ func TestUserEditCommandReadsFromFile(t *testing.T) {
 	})
 
 	filePath := filepath.Join(t.TempDir(), "user.json")
-	body, _ := json.Marshal(cinc.User{UserName: "alice", DisplayName: "From File"})
+	body, _ := json.Marshal(cinc.User{Username: "alice", DisplayName: "From File"})
 	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ client_key      = %q
 	if err := root.Execute(); err != nil {
 		t.Fatalf("cinc user edit --file: %v", err)
 	}
-	if gotPut.UserName != "alice" || gotPut.DisplayName != "From File" {
+	if gotPut.Username != "alice" || gotPut.DisplayName != "From File" {
 		t.Errorf("PUT body = %+v, want username=alice display_name=From File", gotPut)
 	}
 }

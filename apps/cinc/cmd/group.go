@@ -77,9 +77,9 @@ cinc group edit admins`,
 				}
 				updated = *edited
 			}
-			updated.Name = name
+			updated.Name, updated.GroupName = name, name
 
-			if _, _, err := c.Groups.Update(cmd.Context(), &updated); err != nil {
+			if _, _, err := c.Groups.Update(cmd.Context(), name, &updated); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated group %q\n", name)

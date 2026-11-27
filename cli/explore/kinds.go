@@ -174,7 +174,7 @@ type editorKind[T any] struct {
 	rowsFn   func(map[string]string) []Row // optional; defaults to name-only rows
 	getFn    func(ctx context.Context, c *cinc.Client, name string) (*T, error)
 	createFn func(ctx context.Context, c *cinc.Client, obj *T) (CreateResult, error)
-	updateFn func(ctx context.Context, c *cinc.Client, obj *T) error
+	updateFn func(ctx context.Context, c *cinc.Client, name string, obj *T) error
 	deleteFn func(ctx context.Context, c *cinc.Client, name string) error
 	// summaryFn builds the curated facts panel for an object. It receives the
 	// client and context so a kind can enrich the panel with data from extra
@@ -238,7 +238,7 @@ func (k editorKind[T]) Save(ctx context.Context, c *cinc.Client, name string, ed
 	if err := json.Unmarshal(edited, &obj); err != nil {
 		return fmt.Errorf("parse edited %s: %w", k.title, err)
 	}
-	return k.updateFn(ctx, c, &obj)
+	return k.updateFn(ctx, c, name, &obj)
 }
 
 func (k editorKind[T]) NewTemplate() []byte { return k.template() }

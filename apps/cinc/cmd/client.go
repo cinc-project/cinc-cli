@@ -30,8 +30,8 @@ func newClientCmd() *cobra.Command {
 // newClientReregisterCmd builds `cinc client reregister <name>`. It
 // regenerates the client's "default" key, invalidating the old private key
 // and emitting the new one (to stdout, or to --key-file). The cinc-api
-// Clients.Reregister method owns the delete-then-recreate workflow and its
-// non-atomic recovery guidance.
+// Clients.Reregister method regenerates the key in place, so it keeps its
+// expiration and a failure never leaves the client keyless.
 func newClientReregisterCmd() *cobra.Command {
 	var keyFile string
 	cmd := &cobra.Command{
@@ -133,7 +133,7 @@ cinc client edit worker-01`,
 			}
 			updated.Name = name
 
-			if _, _, err := c.Clients.Update(cmd.Context(), &updated); err != nil {
+			if _, _, err := c.Clients.Update(cmd.Context(), name, &updated); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated client %q\n", name)

@@ -32,10 +32,11 @@ client_key      = %q
 }
 
 // fullACL returns an ACL fixture with one group on read so tests have a
-// known starting point.
+// known starting point. It is in the granular form erchef answers
+// ?detail=granular with: users and clients apart, and actors empty.
 func fullACL() cinc.ACL {
-	mk := func(actors, groups []string) cinc.ACE {
-		return cinc.ACE{Actors: actors, Groups: groups}
+	mk := func(users, groups []string) cinc.ACE {
+		return cinc.ACE{Actors: []string{}, Users: users, Clients: []string{}, Groups: groups}
 	}
 	return cinc.ACL{
 		Create: mk([]string{"pivotal"}, []string{"admins"}),
@@ -62,6 +63,9 @@ func newACLServer(t *testing.T, base string) *aclServer {
 	mux.HandleFunc(base+"/_acl", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method on %s = %q, want GET", r.URL.Path, r.Method)
+		}
+		if got := r.URL.Query().Get("detail"); got != "granular" {
+			t.Errorf("GET %s detail = %q, want granular", r.URL.Path, got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(a.acl)
@@ -150,8 +154,8 @@ func TestNodeACLGrantReadAddsGroup(t *testing.T) {
 	if !slicesEqual(put.Groups, []string{"admins", "users", "ops"}) {
 		t.Errorf("read groups PUT = %v, want [admins users ops]", put.Groups)
 	}
-	if !slicesEqual(put.Actors, []string{"pivotal"}) {
-		t.Errorf("read actors PUT = %v, want [pivotal] (unchanged)", put.Actors)
+	if !slicesEqual(put.Users, []string{"pivotal"}) {
+		t.Errorf("read users PUT = %v, want [pivotal] (unchanged)", put.Users)
 	}
 	if len(a.puts) != 1 {
 		t.Errorf("grant read touched %d permissions, want only read: %v", len(a.puts), a.puts)
@@ -161,7 +165,7 @@ func TestNodeACLGrantReadAddsGroup(t *testing.T) {
 	}
 }
 
-func TestNodeACLGrantUserAndClientLandInActors(t *testing.T) {
+func TestNodeACLGrantUserAndClientLandInTheirOwnLists(t *testing.T) {
 	a := newACLServer(t, "/organizations/acme/nodes/web01")
 	cfg := writeACLConfig(t, a.srv.URL)
 
@@ -170,8 +174,35 @@ func TestNodeACLGrantUserAndClientLandInActors(t *testing.T) {
 		t.Fatalf("node acl grant: %v", err)
 	}
 	put := a.puts["update"]
-	if !slicesEqual(put.Actors, []string{"pivotal", "alice", "worker-01"}) {
-		t.Errorf("update actors PUT = %v, want [pivotal alice worker-01]", put.Actors)
+	if !slicesEqual(put.Users, []string{"pivotal", "alice"}) {
+		t.Errorf("update users PUT = %v, want [pivotal alice]", put.Users)
+	}
+	if !slicesEqual(put.Clients, []string{"worker-01"}) {
+		t.Errorf("update clients PUT = %v, want [worker-01]", put.Clients)
+	}
+	if len(put.Actors) != 0 {
+		t.Errorf("update actors PUT = %v, want empty alongside users and clients", put.Actors)
+	}
+}
+
+// A user and a client may share a name; erchef refuses a flat actors list
+// naming it, so each must land in its own list.
+func TestNodeACLGrantSameNamedUserAndClientStayApart(t *testing.T) {
+	a := newACLServer(t, "/organizations/acme/nodes/web01")
+	a.acl.Read.Users = []string{"pivotal", "ops"}
+	cfg := writeACLConfig(t, a.srv.URL)
+
+	// The user ops already has read; granting the client ops is a change.
+	if _, _, err := runRoot(t, "node", "acl", "grant", "read", "web01",
+		"--client", "ops", "--config", cfg); err != nil {
+		t.Fatalf("node acl grant: %v", err)
+	}
+	put, ok := a.puts["read"]
+	if !ok {
+		t.Fatal("granting client ops wrote nothing, as if the user ops already covered it")
+	}
+	if !slicesEqual(put.Users, []string{"pivotal", "ops"}) || !slicesEqual(put.Clients, []string{"ops"}) {
+		t.Errorf("read PUT users = %v, clients = %v, want users [pivotal ops] and clients [ops]", put.Users, put.Clients)
 	}
 }
 
@@ -298,8 +329,8 @@ func TestUserACLRoutesToUsersEndpoint(t *testing.T) {
 	if _, _, err := runRoot(t, "user", "acl", "grant", "grant", "alice", "--user", "bob", "--config", cfg); err != nil {
 		t.Fatalf("user acl grant: %v", err)
 	}
-	if !slicesContains(a.puts["grant"].Actors, "bob") {
-		t.Errorf("user acl grant actors = %v, want it to contain bob", a.puts["grant"].Actors)
+	if !slicesContains(a.puts["grant"].Users, "bob") {
+		t.Errorf("user acl grant users = %v, want it to contain bob", a.puts["grant"].Users)
 	}
 }
 

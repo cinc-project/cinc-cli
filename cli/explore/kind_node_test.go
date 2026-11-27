@@ -1,7 +1,9 @@
 package explore
 
 import (
+	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,7 +18,8 @@ func TestNodeSummaryFields(t *testing.T) {
 		PolicyGroup: "web",
 		RunList:     []string{"role[base]", "recipe[nginx]"},
 		Automatic: cinc.Attributes{
-			"ohai_time": float64(now.Add(-2 * time.Hour).Unix()),
+			// A node fetched from the server holds its numbers as json.Number.
+			"ohai_time": json.Number(strconv.FormatInt(now.Add(-2*time.Hour).Unix(), 10) + ".25"),
 			"chef_packages": map[string]any{
 				"chef": map[string]any{"version": "18.4.2"},
 			},

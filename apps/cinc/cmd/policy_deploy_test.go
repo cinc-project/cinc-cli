@@ -11,11 +11,15 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	cinc "github.com/cinc-project/cinc-api"
 )
 
 // writePolicyLockFixture creates a lock dir holding a path-sourced cookbook and
-// a Policyfile.lock.json that pins it, returning the lock file path.
-func writePolicyLockFixture(t *testing.T, identifier string) string {
+// a Policyfile.lock.json that pins it, returning the lock file path. The lock
+// pins the cookbook's real identifiers, as a push checks them against its
+// files.
+func writePolicyLockFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	cb := filepath.Join(dir, "cookbooks", "base", "recipes")
@@ -31,13 +35,11 @@ func writePolicyLockFixture(t *testing.T, identifier string) string {
 	lock := map[string]any{
 		"name":        "appserver",
 		"revision_id": "rev123",
-		"run_list":    []string{"recipe[base]"},
+		"run_list":    []string{"recipe[base::default]"},
 		"cookbook_locks": map[string]any{
 			"base": map[string]any{
-				"version":                   "1.0.0",
-				"identifier":                identifier,
-				"dotted_decimal_identifier": "1.2.3",
-				"source_options":            map[string]any{"path": "cookbooks/base"},
+				"version":        "1.0.0",
+				"source_options": map[string]any{"path": "cookbooks/base"},
 			},
 		},
 	}
@@ -46,11 +48,56 @@ func writePolicyLockFixture(t *testing.T, identifier string) string {
 	if err := os.WriteFile(lockPath, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	repinLock(t, lockPath, filepath.Join(dir, "cookbooks", "base"))
 	return lockPath
 }
 
+// baseCookbookIdentifier returns the identifier writePolicyLockFixture pins,
+// so a test can register server routes for it before writing its fixture.
+func baseCookbookIdentifier(t *testing.T) string {
+	t.Helper()
+	lockPath := writePolicyLockFixture(t)
+	id, _ := cookbookIdentifiers(t, filepath.Join(filepath.Dir(lockPath), "cookbooks", "base"))
+	return id
+}
+
+// cookbookIdentifiers returns the identifier and dotted decimal identifier of
+// the cookbook in dir: what a lock must pin for a push to accept it.
+func cookbookIdentifiers(t *testing.T, dir string) (identifier, dotted string) {
+	t.Helper()
+	cb, err := cinc.LocalCookbookFromDir(dir, "")
+	if err != nil {
+		t.Fatalf("load cookbook %s: %v", dir, err)
+	}
+	return cb.Identifiers()
+}
+
+// repinLock points the base cookbook's lock at lockPath at the cookbook in
+// dir, for a fixture whose files changed, and returns the new identifier.
+func repinLock(t *testing.T, lockPath, dir string) string {
+	t.Helper()
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lock map[string]any
+	if err := json.Unmarshal(data, &lock); err != nil {
+		t.Fatal(err)
+	}
+	id, dotted := cookbookIdentifiers(t, dir)
+	base := lock["cookbook_locks"].(map[string]any)["base"].(map[string]any)
+	base["identifier"], base["dotted_decimal_identifier"] = id, dotted
+	if data, err = json.MarshalIndent(lock, "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 func TestPolicyPushCommandEndToEnd(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000001"
+	identifier := baseCookbookIdentifier(t)
 	var uploadedArtifact, associated bool
 	var associateBody []byte
 	mux := http.NewServeMux()
@@ -78,7 +125,7 @@ func TestPolicyPushCommandEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	lockPath := writePolicyLockFixture(t, identifier)
+	lockPath := writePolicyLockFixture(t)
 	root := newRootCmd()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
@@ -108,7 +155,24 @@ func TestPolicyPushCommandEndToEnd(t *testing.T) {
 // that cinc-api's static parser can't read. The artifact must still land
 // under the name the lock records.
 func TestPolicyPushUploadsUnderLockName(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000002"
+	lockPath := writePolicyLockFixture(t)
+	dir := filepath.Dir(lockPath)
+	if err := os.Rename(filepath.Join(dir, "cookbooks", "base"), filepath.Join(dir, "cookbooks", "base-cookbook")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cookbooks", "base-cookbook", "metadata.rb"), []byte("name 'base'.dup\nversion '1.0.0'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockPath, bytes.ReplaceAll(data, []byte(`"cookbooks/base"`), []byte(`"cookbooks/base-cookbook"`)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The new metadata.rb changes the cookbook's content, so pin it afresh.
+	identifier := repinLock(t, lockPath, filepath.Join(dir, "cookbooks", "base-cookbook"))
+
 	var uploadedArtifact bool
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
@@ -131,22 +195,6 @@ func TestPolicyPushUploadsUnderLockName(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	lockPath := writePolicyLockFixture(t, identifier)
-	dir := filepath.Dir(lockPath)
-	if err := os.Rename(filepath.Join(dir, "cookbooks", "base"), filepath.Join(dir, "cookbooks", "base-cookbook")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "cookbooks", "base-cookbook", "metadata.rb"), []byte("name 'base'.dup\nversion '1.0.0'\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(lockPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lockPath, bytes.ReplaceAll(data, []byte(`"cookbooks/base"`), []byte(`"cookbooks/base-cookbook"`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
 	root.SetArgs([]string{"policy", "push", "prod", lockPath, "--config", writeCreateConfig(t, srv.URL)})
@@ -163,7 +211,7 @@ func TestPolicyPushUploadsUnderLockName(t *testing.T) {
 // push uploads nothing, so the summary must not claim it uploaded the
 // cookbook.
 func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000003"
+	identifier := baseCookbookIdentifier(t)
 	var uploadedArtifact bool
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
@@ -178,7 +226,7 @@ func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	lockPath := writePolicyLockFixture(t, identifier)
+	lockPath := writePolicyLockFixture(t)
 
 	for _, tc := range []struct {
 		format string
@@ -222,7 +270,7 @@ func TestPolicyPushReportsOnlyWhatItUploaded(t *testing.T) {
 // artifact the server already holds, with the cookbook's source gone. Push
 // must not fetch a cookbook it won't upload, so it succeeds without it.
 func TestPolicyPushSkipsFetchingCookbooksTheServerHas(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000004"
+	identifier := baseCookbookIdentifier(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"base":{"url":"u","versions":[{"identifier":"`+identifier+`","url":"u"}]}}`)
@@ -233,7 +281,7 @@ func TestPolicyPushSkipsFetchingCookbooksTheServerHas(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	lockPath := writePolicyLockFixture(t, identifier)
+	lockPath := writePolicyLockFixture(t)
 	if err := os.RemoveAll(filepath.Join(filepath.Dir(lockPath), "cookbooks")); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +301,6 @@ func TestPolicyPushSkipsFetchingCookbooksTheServerHas(t *testing.T) {
 // TestPolicyPushStillFetchesWhatTheServerLacks checks the other side: a
 // cookbook the server lacks is still fetched, so a missing source is an error.
 func TestPolicyPushStillFetchesWhatTheServerLacks(t *testing.T) {
-	const identifier = "0000000000000000000000000000000000000005"
 	var uploads int
 	mux := http.NewServeMux()
 	mux.HandleFunc("/organizations/acme/cookbook_artifacts", func(w http.ResponseWriter, _ *http.Request) {
@@ -268,7 +315,7 @@ func TestPolicyPushStillFetchesWhatTheServerLacks(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	lockPath := writePolicyLockFixture(t, identifier)
+	lockPath := writePolicyLockFixture(t)
 	if err := os.RemoveAll(filepath.Join(filepath.Dir(lockPath), "cookbooks")); err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +345,7 @@ func TestPolicyPushCommandReportsMissingLock(t *testing.T) {
 
 func TestPolicyExportCommandEndToEnd(t *testing.T) {
 	// Export of a path-sourced lock needs no server.
-	lockPath := writePolicyLockFixture(t, "0000000000000000000000000000000000000002")
+	lockPath := writePolicyLockFixture(t)
 	destDir := filepath.Join(t.TempDir(), "bundle")
 
 	root := newRootCmd()
@@ -309,7 +356,8 @@ func TestPolicyExportCommandEndToEnd(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("cinc policy export: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(destDir, "cookbooks", "base-1.2.3", "metadata.rb")); err != nil {
+	_, dotted := cookbookIdentifiers(t, filepath.Join(filepath.Dir(lockPath), "cookbooks", "base"))
+	if _, err := os.Stat(filepath.Join(destDir, "cookbooks", "base-"+dotted, "metadata.rb")); err != nil {
 		t.Errorf("exported cookbook missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(destDir, "Policyfile.lock.json")); err != nil {
@@ -334,7 +382,7 @@ func TestPolicyExportResolvesTheServerOnlyWhenTheLockNeedsIt(t *testing.T) {
 	}
 
 	t.Run("path sources ignore the config", func(t *testing.T) {
-		lockPath := writePolicyLockFixture(t, "0000000000000000000000000000000000000003")
+		lockPath := writePolicyLockFixture(t)
 		root := newRootCmd()
 		root.SetOut(io.Discard)
 		root.SetArgs([]string{"policy", "export", lockPath, filepath.Join(t.TempDir(), "bundle"), "--config", broken})
@@ -344,7 +392,7 @@ func TestPolicyExportResolvesTheServerOnlyWhenTheLockNeedsIt(t *testing.T) {
 	})
 
 	t.Run("chef_server sources report the config error", func(t *testing.T) {
-		lockPath := writePolicyLockFixture(t, "0000000000000000000000000000000000000004")
+		lockPath := writePolicyLockFixture(t)
 		data, err := os.ReadFile(lockPath)
 		if err != nil {
 			t.Fatal(err)

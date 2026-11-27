@@ -19,11 +19,8 @@ func TestClientSummaryFields(t *testing.T) {
 	if got["Type"] != "Validator" {
 		t.Errorf("validator Type = %q, want Validator", got["Type"])
 	}
-	if got["Public Key"] != "not set" {
-		t.Errorf("Public Key = %q, want not set", got["Public Key"])
-	}
 
-	regular := &cinc.APIClient{Name: "web01", ChefKey: cinc.ChefKey{PublicKey: "-----BEGIN PUBLIC KEY-----"}}
+	regular := &cinc.APIClient{Name: "web01"}
 	got = map[string]string{}
 	for _, f := range clientSummaryFields(regular) {
 		got[f.Label] = f.Value
@@ -31,8 +28,10 @@ func TestClientSummaryFields(t *testing.T) {
 	if got["Type"] != "Regular" {
 		t.Errorf("non-validator Type = %q, want Regular", got["Type"])
 	}
-	if got["Public Key"] != "set" {
-		t.Errorf("Public Key = %q, want set", got["Public Key"])
+	// GET /clients/<name> carries no key under server API v1, so a key row
+	// could only ever claim the client has none.
+	if _, ok := got["Public Key"]; ok {
+		t.Errorf("client summary has a Public Key row, which the client object can't fill: %v", got)
 	}
 }
 
@@ -41,8 +40,9 @@ func TestClientSummaryFields(t *testing.T) {
 // object's JSON for the detail/edit views to reuse.
 func TestClientKindSummaryShowsFields(t *testing.T) {
 	mux := http.NewServeMux()
+	// erchef's GET /clients/<name> body at server API v1.
 	jsonHandler(mux, "/organizations/acme/clients/web01",
-		`{"name":"web01","validator":false,"chef_key":{"public_key":"-----BEGIN PUBLIC KEY-----"}}`)
+		`{"name":"web01","clientname":"web01","validator":false,"orgname":"acme","json_class":"Chef::ApiClient","chef_type":"client"}`)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 

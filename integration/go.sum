@@ -28,8 +28,8 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
 github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5y3uxGLeCqzAI=
-github.com/cinc-project/cinc-api v0.19.0 h1:CrNhBm2gafAWnz0gFqqaF8ma/E84AFabtVaiEETpxoM=
-github.com/cinc-project/cinc-api v0.19.0/go.mod h1:LtNxs1SialgPnjXNjl579rpL75DHMyp9SfYvPP/UvWE=
+github.com/cinc-project/cinc-api v1.0.0 h1:xR4YtZ3hlIRWLD1oA9HuDaT+UjxW9ElKPmPFPkA89XU=
+github.com/cinc-project/cinc-api v1.0.0/go.mod h1:NNUleOG5oUaVUe6oB+kJrqBTqtGdkmESLYIC9ILZ6MQ=
 github.com/cinc-project/cinc-server-ng v0.22.0 h1:9CjYN833IDFNUSGnfzcKMJ1A56qDUzZSJW21/H6x9wo=
 github.com/cinc-project/cinc-server-ng v0.22.0/go.mod h1:4T9qkxiZEybDUtoRUWPJRSzZYwjcqXrS7C3x32flsyY=
 github.com/cinc-project/cinc-supermarket-api v1.0.0 h1:fd13UBhaGgnv7hqQQKRdIpjF8Yxxhcp5/GW8R40Hdqw=

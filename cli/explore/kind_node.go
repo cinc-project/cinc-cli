@@ -34,7 +34,7 @@ func newNodeKind() Kind {
 			}
 			return CreateResult{Name: n.Name}, nil
 		},
-		updateFn: func(ctx context.Context, c *cinc.Client, n *cinc.Node) error {
+		updateFn: func(ctx context.Context, c *cinc.Client, _ string, n *cinc.Node) error {
 			_, _, err := c.Nodes.Update(ctx, n)
 			return err
 		},
@@ -71,10 +71,8 @@ func nodeTitle(n *cinc.Node) string {
 // operator scanning a fleet wants at a glance.
 func nodeSummaryFields(n *cinc.Node, now time.Time) []summaryField {
 	var ohai float64
-	if v, ok := n.Automatic.Dig("ohai_time"); ok {
-		if f, ok := v.(float64); ok {
-			ohai = f
-		}
+	if t, ok := n.LastCheckin(); ok {
+		ohai = float64(t.UnixNano()) / 1e9
 	}
 	return []summaryField{
 		{"Environment", orDash(n.Environment)},

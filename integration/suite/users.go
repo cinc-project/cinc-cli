@@ -147,7 +147,7 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 	}
 
 	u := showUser(c, name)
-	wantEqual(t, "username", u.UserName, name)
+	wantEqual(t, "username", u.Username, name)
 	wantEqual(t, "email", u.Email, name+"@example.test")
 	wantEqual(t, "display_name", u.DisplayName, "Carol Carter")
 	wantEqual(t, "first_name", u.FirstName, "Carol")
@@ -171,13 +171,13 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 	// A file naming another user is refused, so an edit can never rename
 	// one, or write one user's details over another's, by accident.
 	other := uniqueName(t, "user")
-	wantFileNameRefused(t, c.fail("user", "edit", name, "--file", writeJSON(t, cinc.User{UserName: other, DisplayName: "Wrong User"})), other, name)
+	wantFileNameRefused(t, c.fail("user", "edit", name, "--file", writeJSON(t, cinc.User{Username: other, DisplayName: "Wrong User"})), other, name)
 	if got := showUser(c, name).DisplayName; got == "Wrong User" {
 		t.Errorf("display_name after a refused edit = %q, want it unchanged", got)
 	}
 
 	file := writeJSON(t, cinc.User{
-		UserName:    name,
+		Username:    name,
 		DisplayName: "Carol Operator",
 		Email:       name + "@example.test",
 		FirstName:   "Caroline",
@@ -185,7 +185,7 @@ func testUserLifecycle(t *testing.T, _ Target, c *cli) {
 	})
 	wantEqual(t, "edit output", c.run("user", "edit", name, "--file", file), fmt.Sprintf("Updated user %q\n", name))
 	u = showUser(c, name)
-	wantEqual(t, "username after edit", u.UserName, name)
+	wantEqual(t, "username after edit", u.Username, name)
 	wantEqual(t, "display_name after edit", u.DisplayName, "Carol Operator")
 	wantEqual(t, "first_name after edit", u.FirstName, "Caroline")
 
@@ -217,7 +217,7 @@ func testUserCreateKeyFile(t *testing.T, _ Target, c *cli) {
 	}
 
 	u := testUser{name: name, keyPath: keyPath}
-	wantEqual(t, "username signed as the user", showUser(c, name, actAs(c, u)...).UserName, name)
+	wantEqual(t, "username signed as the user", showUser(c, name, actAs(c, u)...).Username, name)
 }
 
 // testUserCreatePublicKey registers a key pair made here: the server keeps
@@ -245,7 +245,7 @@ func testUserCreatePublicKey(t *testing.T, _ Target, c *cli) {
 	wantEqual(t, "create output", out, fmt.Sprintf("Created user %q\n", name))
 
 	u := testUser{name: name, keyPath: keyPath}
-	wantEqual(t, "username signed as the user", showUser(c, name, actAs(c, u)...).UserName, name)
+	wantEqual(t, "username signed as the user", showUser(c, name, actAs(c, u)...).Username, name)
 }
 
 func testUserAlreadyExists(t *testing.T, _ Target, c *cli) {
@@ -300,7 +300,7 @@ func testUserPassword(t *testing.T, _ Target, c *cli) {
 			t.Errorf("cinc %s leaked the password:\n%s", strings.Join(args, " "), got)
 		}
 	}
-	wantEqual(t, "username signed as the user", showUser(c, u.name, actAs(c, u)...).UserName, u.name)
+	wantEqual(t, "username signed as the user", showUser(c, u.name, actAs(c, u)...).Username, u.name)
 }
 
 // testUserPasswordPrompt reads the password from stdin when --password is
