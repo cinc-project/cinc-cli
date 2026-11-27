@@ -23,7 +23,7 @@ cinc org invite rescind acme-carol
 ### Options
 
 ```
-  -h, --help   help for rescind
+  -h, --help[=true|false]   help for rescind
 ```
 
 ### Options inherited from parent commands

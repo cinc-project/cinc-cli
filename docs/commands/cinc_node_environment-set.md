@@ -17,7 +17,7 @@ cinc node environment-set web01 prod
 ### Options
 
 ```
-  -h, --help   help for environment-set
+  -h, --help[=true|false]   help for environment-set
 ```
 
 ### Options inherited from parent commands

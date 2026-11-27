@@ -17,8 +17,8 @@ cinc policy export Policyfile.lock.json ./bundle --archive
 ### Options
 
 ```
-  -a, --archive   also write the bundle as a .tar.gz archive
-  -h, --help      help for export
+  -a, --archive[=true|false]   also write the bundle as a .tar.gz archive
+  -h, --help[=true|false]      help for export
 ```
 
 ### Options inherited from parent commands

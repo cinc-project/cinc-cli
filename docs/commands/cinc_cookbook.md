@@ -5,7 +5,7 @@ Manage cookbooks on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for cookbook
+  -h, --help[=true|false]   help for cookbook
 ```
 
 ### Options inherited from parent commands

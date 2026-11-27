@@ -17,8 +17,8 @@ cinc user delete alice
 ### Options
 
 ```
-  -h, --help   help for delete
-  -y, --yes    skip the confirmation prompt when deleting the pivotal superuser
+  -h, --help[=true|false]   help for delete
+  -y, --yes[=true|false]    skip the confirmation prompt when deleting the pivotal superuser
 ```
 
 ### Options inherited from parent commands

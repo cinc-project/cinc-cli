@@ -29,10 +29,10 @@ cinc client create worker-01 --public-key worker-01.pub
 ### Options
 
 ```
-  -h, --help                help for create
-  -f, --key-file string     write the generated private key to this file instead of stdout
-      --public-key string   path to a PEM public key; the server will not generate a key pair
-      --validator           create a validator client
+  -h, --help[=true|false]        help for create
+  -f, --key-file string          write the generated private key to this file instead of stdout
+      --public-key string        path to a PEM public key; the server will not generate a key pair
+      --validator[=true|false]   create a validator client
 ```
 
 ### Options inherited from parent commands

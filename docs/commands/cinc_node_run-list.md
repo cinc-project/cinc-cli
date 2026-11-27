@@ -5,7 +5,7 @@ List, add, remove, or set a node's run list
 ### Options
 
 ```
-  -h, --help   help for run-list
+  -h, --help[=true|false]   help for run-list
 ```
 
 ### Options inherited from parent commands

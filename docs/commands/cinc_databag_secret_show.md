@@ -17,7 +17,7 @@ cinc databag secret show passwords mysql --secret-file ~/.cinc/secret
 ### Options
 
 ```
-  -h, --help                 help for show
+  -h, --help[=true|false]    help for show
       --secret string        the encrypted data bag secret as a literal string (mutually exclusive with --secret-file)
       --secret-file string   path to the encrypted data bag secret file
 ```

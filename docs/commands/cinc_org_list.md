@@ -25,7 +25,7 @@ cinc org list
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help[=true|false]   help for list
 ```
 
 ### Options inherited from parent commands

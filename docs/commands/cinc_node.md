@@ -5,7 +5,7 @@ Manage nodes on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for node
+  -h, --help[=true|false]   help for node
 ```
 
 ### Options inherited from parent commands

@@ -17,7 +17,7 @@ cinc node policy-set web01 prod base
 ### Options
 
 ```
-  -h, --help   help for policy-set
+  -h, --help[=true|false]   help for policy-set
 ```
 
 ### Options inherited from parent commands

@@ -5,7 +5,7 @@ Manage items within a data bag
 ### Options
 
 ```
-  -h, --help   help for item
+  -h, --help[=true|false]   help for item
 ```
 
 ### Options inherited from parent commands

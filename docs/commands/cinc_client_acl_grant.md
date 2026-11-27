@@ -28,7 +28,7 @@ cinc client acl grant read worker-01 --group admins
 ```
       --client stringArray   client to add or remove (repeatable; targets the actor list)
       --group stringArray    group to add or remove (repeatable; targets the group list)
-  -h, --help                 help for grant
+  -h, --help[=true|false]    help for grant
       --user stringArray     user to add or remove (repeatable; targets the actor list)
 ```
 

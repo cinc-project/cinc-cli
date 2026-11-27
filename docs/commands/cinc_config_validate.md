@@ -23,7 +23,7 @@ cinc config validate --profile staging
 ### Options
 
 ```
-  -h, --help   help for validate
+  -h, --help[=true|false]   help for validate
 ```
 
 ### Options inherited from parent commands

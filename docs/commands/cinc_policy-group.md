@@ -5,7 +5,7 @@ Manage policy groups on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for policy-group
+  -h, --help[=true|false]   help for policy-group
 ```
 
 ### Options inherited from parent commands

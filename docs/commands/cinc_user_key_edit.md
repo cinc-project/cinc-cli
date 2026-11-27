@@ -23,9 +23,9 @@ cinc user key edit alice rotation --file regenerate.json --key-file rotation.pem
 ### Options
 
 ```
-      --file string       read the updated key JSON from this file instead of launching the editor
-  -h, --help              help for edit
-      --key-file string   write a regenerated private key (from "create_key": true) to this file instead of stdout
+      --file string         read the updated key JSON from this file instead of launching the editor
+  -h, --help[=true|false]   help for edit
+      --key-file string     write a regenerated private key (from "create_key": true) to this file instead of stdout
 ```
 
 ### Options inherited from parent commands

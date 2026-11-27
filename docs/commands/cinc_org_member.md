@@ -13,7 +13,7 @@ manage a different org, switch profiles with --profile.
 ### Options
 
 ```
-  -h, --help   help for member
+  -h, --help[=true|false]   help for member
 ```
 
 ### Options inherited from parent commands

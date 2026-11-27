@@ -18,7 +18,7 @@ cinc cookbook upload nginx
 
 ```
       --cookbook-path string   directory or path list containing cookbooks (default current directory)
-  -h, --help                   help for upload
+  -h, --help[=true|false]      help for upload
 ```
 
 ### Options inherited from parent commands

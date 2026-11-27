@@ -17,8 +17,8 @@ cinc group member add admins alice worker-01
 ### Options
 
 ```
-  -h, --help          help for add
-      --type string   actor type to change: user, client, or group (default "user")
+  -h, --help[=true|false]   help for add
+      --type string         actor type to change: user, client, or group (default "user")
 ```
 
 ### Options inherited from parent commands

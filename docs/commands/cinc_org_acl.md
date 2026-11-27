@@ -15,7 +15,7 @@ The org ACL is the organization object's own ACL. It applies to whichever org th
 ### Options
 
 ```
-  -h, --help   help for acl
+  -h, --help[=true|false]   help for acl
 ```
 
 ### Options inherited from parent commands

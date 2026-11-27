@@ -28,7 +28,7 @@ cinc cookbook acl revoke update nginx --user alice
 ```
       --client stringArray   client to add or remove (repeatable; targets the actor list)
       --group stringArray    group to add or remove (repeatable; targets the group list)
-  -h, --help                 help for revoke
+  -h, --help[=true|false]    help for revoke
       --user stringArray     user to add or remove (repeatable; targets the actor list)
 ```
 

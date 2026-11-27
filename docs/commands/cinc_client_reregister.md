@@ -17,8 +17,8 @@ cinc client reregister worker-01 --key-file worker-01.pem
 ### Options
 
 ```
-  -h, --help              help for reregister
-  -f, --key-file string   write the new private key to this file instead of stdout
+  -h, --help[=true|false]   help for reregister
+  -f, --key-file string     write the new private key to this file instead of stdout
 ```
 
 ### Options inherited from parent commands

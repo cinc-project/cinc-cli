@@ -5,7 +5,7 @@ Manage local Cinc configuration
 ### Options
 
 ```
-  -h, --help   help for config
+  -h, --help[=true|false]   help for config
 ```
 
 ### Options inherited from parent commands

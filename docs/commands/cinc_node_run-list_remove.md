@@ -17,7 +17,7 @@ cinc node run-list remove web01 'recipe[ntp]'
 ### Options
 
 ```
-  -h, --help   help for remove
+  -h, --help[=true|false]   help for remove
 ```
 
 ### Options inherited from parent commands

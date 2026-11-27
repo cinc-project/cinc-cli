@@ -13,7 +13,7 @@ org, switch profiles with --profile.
 ### Options
 
 ```
-  -h, --help   help for invite
+  -h, --help[=true|false]   help for invite
 ```
 
 ### Options inherited from parent commands

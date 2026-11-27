@@ -17,7 +17,7 @@ and "cinc databag item delete" commands; neither needs the secret.
 ### Options
 
 ```
-  -h, --help   help for secret
+  -h, --help[=true|false]   help for secret
 ```
 
 ### Options inherited from parent commands

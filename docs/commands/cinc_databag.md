@@ -5,7 +5,7 @@ Manage data bags on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for databag
+  -h, --help[=true|false]   help for databag
 ```
 
 ### Options inherited from parent commands

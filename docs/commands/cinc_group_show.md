@@ -17,7 +17,7 @@ cinc group show admins
 ### Options
 
 ```
-  -h, --help   help for show
+  -h, --help[=true|false]   help for show
 ```
 
 ### Options inherited from parent commands

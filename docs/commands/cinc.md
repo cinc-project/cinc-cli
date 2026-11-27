@@ -9,10 +9,10 @@ cinc [flags]
 ### Options
 
 ```
-      --config string    path to the Cinc credentials file (default ~/.cinc/credentials)
-      --format string    output format: human or json (default "human")
-  -h, --help             help for cinc
-      --profile string   credentials profile to use (default: $CINC_PROFILE, then $CHEF_PROFILE, then "default")
+      --config string       path to the Cinc credentials file (default ~/.cinc/credentials)
+      --format string       output format: human or json (default "human")
+  -h, --help[=true|false]   help for cinc
+      --profile string      credentials profile to use (default: $CINC_PROFILE, then $CHEF_PROFILE, then "default")
 ```
 
 ### SEE ALSO

@@ -17,7 +17,7 @@ cinc group create admins
 ### Options
 
 ```
-  -h, --help   help for create
+  -h, --help[=true|false]   help for create
 ```
 
 ### Options inherited from parent commands

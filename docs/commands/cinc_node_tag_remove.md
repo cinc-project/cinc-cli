@@ -17,7 +17,7 @@ cinc node tag remove web01 canary
 ### Options
 
 ```
-  -h, --help   help for remove
+  -h, --help[=true|false]   help for remove
 ```
 
 ### Options inherited from parent commands

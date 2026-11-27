@@ -17,7 +17,7 @@ cinc client show worker-01
 ### Options
 
 ```
-  -h, --help   help for show
+  -h, --help[=true|false]   help for show
 ```
 
 ### Options inherited from parent commands

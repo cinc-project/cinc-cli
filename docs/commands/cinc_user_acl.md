@@ -15,7 +15,7 @@ User ACLs are global, not org-scoped: they live at the server root, so they need
 ### Options
 
 ```
-  -h, --help   help for acl
+  -h, --help[=true|false]   help for acl
 ```
 
 ### Options inherited from parent commands

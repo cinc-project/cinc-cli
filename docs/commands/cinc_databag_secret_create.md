@@ -18,7 +18,7 @@ cinc databag secret create passwords mysql --secret-file ~/.cinc/secret
 
 ```
       --file string          read the new item JSON from this file instead of launching the editor
-  -h, --help                 help for create
+  -h, --help[=true|false]    help for create
       --secret string        the encrypted data bag secret as a literal string (mutually exclusive with --secret-file)
       --secret-file string   path to the encrypted data bag secret file
 ```

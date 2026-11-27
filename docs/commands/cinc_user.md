@@ -5,7 +5,7 @@ Manage users on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for user
+  -h, --help[=true|false]   help for user
 ```
 
 ### Options inherited from parent commands

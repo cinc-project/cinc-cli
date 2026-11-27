@@ -23,7 +23,7 @@ cinc policy push prod Policyfile.lock.json
 ### Options
 
 ```
-  -h, --help   help for push
+  -h, --help[=true|false]   help for push
 ```
 
 ### Options inherited from parent commands

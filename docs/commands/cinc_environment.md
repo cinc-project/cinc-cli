@@ -5,7 +5,7 @@ Manage environments on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for environment
+  -h, --help[=true|false]   help for environment
 ```
 
 ### Options inherited from parent commands

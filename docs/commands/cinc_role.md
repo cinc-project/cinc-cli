@@ -5,7 +5,7 @@ Manage roles on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for role
+  -h, --help[=true|false]   help for role
 ```
 
 ### Options inherited from parent commands

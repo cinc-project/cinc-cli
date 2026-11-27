@@ -27,8 +27,8 @@ cinc search node 'role:web'
 
 ```
   -a, --attribute stringArray   return only this attribute (repeatable); the requested attributes become the columns
-  -h, --help                    help for search
-  -i, --id-only                 print only the matching object names/ids, one per line
+  -h, --help[=true|false]       help for search
+  -i, --id-only[=true|false]    print only the matching object names/ids, one per line
       --rows int                maximum number of results to return (0 returns all matches)
       --start int               offset of the first result to return
 ```

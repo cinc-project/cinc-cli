@@ -32,7 +32,7 @@ cinc policy push-archive prod ./appserver
 ### Options
 
 ```
-  -h, --help   help for push-archive
+  -h, --help[=true|false]   help for push-archive
 ```
 
 ### Options inherited from parent commands

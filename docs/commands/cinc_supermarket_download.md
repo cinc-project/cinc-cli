@@ -25,8 +25,8 @@ cinc supermarket download nginx
 
 ```
       --file string               output file or directory (default: ./<cookbook>-<version>.tar.gz)
-      --force                     overwrite the output file if it already exists
-  -h, --help                      help for download
+      --force[=true|false]        overwrite the output file if it already exists
+  -h, --help[=true|false]         help for download
       --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
 ```
 

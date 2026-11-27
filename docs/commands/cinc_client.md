@@ -5,7 +5,7 @@ Manage API clients on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for client
+  -h, --help[=true|false]   help for client
 ```
 
 ### Options inherited from parent commands

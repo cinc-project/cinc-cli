@@ -17,9 +17,9 @@ cinc policy create base
 ### Options
 
 ```
-      --file string   write the Policyfile to this path instead of ./<name>.rb
-      --force         overwrite the file if it already exists
-  -h, --help          help for create
+      --file string          write the Policyfile to this path instead of ./<name>.rb
+      --force[=true|false]   overwrite the file if it already exists
+  -h, --help[=true|false]    help for create
 ```
 
 ### Options inherited from parent commands

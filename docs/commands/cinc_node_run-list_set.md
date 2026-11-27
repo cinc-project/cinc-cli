@@ -17,7 +17,7 @@ cinc node run-list set web01 'recipe[base],role[web]'
 ### Options
 
 ```
-  -h, --help   help for set
+  -h, --help[=true|false]   help for set
 ```
 
 ### Options inherited from parent commands

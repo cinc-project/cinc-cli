@@ -28,7 +28,7 @@ cinc explore
 ### Options
 
 ```
-  -h, --help   help for explore
+  -h, --help[=true|false]   help for explore
 ```
 
 ### Options inherited from parent commands

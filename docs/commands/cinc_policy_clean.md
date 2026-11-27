@@ -17,8 +17,8 @@ cinc policy clean appserver
 ### Options
 
 ```
-      --dry-run   report what would be deleted without deleting anything
-  -h, --help      help for clean
+      --dry-run[=true|false]   report what would be deleted without deleting anything
+  -h, --help[=true|false]      help for clean
 ```
 
 ### Options inherited from parent commands

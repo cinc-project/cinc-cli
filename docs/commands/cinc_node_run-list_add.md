@@ -17,7 +17,7 @@ cinc node run-list add web01 'recipe[ntp]'
 ### Options
 
 ```
-  -h, --help   help for add
+  -h, --help[=true|false]   help for add
 ```
 
 ### Options inherited from parent commands

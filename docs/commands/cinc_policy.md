@@ -5,7 +5,7 @@ Manage Policyfile policies on the Cinc Server
 ### Options
 
 ```
-  -h, --help   help for policy
+  -h, --help[=true|false]   help for policy
 ```
 
 ### Options inherited from parent commands

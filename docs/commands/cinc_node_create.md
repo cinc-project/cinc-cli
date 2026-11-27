@@ -31,7 +31,7 @@ cinc node create web01 --file web01.json
 ```
   -E, --environment string    chef_environment for the new node
       --file string           read the full node JSON from this file instead of using flags
-  -h, --help                  help for create
+  -h, --help[=true|false]     help for create
       --policy-group string   policy group for a Policyfile-managed node (requires --policy-name)
       --policy-name string    policy name for a Policyfile-managed node (requires --policy-group)
       --run-list string       comma-separated run list for the new node

@@ -5,7 +5,7 @@ Manage a client's public keys
 ### Options
 
 ```
-  -h, --help   help for key
+  -h, --help[=true|false]   help for key
 ```
 
 ### Options inherited from parent commands

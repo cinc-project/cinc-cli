@@ -23,7 +23,7 @@ cinc org show acme
 ### Options
 
 ```
-  -h, --help   help for show
+  -h, --help[=true|false]   help for show
 ```
 
 ### Options inherited from parent commands

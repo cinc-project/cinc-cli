@@ -23,8 +23,8 @@ cinc cookbook download nginx 1.2.0 --dir ./cookbooks
 ### Options
 
 ```
-  -d, --dir string   parent directory to download the cookbook into (default ".")
-  -h, --help         help for download
+  -d, --dir string          parent directory to download the cookbook into (default ".")
+  -h, --help[=true|false]   help for download
 ```
 
 ### Options inherited from parent commands

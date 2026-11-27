@@ -25,7 +25,7 @@ cinc supermarket explore
 ### Options
 
 ```
-  -h, --help                      help for explore
+  -h, --help[=true|false]         help for explore
       --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
 ```
 

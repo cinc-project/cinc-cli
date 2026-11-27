@@ -23,8 +23,8 @@ cinc databag create passwords mysql
 ### Options
 
 ```
-      --file string   read the new item JSON from this file instead of launching the editor (2-arg form only)
-  -h, --help          help for create
+      --file string         read the new item JSON from this file instead of launching the editor (2-arg form only)
+  -h, --help[=true|false]   help for create
 ```
 
 ### Options inherited from parent commands

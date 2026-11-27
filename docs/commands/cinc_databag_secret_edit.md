@@ -18,7 +18,7 @@ cinc databag secret edit passwords mysql --secret-file ~/.cinc/secret
 
 ```
       --file string          read the updated item JSON from this file instead of launching the editor
-  -h, --help                 help for edit
+  -h, --help[=true|false]    help for edit
       --secret string        the encrypted data bag secret as a literal string (mutually exclusive with --secret-file)
       --secret-file string   path to the encrypted data bag secret file
 ```

@@ -33,8 +33,8 @@ cinc org create acme "Acme Corporation"
 ### Options
 
 ```
-  -f, --filename string   write the generated validator private key to this file instead of stdout
-  -h, --help              help for create
+  -f, --filename string     write the generated validator private key to this file instead of stdout
+  -h, --help[=true|false]   help for create
 ```
 
 ### Options inherited from parent commands

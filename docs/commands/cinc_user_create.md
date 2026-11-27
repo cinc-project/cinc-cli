@@ -26,7 +26,7 @@ cinc user create alice --email alice@example.com --public-key alice.pub
       --display-name string   user's display name
       --email string          user's email address
       --first-name string     user's first name
-  -h, --help                  help for create
+  -h, --help[=true|false]     help for create
   -f, --key-file string       write the generated private key to this file instead of stdout
       --last-name string      user's last name
       --middle-name string    user's middle name

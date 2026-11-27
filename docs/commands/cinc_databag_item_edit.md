@@ -17,8 +17,8 @@ cinc databag item edit passwords mysql
 ### Options
 
 ```
-      --file string   read the updated item JSON from this file instead of launching the editor
-  -h, --help          help for edit
+      --file string         read the updated item JSON from this file instead of launching the editor
+  -h, --help[=true|false]   help for edit
 ```
 
 ### Options inherited from parent commands

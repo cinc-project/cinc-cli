@@ -23,8 +23,8 @@ cinc org delete acme
 ### Options
 
 ```
-  -h, --help   help for delete
-  -y, --yes    accepted for knife compatibility; this command doesn't ask before deleting
+  -h, --help[=true|false]   help for delete
+  -y, --yes[=true|false]    accepted for knife compatibility; this command doesn't ask before deleting
 ```
 
 ### Options inherited from parent commands

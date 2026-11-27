@@ -17,7 +17,7 @@ cinc node tag list web01
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help[=true|false]   help for list
 ```
 
 ### Options inherited from parent commands

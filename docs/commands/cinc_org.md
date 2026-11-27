@@ -19,7 +19,7 @@ different org, switch profiles with --profile.
 ### Options
 
 ```
-  -h, --help   help for org
+  -h, --help[=true|false]   help for org
 ```
 
 ### Options inherited from parent commands

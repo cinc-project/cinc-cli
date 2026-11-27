@@ -17,8 +17,8 @@ cinc group member remove admins alice
 ### Options
 
 ```
-  -h, --help          help for remove
-      --type string   actor type to change: user, client, or group (default "user")
+  -h, --help[=true|false]   help for remove
+      --type string         actor type to change: user, client, or group (default "user")
 ```
 
 ### Options inherited from parent commands

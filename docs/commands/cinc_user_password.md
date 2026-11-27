@@ -17,8 +17,8 @@ cinc user password alice
 ### Options
 
 ```
-  -h, --help              help for password
-      --password string   the new password (prompted for if omitted)
+  -h, --help[=true|false]   help for password
+      --password string     the new password (prompted for if omitted)
 ```
 
 ### Options inherited from parent commands

@@ -5,7 +5,7 @@ Add, remove, set, or list a node's tags
 ### Options
 
 ```
-  -h, --help   help for tag
+  -h, --help[=true|false]   help for tag
 ```
 
 ### Options inherited from parent commands

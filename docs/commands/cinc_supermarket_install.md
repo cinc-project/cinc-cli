@@ -30,7 +30,7 @@ cinc supermarket install nginx 1.2.0
 ### Options
 
 ```
-  -h, --help                      help for install
+  -h, --help[=true|false]         help for install
       --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
 ```
 

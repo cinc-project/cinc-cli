@@ -21,7 +21,7 @@ cinc environment acl show prod
 ### Options
 
 ```
-  -h, --help   help for show
+  -h, --help[=true|false]   help for show
 ```
 
 ### Options inherited from parent commands

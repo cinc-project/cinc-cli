@@ -17,8 +17,8 @@ cinc role edit webserver
 ### Options
 
 ```
-      --file string   read the updated role JSON from this file instead of launching the editor
-  -h, --help          help for edit
+      --file string         read the updated role JSON from this file instead of launching the editor
+  -h, --help[=true|false]   help for edit
 ```
 
 ### Options inherited from parent commands

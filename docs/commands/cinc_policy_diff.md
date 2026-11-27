@@ -31,8 +31,8 @@ cinc policy diff appserver --revisions 1a2b3c4d 5e6f7a8b
 ### Options
 
 ```
-  -h, --help        help for diff
-      --revisions   treat the two refs as revision ids rather than policy group names
+  -h, --help[=true|false]        help for diff
+      --revisions[=true|false]   treat the two refs as revision ids rather than policy group names
 ```
 
 ### Options inherited from parent commands

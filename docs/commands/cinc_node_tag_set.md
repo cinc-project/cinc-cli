@@ -17,7 +17,7 @@ cinc node tag set web01 prod web
 ### Options
 
 ```
-  -h, --help   help for set
+  -h, --help[=true|false]   help for set
 ```
 
 ### Options inherited from parent commands

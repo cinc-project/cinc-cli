@@ -17,8 +17,8 @@ cinc client edit worker-01
 ### Options
 
 ```
-      --file string   read the updated client JSON from this file instead of launching the form
-  -h, --help          help for edit
+      --file string         read the updated client JSON from this file instead of launching the form
+  -h, --help[=true|false]   help for edit
 ```
 
 ### Options inherited from parent commands

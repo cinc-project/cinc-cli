@@ -5,7 +5,7 @@ Add or remove members of a group
 ### Options
 
 ```
-  -h, --help   help for member
+  -h, --help[=true|false]   help for member
 ```
 
 ### Options inherited from parent commands

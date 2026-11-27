@@ -28,11 +28,11 @@ cinc supermarket share nginx 'Web Servers'
 ### Options
 
 ```
-      --cookbook-path string      directory or path list containing cookbooks (default current directory)
-      --dry-run                   build the cookbook tarball without uploading it
-  -h, --help                      help for share
-      --no-chefignore             do not exclude files matched by the cookbook's chefignore file
-      --supermarket-site string   URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
+      --cookbook-path string         directory or path list containing cookbooks (default current directory)
+      --dry-run[=true|false]         build the cookbook tarball without uploading it
+  -h, --help[=true|false]            help for share
+      --no-chefignore[=true|false]   do not exclude files matched by the cookbook's chefignore file
+      --supermarket-site string      URL of the Chef Supermarket site (default: profile supermarket_site, then https://supermarket.chef.io)
 ```
 
 ### Options inherited from parent commands

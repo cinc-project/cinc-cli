@@ -5,7 +5,7 @@ Manage cookbooks on Chef Supermarket
 ### Options
 
 ```
-  -h, --help   help for supermarket
+  -h, --help[=true|false]   help for supermarket
 ```
 
 ### Options inherited from parent commands

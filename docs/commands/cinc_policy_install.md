@@ -44,8 +44,8 @@ cinc policy install path/to/Policyfile.rb --format json
 ### Options
 
 ```
-  -h, --help            help for install
-      --output string   write the lock to this path instead of ./Policyfile.lock.json
+  -h, --help[=true|false]   help for install
+      --output string       write the lock to this path instead of ./Policyfile.lock.json
 ```
 
 ### Options inherited from parent commands

@@ -31,8 +31,8 @@ cinc policy clean-cookbooks --dry-run
 ### Options
 
 ```
-      --dry-run   report what would be deleted without deleting anything
-  -h, --help      help for clean-cookbooks
+      --dry-run[=true|false]   report what would be deleted without deleting anything
+  -h, --help[=true|false]      help for clean-cookbooks
 ```
 
 ### Options inherited from parent commands

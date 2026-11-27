@@ -25,7 +25,7 @@ cinc role create webserver --file webserver.json
 ```
   -d, --description string   human-readable description for the new role
       --file string          read the full role JSON from this file instead of using flags
-  -h, --help                 help for create
+  -h, --help[=true|false]    help for create
 ```
 
 ### Options inherited from parent commands

@@ -13,7 +13,7 @@ identity that already holds the grant permission on the object.
 ### Options
 
 ```
-  -h, --help   help for acl
+  -h, --help[=true|false]   help for acl
 ```
 
 ### Options inherited from parent commands
