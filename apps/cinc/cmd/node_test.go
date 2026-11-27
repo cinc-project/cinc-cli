@@ -959,11 +959,14 @@ func TestNodeSSHHostReadsProjectedAttribute(t *testing.T) {
 // skipped.
 func TestNodeSSHTargetsReportsUndecodableRow(t *testing.T) {
 	srv, _ := nodeSearchServer(t, `{"name":"web01","chef_type":"node","automatic":{"fqdn":"web01.example.test"}}`)
+	// The SSH options are checked before the search, so keep the runner's
+	// own ~/.ssh out of it: this case is about decoding the search row.
+	t.Setenv("HOME", t.TempDir())
 
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"node", "ssh", "name:web01", "uptime", "--ssh-user", "u", "--config", writeNodeConfig(t, srv.URL)})
+	root.SetArgs([]string{"node", "ssh", "name:web01", "uptime", "--ssh-user", "u", "--no-host-key-verify", "--config", writeNodeConfig(t, srv.URL)})
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "not a partial-search row") {
 		t.Errorf("node ssh error = %v, want the decode failure", err)
 	}
