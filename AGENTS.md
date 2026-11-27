@@ -42,6 +42,10 @@ This tool is for **cinc**. Treat chef as a compatibility target, not the focus:
 - **Branch from the very latest `origin/main`.** Run `git fetch origin` first;
   work lands fast here, and a stale base produces redundant or un-rebaseable
   PRs. Confirm with `git branch --show-current` before every commit and push.
+- **One focused PR per change, always based on `main`.** Never open a PR
+  whose base is another feature branch. If work depends on an open PR, wait
+  for it to merge and branch from the updated `main`, or fold both into one
+  PR.
 
 ## Architecture rules
 
@@ -57,6 +61,9 @@ This tool is for **cinc**. Treat chef as a compatibility target, not the focus:
 - **Validate every flag, then act.** Resolve flags before anything with a side
   effect. Rejecting a bad `--format` is worthless once the command has already
   created a client on the server or SSHed into a host.
+- **Fix bugs where they live.** A bug in cinc-api, cinc-supermarket-api or
+  cinc-server-ng gets an issue or PR in that repository, linked from the
+  change here, rather than a workaround in the CLI.
 
 ## Build & test
 
@@ -77,6 +84,25 @@ While iterating, scope `go test` to the packages you touched (e.g.
 is dominated by `cli/policyfile/rubyeval` (~25s) and
 `cli/policyfile/resolver` (~10s), which shell out to Ruby — only run
 those when you're changing policyfile code.
+
+## Dependencies
+
+- **Read the release notes, even when the bump compiles.** A dependency can
+  change behavior without changing a signature. Adapt the CLI to the change
+  in the same PR.
+- **Two Go modules.** Update the root and `integration/` together. In
+  `integration/go.mod`, `github.com/cinc-project/cinc-cli` stays at the
+  `v0.0.0` placeholder (a `replace` points it at `../`); `go get -u` bumps
+  it, so set it back.
+- **After bumping cinc-server-ng,** run `make test-integration`, and rerun
+  any gapped case with its skip removed (see the `integration-tests` skill).
+- **Terraform lock hashes cover every platform.** After changing providers
+  under `integration/terraform`, run `terraform providers lock
+  -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_amd64
+  -platform=darwin_arm64`; `terraform init -upgrade` records only the
+  current machine's hash.
+- **Rebase a Dependabot PR by commenting `@dependabot rebase`.** Pushing to
+  its branch stops Dependabot from maintaining it.
 
 ## Conventions
 
@@ -105,6 +131,11 @@ those when you're changing policyfile code.
   a case nor exempt with a reason. Use the `adding-a-command` skill.
 - **Tests must not touch the network.** An httptest server is the only
   acceptable endpoint.
+- **Fixtures copy the real server, not the client.** An httptest handler
+  returns what the server actually sends, quirks included. A fixture written
+  to match the client's expectations passes while the real server breaks it:
+  Supermarket's `total` is the whole catalog on search, and fixtures that
+  reported the match count hid that for months.
 - **Test seams are swappable package-level vars**, each documented at its
   declaration. Reach for the existing one rather than restructuring, and
   restore it with `t.Cleanup`.
