@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -230,4 +232,33 @@ func TestFileRoundTripEveryNoun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadJSONFileLocatesSyntaxErrors(t *testing.T) {
+	path := writeTempJSON(t, "bad.json", "{\n  \"name\": \"web\",\n}")
+	_, err := readJSONFile[cinc.Role](path)
+	wantAll(t, err, "bad.json isn't valid JSON", "line 3, column 1")
+}
+
+func TestReadJSONFileExplainsAWrongType(t *testing.T) {
+	path := writeTempJSON(t, "role.json", `{"name":"web","run_list":"recipe[nginx]"}`)
+	_, err := readJSONFile[cinc.Role](path)
+	wantAll(t, err, path, `"run_list" should be a list`, "not text")
+	if strings.Contains(err.Error(), "isn't valid JSON") {
+		t.Errorf("valid JSON with a wrong type shouldn't be called invalid: %v", err)
+	}
+}
+
+func TestReadJSONFileMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nope.json")
+	_, err := readJSONFile[cinc.Role](path)
+	wantAll(t, err, "there's no file at "+path, "--file")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("error should still wrap fs.ErrNotExist: %v", err)
+	}
+}
+
+func TestStrictJSONExplainsAWrongType(t *testing.T) {
+	err := strictJSON[cinc.Role]()([]byte(`{"name":"web","run_list":"recipe[nginx]"}`))
+	wantAll(t, err, `"run_list" should be a list`)
 }

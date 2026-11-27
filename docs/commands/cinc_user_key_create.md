@@ -17,7 +17,7 @@ cinc user key create alice rotation --key-file rotation.pem
 Register a public key you already have; the server generates nothing.
 
 ```bash
-cinc user key create alice laptop --public-key ~/.ssh/id_rsa.pub
+cinc user key create alice laptop --public-key laptop.pub
 ```
 
 Add a key that expires on a given date.

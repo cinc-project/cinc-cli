@@ -23,7 +23,7 @@ func ParseFormat(s string) (Format, error) {
 	case FormatHuman, FormatJSON:
 		return Format(s), nil
 	default:
-		return "", fmt.Errorf("printer: unknown output format %q (want human or json)", s)
+		return "", fmt.Errorf("%q isn't an output format we know. Use human or json", s)
 	}
 }
 

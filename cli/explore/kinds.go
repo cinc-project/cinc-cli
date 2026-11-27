@@ -14,8 +14,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
+
+	"github.com/cinc-project/cinc-cli/cli/jsoneditor"
 )
 
 // Row is one object in a kind's list. Name is the identifier passed to
@@ -236,7 +239,7 @@ func (k editorKind[T]) Summary(ctx context.Context, c *cinc.Client, name string)
 func (k editorKind[T]) Save(ctx context.Context, c *cinc.Client, name string, edited []byte) error {
 	var obj T
 	if err := json.Unmarshal(edited, &obj); err != nil {
-		return fmt.Errorf("parse edited %s: %w", k.title, err)
+		return editedJSONError(singular(k.title), edited, err)
 	}
 	return k.updateFn(ctx, c, name, &obj)
 }
@@ -255,7 +258,7 @@ func (k editorKind[T]) NewForm(action editAction, seed []byte) (subEditor, error
 func (k editorKind[T]) Create(ctx context.Context, c *cinc.Client, doc []byte) (CreateResult, error) {
 	var obj T
 	if err := json.Unmarshal(doc, &obj); err != nil {
-		return CreateResult{}, fmt.Errorf("parse new %s: %w", k.title, err)
+		return CreateResult{}, newJSONError(singular(k.title), doc, err)
 	}
 	return k.createFn(ctx, c, &obj)
 }
@@ -288,4 +291,22 @@ func prettyJSON(v any) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// editedJSONError explains an edited document that is valid JSON but
+// doesn't fit the object (a field of the wrong type, say). The editor has
+// already closed, so it says nothing was sent and how to try again.
+func editedJSONError(what string, data []byte, err error) error {
+	return fmt.Errorf("we couldn't save the %s: %w. Nothing changed on the server; edit it again and fix that to retry", what, jsoneditor.DescribeJSONError(data, err))
+}
+
+// newJSONError is editedJSONError for a create.
+func newJSONError(what string, data []byte, err error) error {
+	return fmt.Errorf("we couldn't create the %s: %w. Nothing was created; try again and fix that", what, jsoneditor.DescribeJSONError(data, err))
+}
+
+// singular turns a kind's list title ("Roles") into the word for one of
+// them ("role") for messages.
+func singular(title string) string {
+	return strings.ToLower(strings.TrimSuffix(title, "s"))
 }

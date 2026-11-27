@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/components"
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // newUserCmd builds the `cinc user` command group. Users are global
@@ -116,10 +116,6 @@ Register a public key you already have; the server generates no key.
 cinc user create alice --email alice@example.com --public-key alice.pub`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
-			if err != nil {
-				return err
-			}
 			req := &cinc.User{
 				Username:    args[0],
 				DisplayName: flags.displayName,
@@ -130,17 +126,25 @@ cinc user create alice --email alice@example.com --public-key alice.pub`,
 				Password:    flags.password,
 			}
 			if flags.publicKeyFile != "" {
-				pem, err := os.ReadFile(flags.publicKeyFile)
+				pub, err := readPublicKey(flags.publicKeyFile, req.Username)
 				if err != nil {
-					return fmt.Errorf("cinc: read public key: %w", err)
+					return err
 				}
-				req.PublicKey = string(pem)
+				req.PublicKey = pub
+			}
+			if err := checkKeyFileDest("--key-file", flags.keyFile); err != nil {
+				return err
+			}
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
 			}
 			created, _, err := c.Users.Create(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return emitPrivateKey(cmd, fmt.Sprintf("Created user %q", req.Username), "key", created.ChefKey.PrivateKey, flags.keyFile)
+			return emitPrivateKey(cmd, fmt.Sprintf("Created user %q", req.Username), "key", created.ChefKey.PrivateKey, flags.keyFile,
+				fmt.Sprintf("replace it: run `%[1]s user key delete %[2]s default`, then `%[1]s user key create %[2]s default --key-file <path>`", progname.Get(), req.Username))
 		},
 	}
 	cmd.Flags().StringVar(&flags.email, "email", "", "user's email address")
@@ -228,7 +232,7 @@ cinc user password alice`,
 				}
 			}
 			if password == "" {
-				return fmt.Errorf("a non-empty password is required")
+				return fmt.Errorf("the new password can't be empty, so we didn't change the password for user %q. Type one at the prompt, or pass it with --password.", name)
 			}
 			if _, err := c.Users.SetPassword(cmd.Context(), name, password); err != nil {
 				return err

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // keyOwner describes one of the two collections of keys the Cinc Server
@@ -128,33 +128,38 @@ func newKeyCreateCmd(owner keyOwner) *cobra.Command {
 cinc %[1]s key create %[2]s rotation --key-file rotation.pem
 
 Register a public key you already have; the server generates nothing.
-cinc %[1]s key create %[2]s laptop --public-key ~/.ssh/id_rsa.pub
+cinc %[1]s key create %[2]s laptop --public-key laptop.pub
 
 Add a key that expires on a given date.
 cinc %[1]s key create %[2]s temp --expires 2030-01-01T00:00:00Z`, owner.noun, owner.sample),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
-			if err != nil {
-				return err
-			}
 			ownerName, keyName := args[0], args[1]
 			// With no public key, the library asks the server to generate
 			// the pair.
 			k := &cinc.Key{Name: keyName, ExpirationDate: expires}
 			if publicKeyFile != "" {
-				pem, err := os.ReadFile(publicKeyFile)
+				pub, err := readPublicKey(publicKeyFile, keyName)
 				if err != nil {
-					return fmt.Errorf("cinc: read public key: %w", err)
+					return err
 				}
-				k.PublicKey = string(pem)
+				k.PublicKey = pub
+			}
+			if err := checkKeyFileDest("--key-file", keyFile); err != nil {
+				return err
+			}
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
 			}
 			created, _, err := owner.scope(c, ownerName).Create(cmd.Context(), k)
 			if err != nil {
 				return err
 			}
 			return emitPrivateKey(cmd, fmt.Sprintf("Added key %q to %s %q", keyName, owner.noun, ownerName),
-				"key", created.PrivateKey, keyFile)
+				"key", created.PrivateKey, keyFile,
+				fmt.Sprintf("replace it: run `%[1]s %[2]s key delete %[3]s %[4]s`, then create it again with a --key-file path you can write to",
+					progname.Get(), owner.noun, ownerName, keyName))
 		},
 	}
 	cmd.Flags().StringVarP(&keyFile, "key-file", "f", "", "write the generated private key to this file instead of stdout")
@@ -182,6 +187,9 @@ Have the server regenerate a key (regenerate.json holds {"create_key": true}) an
 cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pem`, owner.noun, owner.sample),
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkKeyFileDest("--key-file", keyFile); err != nil {
+				return err
+			}
 			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
@@ -228,7 +236,8 @@ cinc %[1]s key edit %[2]s rotation --file regenerate.json --key-file rotation.pe
 				priv = result.PrivateKey
 			}
 			return emitPrivateKey(cmd, fmt.Sprintf("Updated key %q on %s %q", keyName, owner.noun, ownerName),
-				"key", priv, keyFile)
+				"key", priv, keyFile,
+				"run the same edit again, with \"create_key\": true and a --key-file path you can write to, to make another new key")
 		},
 	}
 	cmd.Flags().StringVar(&inputFile, "file", "", "read the updated key JSON from this file instead of launching the editor")
@@ -271,8 +280,9 @@ cinc %[1]s key delete %[2]s rotation`, owner.noun, owner.sample),
 // newline when the PEM lacks one), so it can be piped, and done plus a
 // warning that it won't be shown again goes to stderr. A priv of "" means
 // the server generated nothing (the caller supplied a public key), so only
-// done is printed.
-func emitPrivateKey(cmd *cobra.Command, done, label, priv, keyFile string) error {
+// done is printed. recovery says how to get a new key if writing keyFile
+// fails; see keyWriteError.
+func emitPrivateKey(cmd *cobra.Command, done, label, priv, keyFile, recovery string) error {
 	out := cmd.OutOrStdout()
 	if priv == "" {
 		fmt.Fprintln(out, done)
@@ -280,7 +290,7 @@ func emitPrivateKey(cmd *cobra.Command, done, label, priv, keyFile string) error
 	}
 	if keyFile != "" {
 		if err := writeKeyFile(keyFile, priv); err != nil {
-			return err
+			return keyWriteError(done, label, keyFile, recovery, err)
 		}
 		fmt.Fprintf(out, "%s (%s written to %s)\n", done, label, keyFile)
 		return nil
@@ -291,30 +301,6 @@ func emitPrivateKey(cmd *cobra.Command, done, label, priv, keyFile string) error
 	}
 	if !strings.HasSuffix(priv, "\n") {
 		fmt.Fprintln(out)
-	}
-	return nil
-}
-
-// writeKeyFile writes a private key to path, mode 0600. It opens with
-// O_TRUNC (not O_EXCL) so reregister and friends can overwrite an existing
-// key, then forces 0600 explicitly: a pre-existing file would otherwise keep
-// its looser mode, and the create mode is masked by umask. A private key
-// must never be group- or world-readable.
-func writeKeyFile(path, priv string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("cinc: write key file: %w", err)
-	}
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close() // already returning an error
-		return fmt.Errorf("cinc: write key file: %w", err)
-	}
-	if _, err := f.WriteString(priv); err != nil {
-		_ = f.Close() // already returning an error
-		return fmt.Errorf("cinc: write key file: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("cinc: write key file: %w", err)
 	}
 	return nil
 }

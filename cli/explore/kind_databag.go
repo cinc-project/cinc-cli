@@ -3,7 +3,6 @@ package explore
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	cinc "github.com/cinc-project/cinc-api"
 )
@@ -108,7 +107,7 @@ func dataBagItemSummaryFields(item cinc.DataBagItem) []summaryField {
 func (k dataBagItemsKind) Save(ctx context.Context, c *cinc.Client, id string, edited []byte) error {
 	var item cinc.DataBagItem
 	if err := json.Unmarshal(edited, &item); err != nil {
-		return fmt.Errorf("parse edited data bag item: %w", err)
+		return editedJSONError("data bag item", edited, err)
 	}
 	_, _, err := c.DataBags.Items(k.bag).Update(ctx, item)
 	return err
@@ -123,7 +122,7 @@ func (dataBagItemsKind) NewTemplate() []byte {
 func (k dataBagItemsKind) Create(ctx context.Context, c *cinc.Client, doc []byte) (CreateResult, error) {
 	var item cinc.DataBagItem
 	if err := json.Unmarshal(doc, &item); err != nil {
-		return CreateResult{}, fmt.Errorf("parse new data bag item: %w", err)
+		return CreateResult{}, newJSONError("data bag item", doc, err)
 	}
 	if _, _, err := c.DataBags.Items(k.bag).Create(ctx, item); err != nil {
 		return CreateResult{}, err

@@ -27,7 +27,7 @@ func strictJSON[T any]() func([]byte) error {
 		if errors.As(err, &unknown) {
 			return fmt.Errorf("we don't recognize the field %q. Check the spelling, or remove it.", unknown.key)
 		}
-		return err
+		return jsoneditor.DescribeJSONError(b, err)
 	}
 }
 

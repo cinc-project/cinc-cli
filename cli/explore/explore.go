@@ -50,7 +50,7 @@ func Run(ctx context.Context, opts Options) error {
 		opts.NewClient = client.New
 	}
 	if !stdoutIsTTY(opts.Stdout) {
-		return fmt.Errorf("%s explore needs an interactive terminal — run it from a normal shell session", progname.Get())
+		return fmt.Errorf("%s explore needs an interactive terminal, but its output is going to a pipe or a file. Run it straight from your shell, without redirecting its output", progname.Get())
 	}
 	if len(opts.Profiles) == 0 {
 		return fmt.Errorf("we couldn't find any profiles to explore. Run `%s config create` to set one up", progname.Get())
@@ -69,7 +69,7 @@ func Run(ctx context.Context, opts Options) error {
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("explore: %w", err)
+		return fmt.Errorf("%s explore stopped unexpectedly: %w. Anything you saved before this point is already on the server", progname.Get(), err)
 	}
 	return nil
 }

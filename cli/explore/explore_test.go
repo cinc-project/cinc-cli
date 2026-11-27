@@ -95,6 +95,10 @@ func TestRunRejectsNonTTY(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "interactive terminal") {
 		t.Fatalf("err = %v, want an interactive-terminal message", err)
 	}
+	wantMsg(t, err, "pipe or a file", "without redirecting")
+	if strings.Contains(err.Error(), "—") {
+		t.Errorf("error should not use an em dash: %v", err)
+	}
 }
 
 // An unknown --profile should list the profiles there are to pick from.
