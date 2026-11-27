@@ -200,6 +200,7 @@ func resolveClient(cmd *cobra.Command) (*cinc.Client, error) {
 // for commands that need the profile for something else too (the data bag
 // secret, say) and shouldn't load the credentials file twice.
 func clientForProfile(cmd *cobra.Command, profile config.Profile) (*cinc.Client, error) {
+	recordClientTarget(cmd, profile)
 	c, err := client.New(profile)
 	if errors.Is(err, config.ErrMissingServerURL) {
 		return nil, missingServerURLError(cmd)

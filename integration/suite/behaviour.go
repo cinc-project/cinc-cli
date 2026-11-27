@@ -875,16 +875,16 @@ func showNodeIn(c *cli, name, profile string) cinc.Node {
 	return n
 }
 
-// behWantUnauthorized fails the case unless r is a one-line 401 that points the
-// user at their key and clock, the two things they can fix.
+// behWantUnauthorized fails the case unless r is a 401 explained in terms of
+// the client key and the setting (client_key or client_name) to fix.
 func behWantUnauthorized(t *testing.T, r result) string {
 	t.Helper()
 	line := behStderrLine(t, r)
 	if r.exitCode == 0 || !hasStatus(line, 401) {
 		t.Errorf("want a 401: %s", r)
 	}
-	if !strings.Contains(line, "client key") || !strings.Contains(line, "clock") {
-		t.Errorf("a 401 should tell the user to check their client key and clock: %s", r)
+	if !strings.Contains(line, "client key") || (!strings.Contains(line, "client_key") && !strings.Contains(line, "client_name")) {
+		t.Errorf("a 401 should point the user at the client_key or client_name setting to fix: %s", r)
 	}
 	if strings.TrimSpace(r.stdout) != "" {
 		t.Errorf("a refused request should print nothing on stdout: %s", r)
@@ -915,7 +915,7 @@ func testAuthUnknownClient(t *testing.T, tgt Target, c *cli) {
 }
 
 // testForbiddenShape has a plain client try writes its ACLs do not allow.
-// Each is a one-line 403, distinct from a 401 or a 404, and leaves the
+// Each is an explained 403, distinct from a 401 or a 404, and leaves the
 // object as it was. The ACL family covers grants; this covers the message.
 func testForbiddenShape(t *testing.T, _ Target, c *cli) {
 	behCreateRobot(c, "robot")
@@ -1029,7 +1029,7 @@ func testListFormatMatrix(t *testing.T, tgt Target, c *cli) {
 }
 
 // testNotFoundShape runs show and delete of a missing object on every noun.
-// Each fails with one line on stderr that says it was not found and names
+// Each fails with an error on stderr that says it was not found and names
 // the object, and prints nothing on stdout: never an empty success.
 func testNotFoundShape(t *testing.T, _ Target, c *cli) {
 	g := uniqueName(t, "ghost")
@@ -1108,7 +1108,7 @@ func behMentionsConflict(line string) bool {
 }
 
 // testConflictShape creates, then creates again, one object of every noun
-// whose create can collide. The repeat is a one-line conflict and leaves
+// whose create can collide. The repeat is an explained conflict and leaves
 // the original alone.
 func testConflictShape(t *testing.T, _ Target, c *cli) {
 	node, role, env, client, group, bag := uniqueName(t, "node"), uniqueName(t, "role"),

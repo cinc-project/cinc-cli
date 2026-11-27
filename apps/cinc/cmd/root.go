@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -78,7 +79,16 @@ func Execute() error {
 	progname.Set(name)
 	root := newRootCmd()
 	applyProgramName(root, name)
-	err := root.Execute()
+	return executeRoot(root)
+}
+
+// executeRoot runs root and prints the error it returns, if any. It is
+// Execute without the argv handling, so tests can drive it.
+func executeRoot(root *cobra.Command) error {
+	// The command fills target in when it builds a server client, so a
+	// server error can name the client, profile and file it signed with.
+	var target client.Target
+	err := root.ExecuteContext(withClientTarget(context.Background(), &target))
 	if errors.Is(err, errFirstRunCompleted) {
 		return nil
 	}
@@ -86,11 +96,32 @@ func Execute() error {
 	// exit non-zero without a second generic "Error: ..." line.
 	if err != nil && !errors.Is(err, errAlreadyReported) {
 		// A transport failure the user can fix (an untrusted certificate,
-		// a server that isn't listening) is explained rather than printed
-		// as Go's error chain.
-		fmt.Fprintln(root.ErrOrStderr(), "Error:", client.Explain(err))
+		// a server that isn't listening) and a server's refusal (a 401, a
+		// 404, ...) are explained rather than printed as the raw error.
+		fmt.Fprintln(root.ErrOrStderr(), "Error:", client.ExplainFor(err, target))
 	}
 	return err
+}
+
+// clientTargetKey is the context key for the *client.Target that
+// executeRoot hands each command.
+type clientTargetKey struct{}
+
+func withClientTarget(ctx context.Context, t *client.Target) context.Context {
+	return context.WithValue(ctx, clientTargetKey{}, t)
+}
+
+// recordClientTarget tells executeRoot which profile cmd built its server
+// client from. A command run outside executeRoot (a test calling
+// root.Execute) has nowhere to record it, and that's fine.
+func recordClientTarget(cmd *cobra.Command, profile config.Profile) {
+	ctx := cmd.Context()
+	if ctx == nil {
+		return
+	}
+	if t, ok := ctx.Value(clientTargetKey{}).(*client.Target); ok {
+		*t = client.TargetFor(profileNameForCommand(cmd), resolveConfigPath(cmd), profile)
+	}
 }
 
 // safeProgramName is the shape a program name has to have before it is

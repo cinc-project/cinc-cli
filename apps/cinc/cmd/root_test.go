@@ -300,3 +300,40 @@ func TestBareCincWithConfigSkipsFirstRun(t *testing.T) {
 		t.Errorf("expected help text on stdout, got:\n%s", stdout.String())
 	}
 }
+
+// TestExecuteExplainsServerErrorsWithTheProfile checks a server's refusal
+// reaches the user explained, naming the profile and credentials file the
+// command signed with, not as cinc-api's raw "cinc: GET ...: 401" line.
+func TestExecuteExplainsServerErrorsWithTheProfile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// cinc-server-ng's and erchef's answer to a key the server
+		// doesn't have for the client.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = fmt.Fprint(w, `{"error":["Invalid signature for user or client 'tim'"]}`)
+	}))
+	t.Cleanup(srv.Close)
+	keyPath := writeTestKey(t)
+	cfgPath := filepath.Join(t.TempDir(), "credentials")
+	cfg := fmt.Sprintf("[work]\ncinc_server_url = \"%s/organizations/acme\"\nclient_name = \"tim\"\nclient_key = %q\n", srv.URL, keyPath)
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var stderr bytes.Buffer
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"node", "list", "--config", cfgPath, "--profile", "work"})
+	if err := executeRoot(root); err == nil {
+		t.Fatal("want the 401 back from executeRoot")
+	}
+	msg := stderr.String()
+	for _, want := range []string{"Error: ", `"tim"`, srv.URL, keyPath, `"work" profile`, cfgPath,
+		"Invalid signature for user or client 'tim'", "401"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("stderr should mention %q:\n%s", want, msg)
+		}
+	}
+}

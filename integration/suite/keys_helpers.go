@@ -208,7 +208,7 @@ func wantRejected(t *testing.T, c *cli, profile string, p probe) {
 // status code (the CLI reports server errors as "...: 403: ...").
 func wantStatus(t *testing.T, r result, code int) {
 	t.Helper()
-	if r.exitCode == 0 || !strings.Contains(r.stderr, fmt.Sprintf(": %d:", code)) {
+	if r.exitCode == 0 || !hasStatus(r.stderr, code) {
 		t.Fatalf("want an HTTP %d error: %s", code, r)
 	}
 }
