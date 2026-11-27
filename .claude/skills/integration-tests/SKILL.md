@@ -80,3 +80,8 @@ The real CINC Server runs by hand in AWS through
 `integration/run-cinc-server-erlang.sh` (about 10 minutes and $0.17/hour).
 Any change to a request the CLI sends should be run there before it
 merges: cinc-server-ng accepting a request does not mean erchef will.
+
+A `KEEP=1` stack's Terraform state lives in the worktree. Never run
+`gh pr merge --delete-branch` on a branch whose worktree holds one: it
+deletes the worktree and orphans the stack. `integration/README.md` has the
+details.

@@ -64,6 +64,13 @@ GOTESTFLAGS='-run TestCincServerErlang/cookbooks/' KEEP=1 ./run-cinc-server-erla
 `go test` reads `terraform/.out/target.json`, or the file named by
 `CINC_SERVER_ERLANG_TARGET`. Without it the package skips.
 
+A kept stack's Terraform state and `terraform/.out/` are the only handle on
+its AWS resources, and they live in your checkout. Removing that checkout
+loses them, and `gh pr merge --delete-branch` removes the worktree its
+branch is checked out in, gitignored files included. Run a kept stack from
+a checkout that isn't a PR branch, or copy `terraform.tfstate` and `.out/`
+somewhere safe before you merge.
+
 Any change to a request the CLI sends should be run here before it merges:
 cinc-server-ng accepting a request does not mean erchef will.
 
