@@ -12,8 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"slices"
-	"strings"
 
 	cinc "github.com/cinc-project/cinc-api"
 
@@ -21,6 +21,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/config"
 	localcookbook "github.com/cinc-project/cinc-cli/cli/cookbook"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // DefaultSite is the public Supermarket instance.
@@ -30,6 +31,9 @@ const DefaultSite = sm.DefaultBaseURL
 type Client struct {
 	base *url.URL
 	api  *sm.Client
+	// identity records who signs uploads and where that was configured,
+	// for error messages. It is zero for an anonymous client.
+	identity identity
 }
 
 // ShareOptions controls a cookbook share operation.
@@ -65,7 +69,7 @@ type ShareResult struct {
 // profile can override the username and/or key used for uploads via
 // supermarket_client_name/supermarket_key while falling back to
 // client_name/client_key for whichever override is unset.
-func New(profile config.Profile, site string) (*Client, error) {
+func New(profile config.Profile, site string, opts ...Option) (*Client, error) {
 	if err := profile.ValidateSupermarketIdentity(); err != nil {
 		return nil, err
 	}
@@ -76,19 +80,40 @@ func New(profile config.Profile, site string) (*Client, error) {
 	if site == "" {
 		site = DefaultSite
 	}
-	base, err := url.Parse(strings.TrimRight(site, "/"))
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		return nil, fmt.Errorf("supermarket: invalid site URL %q", site)
-	}
-	keyPath, err = config.ExpandHome(keyPath)
+	base, err := validateSite(site)
 	if err != nil {
-		return nil, fmt.Errorf("supermarket: load key: %w", err)
+		return nil, err
 	}
-	key, err := sm.LoadKeyFile(keyPath)
+	c := &Client{base: base, identity: identity{
+		user:    username,
+		userSet: "supermarket_client_name",
+		keyPath: keyPath,
+		keySet:  "supermarket_key",
+		site:    base.String(),
+	}}
+	if profile.SupermarketClientName == "" {
+		c.identity.userSet = "client_name"
+	}
+	if profile.SupermarketKey == "" {
+		c.identity.keySet = "client_key"
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if expanded, err := config.ExpandHome(keyPath); err == nil {
+		c.identity.keyPath = expanded
+	}
+	// Read and parse separately so the message can tell a missing or
+	// unreadable file from one that isn't a private key.
+	pemBytes, err := os.ReadFile(c.identity.keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("supermarket: load key: %w", err)
+		return nil, keyLoadError(c.identity, err, nil)
 	}
-	api, err := sm.NewClient(sm.Config{
+	key, err := sm.ParseKey(pemBytes)
+	if err != nil {
+		return nil, keyLoadError(c.identity, nil, err)
+	}
+	c.api, err = sm.NewClient(sm.Config{
 		BaseURL:  base.String(),
 		Username: username,
 		Key:      key,
@@ -96,7 +121,7 @@ func New(profile config.Profile, site string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{base: base, api: api}, nil
+	return c, nil
 }
 
 // Share packages and optionally uploads a cookbook to Supermarket.
@@ -116,7 +141,7 @@ func (c *Client) Share(ctx context.Context, opts ShareOptions) (ShareResult, err
 	if opts.DryRun {
 		return result, nil
 	}
-	status, err := c.upload(ctx, opts.Cookbook, result.Category, archive)
+	status, err := c.upload(ctx, opts.Cookbook, result.Version, result.Category, archive)
 	if err != nil {
 		return ShareResult{}, err
 	}
@@ -144,7 +169,12 @@ func packageCookbook(opts ShareOptions, category string, includeFiles bool) (Sha
 		return ShareResult{}, localcookbook.Archive{}, err
 	}
 	if cb.Name != opts.Cookbook {
-		return ShareResult{}, localcookbook.Archive{}, fmt.Errorf("metadata name %q does not match requested cookbook %q", cb.Name, opts.Cookbook)
+		prog := progname.Get()
+		return ShareResult{}, localcookbook.Archive{}, fmt.Errorf(`the cookbook at %s is named %q in its metadata, not %q.
+
+Supermarket publishes a cookbook under the name in its metadata, so that's the name to share it by:
+  %s supermarket share %s
+If %q is the name you want, change the name in the cookbook's metadata.rb first.`, dir, cb.Name, opts.Cookbook, prog, cb.Name, opts.Cookbook)
 	}
 	if category == "" {
 		category = "Other"
@@ -180,15 +210,15 @@ func (c *Client) lookupCategory(ctx context.Context, cookbook string) (string, e
 		if errors.Is(err, sm.ErrNotFound) {
 			return "", nil
 		}
-		return "", err
+		return "", requestError(c.base.String(), "look up "+cookbook+"'s category", err)
 	}
 	return cb.Category, nil
 }
 
-func (c *Client) upload(ctx context.Context, cookbook, category string, archive localcookbook.Archive) (int, error) {
+func (c *Client) upload(ctx context.Context, cookbook, version, category string, archive localcookbook.Archive) (int, error) {
 	_, resp, err := c.api.Cookbooks.Share(ctx, cookbook, category, bytes.NewReader(archive.Bytes))
 	if err != nil {
-		return 0, fmt.Errorf("supermarket: upload %s: %w", cookbook, err)
+		return 0, c.shareError(cookbook, version, err)
 	}
 	return resp.StatusCode, nil
 }

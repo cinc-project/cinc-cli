@@ -57,7 +57,7 @@ func applyCookbooksLoaded(m model, msg cookbooksLoadedMsg) (tea.Model, tea.Cmd) 
 	if msg.err != nil {
 		m.browse.loading = false
 		m.browse.loadingMore = false
-		m.browse.lastErr = msg.err.Error()
+		m.browse.lastErr = headline(msg.err)
 		return m, nil
 	}
 	m.browse.lastErr = ""
@@ -92,7 +92,7 @@ func applyCookbookDetail(m model, msg cookbookDetailMsg) (tea.Model, tea.Cmd) {
 		}
 		m.browse.previewBusy = false
 		if msg.err != nil {
-			m.browse.previewLastErr = msg.err.Error()
+			m.browse.previewLastErr = headline(msg.err)
 			m.browse.preview = nil
 			return m, nil
 		}
@@ -108,7 +108,7 @@ func applyCookbookDetail(m model, msg cookbookDetailMsg) (tea.Model, tea.Cmd) {
 	}
 	m.detail.loading = false
 	if msg.err != nil {
-		m.detail.err = msg.err.Error()
+		m.detail.err = headline(msg.err)
 		return m, nil
 	}
 	m.detail.err = ""
@@ -193,7 +193,7 @@ func handleInstallConfirm(m model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y", "enter":
 		m.browse.confirmInstall = false
 		if m.install == nil {
-			m.browse.installErr = "Installing isn't available here — launch explore with a configured profile."
+			m.browse.installErr = "Installing isn't available here. Launch explore with a configured profile to install cookbooks."
 			return m, nil
 		}
 		m.browse.installing = true
@@ -211,7 +211,12 @@ func handleInstallConfirm(m model, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func applyInstallDone(m model, msg installDoneMsg) (tea.Model, tea.Cmd) {
 	m.browse.installing = false
 	if msg.err != nil {
-		m.browse.installErr = msg.err.Error()
+		m.browse.installErr = headline(msg.err)
+		if strings.Contains(msg.err.Error(), "\n") {
+			// The footer only has room for the first line; the full
+			// explanation is one command away.
+			m.browse.installErr += fmt.Sprintf(" Run `%s supermarket install %s` for the details.", progname.Get(), msg.name)
+		}
 		m.browse.installMsg = ""
 		return m, nil
 	}
@@ -366,7 +371,7 @@ func openInBrowser(m model, name string) (tea.Model, tea.Cmd) {
 	}
 	url := cookbookURL(m, name)
 	if err := m.openInBrowser(url); err != nil {
-		m.openErr = err.Error()
+		m.openErr = headline(err)
 	} else {
 		m.openErr = ""
 	}

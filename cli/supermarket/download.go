@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	sm "github.com/cinc-project/cinc-supermarket-api"
 )
@@ -44,9 +42,9 @@ func NewAnonymous(site string) (*Client, error) {
 	if site == "" {
 		site = DefaultSite
 	}
-	base, err := url.Parse(strings.TrimRight(site, "/"))
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		return nil, fmt.Errorf("supermarket: invalid site URL %q", site)
+	base, err := validateSite(site)
+	if err != nil {
+		return nil, err
 	}
 	api, err := sm.NewClient(sm.Config{BaseURL: base.String()}, sm.WithUserAgent("cinc-cli"))
 	if err != nil {
@@ -69,7 +67,7 @@ func (c *Client) Reachable(ctx context.Context) error {
 // to opts.File (or the resolved default location).
 func (c *Client) Download(ctx context.Context, opts DownloadOptions) (DownloadResult, error) {
 	if opts.Cookbook == "" {
-		return DownloadResult{}, errors.New("supermarket: cookbook name is required")
+		return DownloadResult{}, missingCookbookNameError("download")
 	}
 	requested := opts.Version
 	if requested == "" {
@@ -87,19 +85,19 @@ func (c *Client) Download(ctx context.Context, opts DownloadOptions) (DownloadRe
 	}
 	if !opts.Force {
 		if _, err := os.Stat(target); err == nil {
-			return DownloadResult{}, fmt.Errorf("%s already exists. Pass --force to overwrite.", target)
+			return DownloadResult{}, fmt.Errorf("%s already exists, so we didn't download over it. Pass --force to replace it, or --file to save the tarball somewhere else.", target)
 		}
 	}
 
 	body, _, err := c.api.Cookbooks.Download(ctx, opts.Cookbook, version)
 	if err != nil {
-		return DownloadResult{}, fmt.Errorf("supermarket: download %s %s: %w", opts.Cookbook, version, err)
+		return DownloadResult{}, c.readError(ctx, opts.Cookbook, version, "download "+opts.Cookbook+" "+version, err)
 	}
 	defer body.Close()
 
 	written, err := writeAtomic(target, body)
 	if err != nil {
-		return DownloadResult{}, err
+		return DownloadResult{}, c.saveError(opts.Cookbook, version, target, err)
 	}
 	return DownloadResult{
 		Cookbook: opts.Cookbook,
@@ -118,7 +116,7 @@ func (c *Client) resolveDownloadVersion(ctx context.Context, cookbook, version s
 	}
 	v, _, err := c.api.Cookbooks.GetVersion(ctx, cookbook, "latest")
 	if err != nil {
-		return "", fmt.Errorf("supermarket: resolve latest %s: %w", cookbook, err)
+		return "", c.readError(ctx, cookbook, version, "look up the latest version of "+cookbook, err)
 	}
 	return v.Version, nil
 }
@@ -141,28 +139,48 @@ func resolveDownloadPath(file, cookbook, version string) (string, error) {
 	return file, nil
 }
 
+// streamCutError marks a download whose body failed partway, as opposed
+// to a local file problem, so saveError can tell the two apart.
+type streamCutError struct{ err error }
+
+func (e *streamCutError) Error() string { return "download cut off: " + e.err.Error() }
+func (e *streamCutError) Unwrap() error { return e.err }
+
+// saveError explains a failed writeAtomic. A cut-off stream is a network
+// problem worth retrying; anything else is about the target path.
+func (c *Client) saveError(cookbook, version, target string, err error) error {
+	if cut, ok := errors.AsType[*streamCutError](err); ok {
+		return explain(err, "the download of %s %s from %s stopped partway through (%v), so we didn't save it. Try again; if it keeps happening, check your network connection.",
+			cookbook, version, c.base.String(), cut.err)
+	}
+	return explain(err, "we couldn't save %s %s to %s: %v. Check that the directory exists and you can write to it, or pass --file to save the tarball somewhere else.",
+		cookbook, version, target, err)
+}
+
 // writeAtomic streams body into target via a sibling ".partial" file,
 // renaming on success. If the stream fails partway, the partial is
-// removed so a retry starts from a clean slate.
+// removed so a retry starts from a clean slate. A failed stream is
+// wrapped in a streamCutError; file errors are returned as the os package
+// reports them.
 func writeAtomic(target string, body io.Reader) (int64, error) {
 	partial := target + ".partial"
 	f, err := os.Create(partial)
 	if err != nil {
-		return 0, fmt.Errorf("supermarket: create %s: %w", partial, err)
+		return 0, err
 	}
 	written, copyErr := io.Copy(f, body)
 	closeErr := f.Close()
 	if copyErr != nil {
 		_ = os.Remove(partial)
-		return 0, fmt.Errorf("supermarket: stream tarball: %w", copyErr)
+		return 0, &streamCutError{err: copyErr}
 	}
 	if closeErr != nil {
 		_ = os.Remove(partial)
-		return 0, fmt.Errorf("supermarket: close %s: %w", partial, closeErr)
+		return 0, closeErr
 	}
 	if err := os.Rename(partial, target); err != nil {
 		_ = os.Remove(partial)
-		return 0, fmt.Errorf("supermarket: rename %s -> %s: %w", partial, target, err)
+		return 0, err
 	}
 	return written, nil
 }

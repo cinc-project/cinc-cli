@@ -195,8 +195,8 @@ func TestNewRejectsInvalidSupermarketSite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid site URL error")
 	}
-	if !strings.Contains(err.Error(), "invalid site URL") {
-		t.Fatalf("error = %q, want invalid site URL", err)
+	if !strings.Contains(err.Error(), `"not a url" isn't a Supermarket address`) {
+		t.Fatalf("error = %q, want it to name the bad site", err)
 	}
 }
 
@@ -423,8 +423,10 @@ func TestShareSurfacesSupermarketValidationError(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = io.WriteString(w, `{"error_code":"VALIDATION_ERROR","error_messages":["Version already exists"]}`)
+		// Supermarket's CookbookUploadsController answers a rejected
+		// tarball with 400 INVALID_DATA and the validation messages.
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error_code":"INVALID_DATA","error_messages":["Multipart POST part 'tarball' must contain a non-empty README."]}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -435,7 +437,7 @@ func TestShareSurfacesSupermarketValidationError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), "Version already exists") {
+	if !strings.Contains(err.Error(), "must contain a non-empty README") {
 		t.Fatalf("error = %q, want validation message", err)
 	}
 }
@@ -507,7 +509,7 @@ func TestShareRejectsSharingByDirectoryNameWhenMetadataDiffers(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a guard error sharing by the directory name")
 	}
-	want := `metadata name "mondoo" does not match requested cookbook "chef-mondoo"`
+	want := `is named "mondoo" in its metadata, not "chef-mondoo"`
 	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("error = %q, want it to contain %q", err, want)
 	}

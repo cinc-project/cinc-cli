@@ -2,10 +2,11 @@ package supermarket
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	sm "github.com/cinc-project/cinc-supermarket-api"
+
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // SearchOptions controls a cookbook search.
@@ -34,7 +35,7 @@ type SearchResult struct {
 // number from /universe.
 func (c *Client) Search(ctx context.Context, opts SearchOptions) (SearchResult, error) {
 	if opts.Query == "" {
-		return SearchResult{}, errors.New("supermarket: search query is required")
+		return SearchResult{}, fmt.Errorf("tell us what to search for, for example: %s supermarket search nginx", progname.Get())
 	}
 	entries, total, err := c.paginateSearch(ctx, opts)
 	if err != nil {
@@ -58,7 +59,7 @@ func (c *Client) paginateSearch(ctx context.Context, opts SearchOptions) ([]List
 		return page, err
 	}, opts.Limit, false)
 	if err != nil {
-		return nil, 0, fmt.Errorf("supermarket: search %q: %w", opts.Query, err)
+		return nil, 0, requestError(c.base.String(), fmt.Sprintf("search for %q", opts.Query), err)
 	}
 	return entries, total, nil
 }

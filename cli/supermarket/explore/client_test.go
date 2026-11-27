@@ -104,3 +104,45 @@ func TestSortOrderParam(t *testing.T) {
 		}
 	}
 }
+
+func TestRealClientNotFoundNamesCookbookAndSite(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error_messages":["Resource does not exist."],"error_code":"NOT_FOUND"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := newRealClient(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Get(context.Background(), "ghost")
+	if err == nil || !strings.Contains(err.Error(), `"ghost" isn't on `+srv.URL) {
+		t.Fatalf("error = %v, want it to name the cookbook and site", err)
+	}
+}
+
+func TestRealClientUnreachableSiteSaysSo(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	site := srv.URL
+	srv.Close()
+
+	c, err := newRealClient(site)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.List(context.Background(), sm.ListOptions{})
+	if err == nil || !strings.Contains(err.Error(), "we couldn't reach the Supermarket at "+site) {
+		t.Fatalf("error = %v, want it to say the site is unreachable", err)
+	}
+	if strings.Contains(err.Error(), "/api/v1") {
+		t.Errorf("error should not leak the API path: %v", err)
+	}
+}
+
+func TestRunRejectsInvalidSiteBeforeAnythingElse(t *testing.T) {
+	err := Run(context.Background(), Options{Site: "supermarket.example.test", Stdout: io.Discard})
+	if err == nil || !strings.Contains(err.Error(), `"supermarket.example.test" isn't a Supermarket address`) {
+		t.Fatalf("error = %v, want the invalid site explanation", err)
+	}
+}

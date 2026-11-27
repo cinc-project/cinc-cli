@@ -242,6 +242,9 @@ func TestDownloadCleansUpPartialOnStreamFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected stream error")
 	}
+	if !strings.Contains(err.Error(), "stopped partway through") || !strings.Contains(err.Error(), "Try again") {
+		t.Errorf("error should say the download was cut off and to retry, got:\n%s", err)
+	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".partial") {

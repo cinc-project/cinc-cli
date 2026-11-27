@@ -43,15 +43,18 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.Stderr == nil {
 		opts.Stderr = os.Stderr
 	}
-	if !stdoutIsTTY(opts.Stdout) {
-		return fmt.Errorf("%s supermarket explore needs an interactive terminal — run it from a normal shell session", progname.Get())
-	}
 	if opts.Site == "" {
 		opts.Site = sm.DefaultBaseURL
 	}
+	// Building the client validates the site, so a bad address is
+	// reported before anything else.
 	client, err := newRealClient(opts.Site)
 	if err != nil {
-		return fmt.Errorf("supermarket explore: %w", err)
+		return err
+	}
+	if !stdoutIsTTY(opts.Stdout) {
+		prog := progname.Get()
+		return fmt.Errorf("%s supermarket explore needs an interactive terminal, so run it from a normal shell session. In a script, use `%s supermarket list` or `%s supermarket search <query>` instead.", prog, prog, prog)
 	}
 	m := initialModel(ctx, client, opts.Site, openBrowser, opts.Install)
 	p := tea.NewProgram(
@@ -87,20 +90,20 @@ func stdoutIsTTY(w io.Writer) bool {
 // xdg-open. Returns a friendly, user-facing error on a bad URL.
 func validateBrowserURL(raw string) error {
 	if raw == "" {
-		return errors.New("we can't open that link — it's empty")
+		return errors.New("we can't open that link because it's empty")
 	}
 	if strings.HasPrefix(raw, "-") {
-		return fmt.Errorf("we won't open %q — it looks like a command-line flag, not a web address", raw)
+		return fmt.Errorf("we won't open %q because it looks like a command-line flag, not a web address", raw)
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("we can't open %q — it isn't a valid URL", raw)
+		return fmt.Errorf("we can't open %q because it isn't a valid URL", raw)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("we'll only open http or https links, not %q", raw)
 	}
 	if u.Host == "" {
-		return fmt.Errorf("we can't open %q — it has no host", raw)
+		return fmt.Errorf("we can't open %q because it has no host", raw)
 	}
 	return nil
 }

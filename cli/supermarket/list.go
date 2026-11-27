@@ -90,7 +90,7 @@ func (c *Client) paginateCookbooks(ctx context.Context, opts ListOptions) ([]Lis
 		return page, err
 	}, opts.Limit, opts.User == "")
 	if err != nil {
-		return nil, 0, fmt.Errorf("supermarket: list cookbooks: %w", err)
+		return nil, 0, requestError(c.base.String(), "list cookbooks", err)
 	}
 	return entries, total, nil
 }
@@ -144,7 +144,7 @@ func (c *Client) attachLatestVersions(ctx context.Context, entries []ListEntry) 
 	}
 	for entry, err := range c.api.Universe.Entries(ctx) {
 		if err != nil {
-			return fmt.Errorf("supermarket: fetch universe: %w", err)
+			return requestError(c.base.String(), "fetch the latest version of each cookbook (the --verbose column)", err)
 		}
 		if known, ok := versions[entry.Cookbook]; ok {
 			versions[entry.Cookbook] = append(known, entry.Version)
