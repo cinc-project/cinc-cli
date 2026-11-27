@@ -33,7 +33,7 @@ request.
 
 5. **Unit test** in `apps/cinc/cmd/<noun>_test.go`, driving the cobra command
    end-to-end against an `httptest` server: fast, deterministic, no external
-   dependencies. See `apps/cinc/cmd/CLAUDE.md` for the environment-isolation
+   dependencies. See `apps/cinc/cmd/AGENTS.md` for the environment-isolation
    rules, which you will get wrong otherwise.
 6. **Integration suite case** in `integration/suite/<family>.go`, running the
    real compiled binary against a live server and asserting on the same
