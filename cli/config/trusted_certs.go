@@ -63,7 +63,7 @@ func ExpandHome(path string) (string, error) {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("config: we couldn't find your home directory to expand %s: %w", path, err)
+		return "", fmt.Errorf("we couldn't work out your home directory, so we can't tell where %s points (%w). Set $HOME, or write the path out in full instead of starting it with ~.", path, err)
 	}
 	if path == "~" {
 		return home, nil

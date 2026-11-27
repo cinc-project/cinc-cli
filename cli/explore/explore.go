@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	cinc "github.com/cinc-project/cinc-api"
@@ -84,7 +85,11 @@ func resolveStartup(opts Options) (startup, error) {
 	case opts.Preselected != "":
 		profile, ok := opts.Profiles[opts.Preselected]
 		if !ok {
-			return startup{}, fmt.Errorf("profile %q is not in the credentials file", opts.Preselected)
+			has := fmt.Sprintf("The profiles it has are %s. Pick one of those", strings.Join(names, ", "))
+			if len(names) == 1 {
+				has = fmt.Sprintf("The only profile it has is %q. Pick that one", names[0])
+			}
+			return startup{}, fmt.Errorf("there's no %q profile in your credentials file. %s with --profile, or leave --profile off to choose from a list.", opts.Preselected, has)
 		}
 		c, err := opts.NewClient(profile)
 		if err != nil {

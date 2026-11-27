@@ -57,6 +57,14 @@ type Profile struct {
 	// malformed (ServerURL/Org are then empty) so validation can report the
 	// precise problem instead of the whole load failing.
 	RawServerURL string
+
+	// name, source and serverURLKey record where a loaded profile came
+	// from (its section name, the file, and which server URL key it used)
+	// so error messages can point at the exact line to fix. They are empty
+	// for a profile built in memory, and never written back to disk.
+	name         string
+	source       string
+	serverURLKey string
 }
 
 // rawProfile is the on-disk shape of one credentials section. Both the
@@ -76,13 +84,17 @@ type rawProfile struct {
 	TrustedCertsDir       string `toml:"trusted_certs_dir,omitempty"`
 }
 
-// serverURL returns the configured server URL, preferring the
-// cinc-prefixed key over the chef-prefixed key when both are set.
-func (rp rawProfile) serverURL() string {
+// serverURL returns the configured server URL and the key it came from,
+// preferring the cinc-prefixed key over the chef-prefixed key when both
+// are set.
+func (rp rawProfile) serverURL() (value, key string) {
 	if rp.CincServerURL != "" {
-		return rp.CincServerURL
+		return rp.CincServerURL, "cinc_server_url"
 	}
-	return rp.ChefServerURL
+	if rp.ChefServerURL != "" {
+		return rp.ChefServerURL, "chef_server_url"
+	}
+	return "", ""
 }
 
 // ErrMissingServerURL is Validate's error for a profile that names no
@@ -100,13 +112,18 @@ func (p Profile) Validate() error {
 	case p.ServerURL == "" && p.RawServerURL != "":
 		// A server URL was written but didn't parse; report exactly why.
 		if _, _, err := cinc.ParseServerURL(p.RawServerURL); err != nil {
-			return fmt.Errorf("config: %w", err)
+			return p.badServerURLError(err)
 		}
-		return ErrMissingServerURL
+		return p.missingServerURLError()
 	case p.ServerURL == "":
-		return ErrMissingServerURL
+		return p.missingServerURLError()
 	case p.Org == "":
-		return fmt.Errorf("config: profile is missing the /organizations/<org> segment in its server URL")
+		raw := p.RawServerURL
+		if raw == "" {
+			raw = p.ServerURL
+		}
+		p.RawServerURL = raw
+		return p.badServerURLError(nil)
 	}
 	return nil
 }
@@ -116,9 +133,9 @@ func (p Profile) Validate() error {
 func (p Profile) ValidateIdentity() error {
 	switch {
 	case p.ClientName == "":
-		return fmt.Errorf("config: profile is missing client_name")
+		return p.missingClientNameError()
 	case p.KeyPath == "":
-		return fmt.Errorf("config: profile is missing client_key")
+		return p.missingClientKeyError()
 	}
 	return nil
 }
@@ -148,7 +165,7 @@ func (p Profile) SupermarketIdentity() (name, keyPath string) {
 func (p Profile) ValidateSupermarketIdentity() error {
 	name, keyPath := p.SupermarketIdentity()
 	if name == "" || keyPath == "" {
-		return fmt.Errorf("config: we need a Supermarket identity to share — set client_name/client_key, or supermarket_client_name/supermarket_key, in your profile")
+		return p.missingSupermarketIdentityError()
 	}
 	return nil
 }
@@ -156,6 +173,9 @@ func (p Profile) ValidateSupermarketIdentity() error {
 // Config is the parsed contents of a cinc credentials file.
 type Config struct {
 	Profiles map[string]Profile
+
+	// path is the file the config was loaded from, for error messages.
+	path string
 }
 
 // ValidationIssue describes one profile-level configuration problem.
@@ -187,7 +207,7 @@ func (c *Config) Validate() []ValidationIssue {
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("config: locate home directory: %w", err)
+		return "", fmt.Errorf("we couldn't work out your home directory, so we don't know where your credentials file is (%w). Set $HOME, or pass --config with the path to your credentials file.", err)
 	}
 	return filepath.Join(home, ".cinc", "credentials"), nil
 }
@@ -197,19 +217,12 @@ func DefaultPath() (string, error) {
 func Load(path string) (*Config, error) {
 	var raw map[string]rawProfile
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
-		// An open or read failure already names the file. A parse or type
-		// error only names a line, and the user may keep several files.
-		if _, ok := errors.AsType[*fs.PathError](err); ok {
-			return nil, fmt.Errorf("config: %w", err)
-		}
-		return nil, fmt.Errorf("config: we couldn't read %s: %w", path, err)
+		return nil, loadError(path, err)
 	}
-	cfg := &Config{Profiles: make(map[string]Profile, len(raw))}
+	cfg := &Config{Profiles: make(map[string]Profile, len(raw)), path: path}
 	for name, rp := range raw {
-		p, err := resolveProfile(rp)
-		if err != nil {
-			return nil, fmt.Errorf("config: profile %q: %w", name, err)
-		}
+		p := resolveProfile(rp)
+		p.name, p.source = name, path
 		cfg.Profiles[name] = p
 	}
 	return cfg, nil
@@ -250,14 +263,14 @@ var managedKeys = []string{
 // WriteProfile regardless.
 func UpdateProfile(path, name string, mutate func(*Profile) error) error {
 	if name == "" {
-		return fmt.Errorf("config: profile name is required")
+		return missingProfileNameError(path)
 	}
 	existing := Profile{}
 	if cfg, err := Load(path); err == nil {
 		if p, ok := cfg.Profiles[name]; ok {
 			existing = p
 		}
-	} else if !os.IsNotExist(errors.Unwrap(err)) && !os.IsNotExist(err) {
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		// A malformed file is reported rather than silently overwritten.
 		return err
 	}
@@ -284,7 +297,7 @@ func WriteProfile(path, name string, p Profile) error {
 // manages is ignored in extra, because p is the source of truth for those.
 func WriteProfileWithExtras(path, name string, p Profile, extra map[string]any) error {
 	if name == "" {
-		return fmt.Errorf("config: profile name is required")
+		return missingProfileNameError(path)
 	}
 	if err := p.ValidateIdentity(); err != nil {
 		return err
@@ -294,10 +307,10 @@ func WriteProfileWithExtras(path, name string, p Profile, extra map[string]any) 
 	raw := map[string]map[string]any{}
 	if _, err := os.Stat(path); err == nil {
 		if _, err := toml.DecodeFile(path, &raw); err != nil {
-			return fmt.Errorf("config: %w", err)
+			return loadError(path, err)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("config: stat %s: %w", path, err)
+		return fmt.Errorf("we couldn't check the credentials file at %s (%w). Make sure you can read the folder it's in, or pass --config to use a different file.", path, err)
 	}
 
 	profile := raw[name]
@@ -351,25 +364,25 @@ func WriteProfileWithExtras(path, name string, p Profile, extra map[string]any) 
 	raw[name] = profile
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("config: create credentials directory: %w", err)
+		return fmt.Errorf("we couldn't create the folder for your credentials file, %s (%w). Make sure you can write there, or pass --config to save the file somewhere else.", filepath.Dir(path), err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("config: write %s: %w", path, err)
+		return fmt.Errorf("we couldn't write the credentials file at %s (%w). Make sure you can write to it, or pass --config to save it somewhere else.", path, err)
 	}
 	// The mode above applies only to a new file. The file names private
 	// keys and data bag secrets, so tighten an existing one too, before
 	// anything is written into it; knife setups often leave it 0644.
 	if err := f.Chmod(0o600); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("config: restrict %s to its owner: %w", path, err)
+		return fmt.Errorf("we couldn't make the credentials file at %s private to you (%w), so we stopped. It names your private keys, so only your account should be able to read it. You need to own the file to change that; check its owner with `ls -l %s`.", path, err, path)
 	}
 	if err := toml.NewEncoder(f).Encode(raw); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("config: encode %s: %w", path, err)
+		return fmt.Errorf("we couldn't save the credentials file at %s (%w).", path, err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("config: close %s: %w", path, err)
+		return fmt.Errorf("we couldn't finish saving the credentials file at %s (%w). Check that the disk isn't full, then try again.", path, err)
 	}
 	return nil
 }
@@ -419,7 +432,7 @@ func profileServerURL(p Profile) string {
 
 // resolveProfile turns a raw on-disk entry into a usable Profile, splitting
 // the configured server URL into a server URL and an organization name.
-func resolveProfile(rp rawProfile) (Profile, error) {
+func resolveProfile(rp rawProfile) Profile {
 	p := Profile{
 		SupermarketSite:       rp.SupermarketSite,
 		ClientName:            rp.ClientName,
@@ -430,24 +443,26 @@ func resolveProfile(rp rawProfile) (Profile, error) {
 		SecretFile:            rp.SecretFile,
 		TrustedCertsDir:       rp.TrustedCertsDir,
 	}
-	if raw := rp.serverURL(); raw != "" {
+	if raw, key := rp.serverURL(); raw != "" {
 		// Preserve the raw URL even when it doesn't parse, so validation can
 		// report the precise problem instead of the whole load failing. A
 		// malformed URL leaves ServerURL/Org empty; Profile.Validate surfaces
 		// the parse error for callers that need a usable connection.
-		p.RawServerURL = raw
+		p.RawServerURL, p.serverURLKey = raw, key
 		if server, org, err := cinc.ParseServerURL(raw); err == nil {
 			p.ServerURL = server
 			p.Org = org
 		}
 	}
-	return p, nil
+	return p
 }
 
+// ValidateSiteURL reports whether raw is a usable Supermarket site URL:
+// one with a scheme and a host.
 func ValidateSiteURL(raw string) error {
 	u, parseErr := url.Parse(raw)
 	if parseErr != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("invalid site URL %q", raw)
+		return fmt.Errorf("%q isn't a full URL. A Supermarket site needs its whole address, starting with https://, like https://supermarket.example.com", raw)
 	}
 	return nil
 }
@@ -456,15 +471,16 @@ func ValidateSiteURL(raw string) error {
 // the profile named by $CINC_PROFILE, then $CHEF_PROFILE, falling back to
 // "default". When both env vars are set CINC_PROFILE wins.
 func (c *Config) Profile(name string) (Profile, error) {
+	envVar := ""
 	if name == "" {
-		name = EnvProfile()
+		name, envVar = envProfile()
 	}
 	if name == "" {
 		name = "default"
 	}
 	p, ok := c.Profiles[name]
 	if !ok {
-		return Profile{}, fmt.Errorf("config: unknown profile %q", name)
+		return Profile{}, c.unknownProfileError(name, envVar)
 	}
 	return p, nil
 }
@@ -472,10 +488,26 @@ func (c *Config) Profile(name string) (Profile, error) {
 // EnvProfile returns the profile name selected by environment variables,
 // preferring CINC_PROFILE over CHEF_PROFILE, or "" when neither is set.
 func EnvProfile() string {
+	name, _ := envProfile()
+	return name
+}
+
+// envProfile is EnvProfile that also names the variable the profile came
+// from, so an error can say which one to change.
+func envProfile() (name, envVar string) {
 	if v := os.Getenv("CINC_PROFILE"); v != "" {
-		return v
+		return v, "CINC_PROFILE"
 	}
-	return os.Getenv("CHEF_PROFILE")
+	if v := os.Getenv("CHEF_PROFILE"); v != "" {
+		return v, "CHEF_PROFILE"
+	}
+	return "", ""
+}
+
+// missingProfileNameError is UpdateProfile's and WriteProfile's error for
+// an empty profile name.
+func missingProfileNameError(path string) error {
+	return fmt.Errorf("we need a profile name to save these settings to %s. Pass --profile with a name, or leave it out to use \"default\".", path)
 }
 
 func validateProfile(name string, p Profile) []ValidationIssue {

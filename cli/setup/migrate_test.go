@@ -346,3 +346,50 @@ func TestMigrateChefRefusesAFileWithNoProfiles(t *testing.T) {
 		t.Errorf("MigrateChef = %d, nil; want an error for a file with no profiles", n)
 	}
 }
+
+// A failed migration should say which file and profile are at fault, what
+// to add, and that nothing was half-written.
+func TestMigrateChefExplainsAnIncompleteProfile(t *testing.T) {
+	chefPath := writeChefCredentials(t, `
+[worker]
+chef_server_url = "https://chef.example.com/organizations/acme"
+client_key      = "/keys/tim.pem"
+`)
+	cincPath := filepath.Join(t.TempDir(), "credentials")
+
+	_, err := MigrateChef(chefPath, cincPath)
+	assertMigrateMessage(t, err,
+		chefPath, "nothing was written to "+cincPath,
+		`"worker" profile`, "client_name", "[worker]")
+}
+
+func TestMigrateChefExplainsAnUnparseableFile(t *testing.T) {
+	chefPath := writeChefCredentials(t, "[default]\nclient_name = tim\n")
+	cincPath := filepath.Join(t.TempDir(), "credentials")
+
+	_, err := MigrateChef(chefPath, cincPath)
+	assertMigrateMessage(t, err, chefPath, "line 2", "nothing was written to "+cincPath)
+}
+
+func TestCheckChefNamesTheBadLine(t *testing.T) {
+	err := CheckChef(writeChefCredentials(t, "[default]\nclient_name = tim\n"))
+	assertMigrateMessage(t, err, "line 2")
+	if strings.Contains(err.Error(), "toml:") {
+		t.Errorf("reason should be prose, not the parser's prefix, got:\n%s", err)
+	}
+}
+
+func assertMigrateMessage(t *testing.T, err error, want ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	for _, w := range want {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error should mention %q, got:\n%s", w, err)
+		}
+	}
+	if strings.HasPrefix(err.Error(), "setup:") || strings.Contains(err.Error(), "—") {
+		t.Errorf("error should read as prose without a package prefix or em dash, got:\n%s", err)
+	}
+}

@@ -145,7 +145,7 @@ cinc_server_url = "%s/organizations/acme"
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected validation error when DNS fails")
 	}
-	if got := out.String(); !strings.Contains(got, "✗ Server is reachable: cannot resolve host") {
+	if got := out.String(); !strings.Contains(got, "✗ Server is reachable: we couldn't find the host") {
 		t.Errorf("stdout = %q, want a DNS resolution failure on the reachable check", got)
 	}
 	if contacted {
@@ -319,8 +319,8 @@ client_name = "tim"
 	got := out.String()
 	for _, want := range []string{
 		"broken profile [INVALID]",
-		"✗ Client key is configured: client_key is required",
-		"✗ An endpoint is configured: configure cinc_server_url, chef_server_url, or supermarket_site",
+		"✗ Client key is configured: client_key isn't set",
+		"✗ An endpoint is configured: this profile doesn't name a server",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout = %q, want %q", got, want)

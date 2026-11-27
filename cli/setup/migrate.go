@@ -15,6 +15,7 @@ import (
 	cinc "github.com/cinc-project/cinc-api"
 
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // chefRawProfile is the on-disk shape of one credentials section in
@@ -49,7 +50,7 @@ func CheckChef(chefPath string) error {
 	}
 	var raw map[string]chefRawProfile
 	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
-		return fmt.Errorf("we couldn't read it (%w)", err)
+		return fmt.Errorf("we couldn't read it: %s", config.TOMLProblem(err))
 	}
 	if len(raw) == 0 {
 		return errNoProfiles
@@ -57,8 +58,8 @@ func CheckChef(chefPath string) error {
 	return nil
 }
 
-// errNoProfiles is CheckChef's and MigrateChef's error for a knife file
-// with no profiles in it.
+// errNoProfiles is CheckChef's reason for a knife file with no profiles in
+// it.
 var errNoProfiles = errors.New("it has no profiles")
 
 // MigrateChef reads chefPath and writes the equivalent credentials
@@ -77,12 +78,17 @@ var errNoProfiles = errors.New("it has no profiles")
 // user with some profiles missing and no prompt to finish. For the same
 // reason a file with no profiles is an error, not a migration of nothing.
 func MigrateChef(chefPath, cincPath string) (int, error) {
+	// fail explains a migration that stopped before writing anything, so
+	// the user knows their cinc credentials weren't half-written.
+	fail := func(reason error) error {
+		return fmt.Errorf("we couldn't migrate your Chef credentials at %s, so nothing was written to %s.\n\n%w", chefPath, cincPath, reason)
+	}
 	var raw map[string]chefRawProfile
 	if _, err := toml.DecodeFile(chefPath, &raw); err != nil {
-		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
+		return 0, fail(fmt.Errorf("The file can't be read: %s. Fix that line and run this command again, or run `%s config create` to set up a new profile instead.", config.TOMLProblem(err), progname.Get()))
 	}
 	if len(raw) == 0 {
-		return 0, fmt.Errorf("setup: %s: %w", chefPath, errNoProfiles)
+		return 0, fail(fmt.Errorf("The file doesn't define any profiles. Run `%s config create` to set one up instead.", progname.Get()))
 	}
 	// Decode again without a schema, so the keys chefRawProfile does not model
 	// (knife's node_name, validation_key, a knife table, ...) are copied across
@@ -90,7 +96,7 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 	// this one cannot fail on syntax.
 	var everything map[string]map[string]any
 	if _, err := toml.DecodeFile(chefPath, &everything); err != nil {
-		return 0, fmt.Errorf("setup: parse %s: %w", chefPath, err)
+		return 0, fail(err)
 	}
 
 	// Resolve every profile first. Sorted so a file with more than one
@@ -117,9 +123,15 @@ func MigrateChef(chefPath, cincPath string) (int, error) {
 		if _, _, err := cinc.ParseServerURL(serverURL); serverURL != "" && err != nil {
 			orgless, serverURL = serverURL, ""
 		}
+		// Check the identity under the profile's own name first, so the
+		// error says which profile to fix rather than "this profile".
+		identity := config.Profile{ClientName: rp.ClientName, KeyPath: rp.ClientKey}.WithName(name)
+		if err := identity.ValidateIdentity(); err != nil {
+			return 0, fail(err)
+		}
 		profile, err := config.NewProfile(serverURL, rp.ClientName, rp.ClientKey, rp.SSLVerifyMode, rp.SupermarketSite)
 		if err != nil {
-			return 0, fmt.Errorf("setup: profile %q: %w", name, err)
+			return 0, fail(fmt.Errorf("The %q profile has a problem: %w", name, err))
 		}
 		profile.RawServerURL = orgless
 		// NewProfile only takes the core connection fields, so carry the

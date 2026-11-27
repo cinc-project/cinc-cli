@@ -584,8 +584,20 @@ func realRunFirstRunConfigure(cmd *cobra.Command, cincPath string) error {
 	return nil
 }
 
+// missingCredentialsError explains why a server command can't run before
+// any credentials exist, for a user who may never have used Cinc. It shows
+// the flag form of `config create` too, since this is what a script or CI
+// job sees when there's no terminal to prompt on.
 func missingCredentialsError(cincPath string) error {
-	return fmt.Errorf("no credentials yet at %s — run `%s config create` to set one up", cincPath, progname.Get())
+	prog := progname.Get()
+	return fmt.Errorf(`you haven't set up your credentials yet, so we don't know which Cinc server to talk to or who you are there.
+
+%s keeps that in a credentials file, %s, which doesn't exist yet. To create it:
+  - Run `+"`%s config create`"+` in a terminal, and it'll ask for each setting.
+  - Or pass everything as flags, which works in scripts too:
+      %s config create --server-url https://cinc.example.com/organizations/<org> --client-name <name> --client-key <path-to-key.pem>
+If you don't know your server URL or client name, or don't have a key, ask whoever runs your Cinc server.`,
+		prog, cincPath, prog, prog)
 }
 
 // unchanged reports whether an edited object would send the same JSON as the

@@ -96,3 +96,21 @@ func TestRunRejectsNonTTY(t *testing.T) {
 		t.Fatalf("err = %v, want an interactive-terminal message", err)
 	}
 }
+
+// An unknown --profile should list the profiles there are to pick from.
+func TestResolveStartupUnknownPreselectedListsProfiles(t *testing.T) {
+	var calls int
+	_, err := resolveStartup(Options{
+		Profiles:    map[string]config.Profile{"prod": {}, "dev": {}},
+		Preselected: "ghost",
+		NewClient:   stubClient(&calls),
+	})
+	if err == nil {
+		t.Fatal("expected an error for an unknown preselected profile")
+	}
+	for _, want := range []string{`"ghost"`, "dev, prod", "--profile"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got:\n%s", want, err)
+		}
+	}
+}
