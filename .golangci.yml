@@ -11,7 +11,7 @@ linters:
       # ST1005 wants error strings without trailing punctuation. That fits
       # errors meant to be wrapped; these are a CLI's top-level messages,
       # written as full sentences on purpose ("can't find your client key at
-      # %s — it's set as client_key in %s. Create the key file, or ..."). The
+      # %s." followed by what a client key is and how to fix it). The
       # style is deliberate and documented at each site, so the check is off
       # rather than the messages flattened.
       # This repeats golangci-lint's own default exclusions; listing only

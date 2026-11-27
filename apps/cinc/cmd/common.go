@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -206,9 +207,12 @@ func missingServerURLError(cmd *cobra.Command) error {
 }
 
 // friendlyKeyFileError rewrites a "client key file missing/unreadable"
-// error into a conversational message that names both the key path
-// and the credentials file where client_key is configured. Other
-// errors pass through unchanged.
+// error into a message someone who has never used Cinc can act on: what
+// a client key is, which profile and file point at it, and the concrete
+// steps that fix it. Other errors pass through unchanged.
+//
+// It runs after Profile.Validate, so the server URL and client name are
+// always set.
 func friendlyKeyFileError(cmd *cobra.Command, p config.Profile, err error) error {
 	// Name the path we actually tried, which for a ~/ key is not the one
 	// written in the file.
@@ -216,13 +220,51 @@ func friendlyKeyFileError(cmd *cobra.Command, p config.Profile, err error) error
 	if expanded, expandErr := config.ExpandHome(keyPath); expandErr == nil {
 		keyPath = expanded
 	}
+	profile := profileNameForCommand(cmd)
+	cfgPath := resolveConfigPath(cmd)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fmt.Errorf("can't find your client key at %s — it's set as client_key in %s. Create the key file, or update client_key to point at the right path.", keyPath, resolveConfigPath(cmd))
+		return missingKeyError(keyPath, profile, cfgPath, p)
 	case errors.Is(err, fs.ErrPermission):
-		return fmt.Errorf("can't read your client key at %s — it's set as client_key in %s. Check the file's permissions; cinc needs to read it to sign requests.", keyPath, resolveConfigPath(cmd))
+		return unreadableKeyError(keyPath, profile, cfgPath)
 	}
 	return err
+}
+
+// missingKeyError explains a client_key that points at a file that isn't
+// there, assuming the reader doesn't know what a client key is.
+func missingKeyError(keyPath, profile, cfgPath string, p config.Profile) error {
+	prog := progname.Get()
+	return fmt.Errorf(`can't find your client key at %s.
+
+%s signs every request it sends to your Cinc server with a private key file, called a client key. That's how the server at %s knows it's really %q talking to it. Your %q profile in %s says the key is at the path above (that's the client_key setting), but there's no file there.
+
+The server only accepts the key that was made for %q, so another .pem file won't work. Here's how to fix it:
+  - If you have the key file somewhere else, change client_key in %s to its full path.
+  - If you don't have the key, ask whoever runs your Cinc server to make a new one for %q and send you the .pem file. Save it somewhere private, then point client_key at it.
+  - If you're setting up %s for the first time, run `+"`%s config create`"+` and it'll walk you through it.`,
+		keyPath,
+		prog, p.ServerURL, p.ClientName, profile, cfgPath,
+		p.ClientName,
+		cfgPath,
+		p.ClientName,
+		prog, prog)
+}
+
+// unreadableKeyError explains a client key file that exists but that the
+// current user isn't allowed to open, with the command that fixes it.
+func unreadableKeyError(keyPath, profile, cfgPath string) error {
+	fix := fmt.Sprintf(`To fix it, make the file readable by you and nobody else:
+  chmod 600 %s
+If another account owns the file, take ownership first with `+"`sudo chown $(whoami) %s`"+`.`, keyPath, keyPath)
+	if runtime.GOOS == "windows" {
+		fix = "To fix it, right-click the file, open Properties > Security, and give your account Read access."
+	}
+	return fmt.Errorf(`can't read your client key at %s.
+
+The file is there, but your account doesn't have permission to open it. %s needs to read this key (the client_key setting in your %q profile in %s) to sign the requests it sends to your Cinc server.
+
+%s`, keyPath, progname.Get(), profile, cfgPath, fix)
 }
 
 // resolveConfigPath returns the credentials file path the command is
