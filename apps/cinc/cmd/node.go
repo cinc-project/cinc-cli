@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bufio"
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/cinc-project/cinc-cli/cli/components"
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/remote"
 )
 
@@ -212,6 +215,11 @@ cinc node ssh 'web01 web02' uptime --ssh-user ubuntu --skip-search`,
 			if err := promptNodeSSH(cmd, &query, &sshCommand, &flags); err != nil {
 				return err
 			}
+			// Checked once, up front: a bad key file or missing known_hosts
+			// would otherwise fail every host the same way, after the search.
+			if err := remote.CheckOptions(remoteOptions(flags)); err != nil {
+				return err
+			}
 			targets, err := nodeSSHTargets(cmd, query, flags)
 			if err != nil {
 				return err
@@ -224,13 +232,7 @@ cinc node ssh 'web01 web02' uptime --ssh-user ubuntu --skip-search`,
 			} else {
 				printRemoteResults(cmd, results)
 			}
-			if failed := countRemoteFailures(results); failed > 0 {
-				if skipped := countRemoteSkipped(results); skipped > 0 {
-					return fmt.Errorf("node ssh failed on %d host(s); %d not attempted after --exit-on-error", failed, skipped)
-				}
-				return fmt.Errorf("node ssh failed on %d host(s)", failed)
-			}
-			return nil
+			return remoteFailureError(results, format == printer.FormatJSON)
 		},
 	}
 	addNodeSSHFlags(cmd, &flags)
@@ -285,7 +287,7 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			if flags.nodeName == "" {
 				flags.nodeName = target
 			}
-			if err := validateBootstrapFlags(flags, cmd.Flags().Changed("environment")); err != nil {
+			if err := validateBootstrapFlags(target, flags, cmd.Flags().Changed("environment")); err != nil {
 				return err
 			}
 			profile, err := resolveProfile(cmd)
@@ -299,29 +301,9 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			if err := profile.Validate(); err != nil {
 				return err
 			}
-			var privateKey string
-			if !flags.dryRun {
-				c, err := resolveClient(cmd)
-				if err != nil {
-					return err
-				}
-				publicKey := ""
-				privateKey, publicKey, err = cinc.GenerateKeyPair()
-				if err != nil {
-					return fmt.Errorf("bootstrap: generate client key: %w", err)
-				}
-				req := &cinc.APIClient{Name: flags.nodeName}
-				req.PublicKey = publicKey
-				if _, _, err := c.Clients.Create(cmd.Context(), req); err != nil {
-					return err
-				}
-			} else {
-				privateKey = "DRY-RUN-CLIENT-KEY"
-			}
-			bootstrapCommand, err := remote.BootstrapCommand(remote.BootstrapOptions{
+			bootstrapOpts := remote.BootstrapOptions{
 				NodeName:         flags.nodeName,
 				ServerURL:        cinc.FormatServerURL(profile.ServerURL, profile.Org),
-				ClientKeyPEM:     privateKey,
 				RunList:          splitCSV(flags.runList),
 				Environment:      flags.environment,
 				PolicyName:       flags.policyName,
@@ -329,7 +311,35 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 				Sudo:             flags.sudo,
 				BootstrapURL:     flags.bootstrapURL,
 				BootstrapVersion: flags.bootstrapVersion,
-			})
+			}
+			// Everything that can be checked is checked before the client
+			// is created: a failure after that leaves a client on the server
+			// that the user has to delete before retrying.
+			if err := remote.ValidateBootstrapOptions(bootstrapOpts); err != nil {
+				return err
+			}
+			if !flags.dryRun {
+				if err := remote.CheckOptions(remoteOptions(flags.nodeSSHFlags)); err != nil {
+					return err
+				}
+				c, err := resolveClient(cmd)
+				if err != nil {
+					return err
+				}
+				privateKey, publicKey, err := cinc.GenerateKeyPair()
+				if err != nil {
+					return fmt.Errorf("couldn't generate a private key for the new client %q on this machine: %w. Nothing was sent to the server, so it's safe to try again.", flags.nodeName, err)
+				}
+				bootstrapOpts.ClientKeyPEM = privateKey
+				req := &cinc.APIClient{Name: flags.nodeName}
+				req.PublicKey = publicKey
+				if _, _, err := c.Clients.Create(cmd.Context(), req); err != nil {
+					return err
+				}
+			} else {
+				bootstrapOpts.ClientKeyPEM = "DRY-RUN-CLIENT-KEY"
+			}
+			bootstrapCommand, err := remote.BootstrapCommand(bootstrapOpts)
 			if err != nil {
 				return err
 			}
@@ -339,7 +349,7 @@ cinc node bootstrap web01.example.com --ssh-user ubuntu --policy-name base --pol
 			}
 			result := nodeRemoteRunner.Run(cmd.Context(), remote.Target{Host: target}, bootstrapCommand, remoteOptions(flags.nodeSSHFlags))
 			if result.ExitCode != 0 {
-				return fmt.Errorf("bootstrap failed on %s: %s; client %q was created and may need cleanup before retry", target, firstNonEmpty(result.Error, result.Stderr), flags.nodeName)
+				return bootstrapFailedError(target, flags.nodeName, result)
 			}
 			if format == printer.FormatJSON {
 				return printer.New(cmd.OutOrStdout(), format).Value(result)
@@ -511,10 +521,7 @@ func promptNodeSSH(cmd *cobra.Command, query, sshCommand *string, flags *nodeSSH
 			return err
 		}
 	}
-	if *query == "" || *sshCommand == "" || flags.user == "" {
-		return fmt.Errorf("node ssh requires search query, command, and --ssh-user")
-	}
-	return nil
+	return nodeSSHMissingError(*query, *sshCommand, flags.user)
 }
 
 func promptNodeBootstrap(cmd *cobra.Command, target *string, flags *nodeBootstrapFlags) error {
@@ -539,10 +546,7 @@ func promptNodeBootstrap(cmd *cobra.Command, target *string, flags *nodeBootstra
 			return err
 		}
 	}
-	if *target == "" || flags.user == "" || flags.nodeName == "" {
-		return fmt.Errorf("node bootstrap requires target, --ssh-user, and node name")
-	}
-	return nil
+	return nodeBootstrapMissingError(*target, flags.user, flags.nodeName)
 }
 
 func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]remote.Target, error) {
@@ -559,10 +563,13 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 		return nil, err
 	}
 	var targets []remote.Target
-	for node, err := range searchNodesPartial(cmd.Context(), c, expandNodeSSHQuery(query), flags.attribute) {
+	expanded := expandNodeSSHQuery(query)
+	matched := 0
+	for node, err := range searchNodesPartial(cmd.Context(), c, expanded, flags.attribute) {
 		if err != nil {
 			return nil, err
 		}
+		matched++
 		host, err := nodeSSHHost(node, flags.attribute)
 		if err != nil {
 			return nil, err
@@ -572,7 +579,7 @@ func nodeSSHTargets(cmd *cobra.Command, query string, flags nodeSSHFlags) ([]rem
 		}
 	}
 	if len(targets) == 0 {
-		return nil, fmt.Errorf("node ssh found no hosts for query %q", query)
+		return nil, noHostsError(query, expanded, flags.attribute, matched)
 	}
 	return targets, nil
 }
@@ -653,10 +660,14 @@ func remoteOptions(flags nodeSSHFlags) remote.SSHOptions {
 
 func printRemoteResults(cmd *cobra.Command, results []remote.CommandResult) {
 	for _, result := range results {
-		writePrefixedLines(cmd.OutOrStdout(), result.Host, result.Stdout)
-		writePrefixedLines(cmd.OutOrStdout(), result.Host, result.Stderr)
+		// The host is whatever the node reported about itself; keep its
+		// terminal escapes off the screen. The command's own output is
+		// passed through as is, as ssh does.
+		host := remote.SanitizeLine(result.Host)
+		writePrefixedLines(cmd.OutOrStdout(), host, result.Stdout)
+		writePrefixedLines(cmd.OutOrStdout(), host, result.Stderr)
 		if result.Error != "" && result.Stdout == "" && result.Stderr == "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", result.Host, result.Error)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", host, remote.SanitizeLine(result.Error))
 		}
 	}
 }
@@ -669,43 +680,224 @@ func writePrefixedLines(out interface{ Write([]byte) (int, error) }, host, text 
 	}
 }
 
-// countRemoteFailures counts hosts the command actually failed on. Hosts that
-// --exit-on-error skipped are not failures: nothing ran on them, so nothing is
-// known about them.
-func countRemoteFailures(results []remote.CommandResult) int {
-	var failed int
-	for _, result := range results {
-		if !result.Skipped && result.ExitCode != 0 {
-			failed++
-		}
-	}
-	return failed
-}
-
-func countRemoteSkipped(results []remote.CommandResult) int {
-	var skipped int
-	for _, result := range results {
-		if result.Skipped {
-			skipped++
-		}
-	}
-	return skipped
-}
-
-func validateBootstrapFlags(flags nodeBootstrapFlags, environmentChanged bool) error {
-	if (flags.policyName == "") != (flags.policyGroup == "") {
-		return fmt.Errorf("--policy-name and --policy-group must be provided together")
+func validateBootstrapFlags(target string, flags nodeBootstrapFlags, environmentChanged bool) error {
+	prog := progname.Get()
+	pinned := "A Policyfile-managed node is pinned by two things: the policy it runs (--policy-name) and the policy group that picks which revision of that policy it gets (--policy-group), such as prod or staging."
+	switch {
+	case flags.policyName != "" && flags.policyGroup == "":
+		return fmt.Errorf("--policy-name %s needs a --policy-group too. %s For example:\n  %s node bootstrap %s --ssh-user %s --policy-name %s --policy-group prod",
+			remote.QuoteArg(flags.policyName), pinned, prog, remote.QuoteArg(target), remote.QuoteArg(flags.user), remote.QuoteArg(flags.policyName))
+	case flags.policyGroup != "" && flags.policyName == "":
+		return fmt.Errorf("--policy-group %s needs a --policy-name too. %s For example:\n  %s node bootstrap %s --ssh-user %s --policy-name base --policy-group %s",
+			remote.QuoteArg(flags.policyGroup), pinned, prog, remote.QuoteArg(target), remote.QuoteArg(flags.user), remote.QuoteArg(flags.policyGroup))
 	}
 	// A node is managed either by a run-list/environment or by a Policyfile,
-	// never both — they are two incompatible methods. (--environment defaults to
-	// "_default", so only reject an explicitly set value.)
+	// never both: they are two incompatible methods. (--environment defaults
+	// to "_default", so only reject an explicitly set value.)
 	if flags.policyName != "" && flags.runList != "" {
-		return fmt.Errorf("--run-list cannot be combined with policy bootstrap flags")
+		return fmt.Errorf("--run-list can't be combined with --policy-name and --policy-group. A node gets its recipes either from a run-list or from a Policyfile, never both, and the policy %q already carries its own run-list. Drop --run-list to bootstrap with the policy, or drop --policy-name and --policy-group to use the run-list.", flags.policyName)
 	}
 	if flags.policyName != "" && environmentChanged {
-		return fmt.Errorf("--environment cannot be combined with policy bootstrap flags (use a run-list/environment or a Policyfile, not both)")
+		return fmt.Errorf("--environment can't be combined with --policy-name and --policy-group. Environments are for nodes managed by a run-list; a Policyfile-managed node is pinned by its policy group (%q here) instead. Drop --environment to bootstrap with the policy, or drop --policy-name and --policy-group to use an environment and a run-list.", flags.policyGroup)
 	}
 	return nil
+}
+
+// nodeSSHMissingError names whatever node ssh still lacks after prompting,
+// with an example built from the parts that were given.
+func nodeSSHMissingError(query, sshCommand, user string) error {
+	var missing []string
+	if query == "" {
+		missing = append(missing, "a search query or host list (which nodes to connect to)")
+	}
+	if sshCommand == "" {
+		missing = append(missing, "a command to run on them")
+	}
+	if user == "" {
+		missing = append(missing, "a user to log in as (--ssh-user)")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	prog := progname.Get()
+	msg := fmt.Sprintf("node ssh needs %s. For example:\n  %s node ssh %s %s --ssh-user %s",
+		remote.JoinWords(missing), prog,
+		remote.QuoteArg(cmp.Or(query, "role:web")), remote.QuoteArg(cmp.Or(sshCommand, "uptime")), remote.QuoteArg(cmp.Or(user, "ubuntu")))
+	if query == "" {
+		msg += fmt.Sprintf(`
+
+The first argument is a Cinc search query, such as role:web, name:web01, or platform:ubuntu. To list hosts yourself instead of searching, add --skip-search:
+  %s node ssh 'web01.example.com web02.example.com' uptime --ssh-user ubuntu --skip-search`, prog)
+	}
+	return errors.New(msg)
+}
+
+// nodeBootstrapMissingError names whatever node bootstrap still lacks after
+// prompting.
+func nodeBootstrapMissingError(target, user, nodeName string) error {
+	var missing []string
+	if target == "" {
+		missing = append(missing, "the host to bootstrap")
+	}
+	if user == "" {
+		missing = append(missing, "a user to log in as (--ssh-user)")
+	}
+	if nodeName == "" && target != "" {
+		missing = append(missing, "a node name (--node-name)")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	msg := fmt.Sprintf("node bootstrap needs %s. For example:\n  %s node bootstrap %s --ssh-user %s",
+		remote.JoinWords(missing), progname.Get(), remote.QuoteArg(cmp.Or(target, "web01.example.com")), remote.QuoteArg(cmp.Or(user, "ubuntu")))
+	if target == "" {
+		msg += "\n\nThe host is the machine to set up, by name or IP address. Bootstrap logs in to it over SSH, installs Cinc Client, and registers it with your Cinc Server as a node, named after the host unless you pass --node-name."
+	}
+	return errors.New(msg)
+}
+
+// noHostsError explains a node ssh search that found nothing to connect to.
+func noHostsError(query, expanded, attribute string, matched int) error {
+	prog := progname.Get()
+	query, expanded = remote.SanitizeLine(query), remote.SanitizeLine(expanded)
+	if matched > 0 {
+		return fmt.Errorf("%d node(s) matched %q, but none has a value in its %s attribute to connect to. Pick another attribute with --attribute, such as --attribute ipaddress, or use --attribute name to connect by node name.", matched, query, attribute)
+	}
+	if query == expanded {
+		return fmt.Errorf(`no nodes matched %q, so there's nothing to connect to.
+
+Queries are field:value pairs, such as role:web, name:web01, or platform:ubuntu, and * matches anything (name:web*). See what a query finds before running anything with:
+  %s search node %s`, query, prog, remote.QuoteArg(query))
+	}
+	return fmt.Errorf(`no nodes matched %q, so there's nothing to connect to.
+
+A word without a colon is a shortcut: it matches nodes whose tags, roles, fqdn, or IP addresses contain it, so we searched for:
+  %s
+To search one field instead, use field:value, such as role:web or name:web01. See what a query finds before running anything with:
+  %s search node role:web
+If %s is a host name rather than a search, add --skip-search to connect to it directly.`, query, expanded, prog, query)
+}
+
+// remoteFailureError summarizes a node ssh run. Each host's one-line error
+// is already printed beside its output; this explains each kind of problem
+// once, naming the hosts it hit, so a fleet failing the same way doesn't
+// repeat the same explanation hundreds of times.
+func remoteFailureError(results []remote.CommandResult, jsonOutput bool) error {
+	var (
+		failed, exited, skipped []string
+		reasons                 []string
+		byReason                = map[string][]remote.CommandResult{}
+	)
+	for _, r := range results {
+		switch {
+		case r.Skipped:
+			skipped = append(skipped, r.Host)
+		case r.ExitCode != 0:
+			failed = append(failed, r.Host)
+			if r.Reason == "" {
+				exited = append(exited, r.Host)
+				continue
+			}
+			if _, seen := byReason[r.Reason]; !seen {
+				reasons = append(reasons, r.Reason)
+			}
+			byReason[r.Reason] = append(byReason[r.Reason], r)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	where := "Each host's output is above, with the host name at the start of every line."
+	if jsonOutput {
+		where = "Each host's result is in the JSON above."
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "node ssh failed on %d of %s: %s. %s", len(failed), hostCount(len(results)), hostList(failed), where)
+	for _, reason := range reasons {
+		hit := byReason[reason]
+		first := hit[0]
+		fmt.Fprintf(&b, "\n\n%s: %s", first.Host, first.Error)
+		if first.Hint != "" {
+			fmt.Fprintf(&b, "\n%s", first.Hint)
+		}
+		if len(hit) > 1 {
+			others := make([]string, 0, len(hit)-1)
+			for _, r := range hit[1:] {
+				others = append(others, r.Host)
+			}
+			fmt.Fprintf(&b, "\nThe same problem hit %s: %s.", hostCount(len(others)), hostList(others))
+		}
+	}
+	if len(exited) > 0 {
+		fmt.Fprintf(&b, "\n\nThe command ran but exited with an error on %s; its output above shows why.", hostList(exited))
+	}
+	if len(skipped) > 0 {
+		fmt.Fprintf(&b, "\n\n%s weren't tried, because --exit-on-error stops starting new hosts after the first failure.", hostCount(len(skipped)))
+	}
+	return errors.New(remote.SanitizeText(b.String()))
+}
+
+func hostCount(n int) string {
+	if n == 1 {
+		return "1 host"
+	}
+	return fmt.Sprintf("%d hosts", n)
+}
+
+// hostList names up to ten hosts, then says how many more there were.
+func hostList(hosts []string) string {
+	const shown = 10
+	hosts = slices.Clone(hosts)
+	for i, h := range hosts {
+		hosts[i] = remote.SanitizeLine(h)
+	}
+	if len(hosts) <= shown {
+		return strings.Join(hosts, ", ")
+	}
+	return fmt.Sprintf("%s, and %d more", strings.Join(hosts[:shown], ", "), len(hosts)-shown)
+}
+
+// bootstrapFailedError explains a failed bootstrap and how to clean up the
+// client it had already registered, which otherwise blocks the retry.
+func bootstrapFailedError(target, nodeName string, result remote.CommandResult) error {
+	prog := progname.Get()
+	target = remote.SanitizeLine(target)
+	name := remote.QuoteArg(nodeName)
+	cleanup := fmt.Sprintf(`Before connecting, bootstrap registered a client named %q on your Cinc Server, holding the key the node uses to talk to the server. A retry fails while that client exists, so delete it first:
+  %s client delete %s`, nodeName, prog, name)
+	if result.Reason != "" {
+		msg := fmt.Sprintf("bootstrap couldn't run on %s: %s", target, result.Error)
+		if result.Hint != "" {
+			msg += "\n\n" + result.Hint
+		}
+		return errors.New(remote.SanitizeText(fmt.Sprintf("%s\n\nNothing was installed on %s. %s", msg, target, cleanup)))
+	}
+	msg := fmt.Sprintf("bootstrap failed on %s: the bootstrap script exited with status %d", target, result.ExitCode)
+	if result.Error != "" && !strings.HasPrefix(result.Error, "Process exited with status") {
+		msg += " (" + result.Error + ")"
+	}
+	if tail := lastLines(remote.SanitizeText(cmp.Or(result.Stderr, result.Stdout)), 15); tail != "" {
+		msg += ". The last lines it printed:\n" + tail
+	}
+	return errors.New(remote.SanitizeText(fmt.Sprintf(`%s
+
+The script installs Cinc Client on the host, then runs it once to register the node. %s
+If that first Cinc Client run got far enough to save the node, `+"`%s node show %s`"+` will find it. Delete it too before retrying:
+  %s node delete %s`, msg, cleanup, prog, name, prog, name)))
+}
+
+// lastLines returns the last n non-empty lines of text, indented.
+func lastLines(text string, n int) string {
+	var lines []string
+	for line := range strings.SplitSeq(strings.TrimRight(text, "\n"), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, "  "+line)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // gatherCSVArgs flattens args that may each be a single entry or a
@@ -739,13 +931,4 @@ func argAt(args []string, i int) string {
 		return ""
 	}
 	return args[i]
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return "unknown error"
 }

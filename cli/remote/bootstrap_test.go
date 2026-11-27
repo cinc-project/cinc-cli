@@ -199,3 +199,44 @@ func TestFirstBootJSONKeepsEnvironmentForRunListBootstrap(t *testing.T) {
 		t.Fatalf("run-list bootstrap should keep chef_environment: %v", doc)
 	}
 }
+
+// TestValidateBootstrapOptionsChecksBeforeAnyKeyExists lets the command
+// reject a bad node name before it registers a client on the server: a
+// client created for a name the script then refuses is left behind.
+func TestValidateBootstrapOptionsChecksBeforeAnyKeyExists(t *testing.T) {
+	ok := BootstrapOptions{NodeName: "web01", ServerURL: "https://cinc.example.com/organizations/acme"}
+	if err := ValidateBootstrapOptions(ok); err != nil {
+		t.Fatalf("ValidateBootstrapOptions rejected a valid node with no key yet: %v", err)
+	}
+
+	bad := ok
+	bad.NodeName = "web01\nrm -rf /"
+	err := ValidateBootstrapOptions(bad)
+	if err == nil {
+		t.Fatal("ValidateBootstrapOptions accepted a node name with a newline")
+	}
+	for _, want := range []string{"node name", "line break", "--node-name"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got:\n%s", want, err)
+		}
+	}
+
+	if err := ValidateBootstrapOptions(BootstrapOptions{ServerURL: ok.ServerURL}); err == nil || !strings.Contains(err.Error(), "--node-name") {
+		t.Errorf("a missing node name should point at --node-name, got: %v", err)
+	}
+}
+
+func TestQuoteArgOnlyQuotesWhenNeeded(t *testing.T) {
+	for in, want := range map[string]string{
+		"web01.example.com": "web01.example.com",
+		"role:web":          "role:web",
+		"recipe[base]":      "'recipe[base]'",
+		"uptime -p":         "'uptime -p'",
+		"it's":              `'it'"'"'s'`,
+		"":                  "''",
+	} {
+		if got := QuoteArg(in); got != want {
+			t.Errorf("QuoteArg(%q) = %s, want %s", in, got, want)
+		}
+	}
+}

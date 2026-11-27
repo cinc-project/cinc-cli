@@ -59,7 +59,7 @@ func TestAuthMethodsClosesAgentConnection(t *testing.T) {
 	sock := filepath.Join(shortTempDir(t), "a.sock")
 	closed := serveAgentSocket(t, sock)
 
-	_, cleanup, err := authMethods(SSHOptions{User: "tim", UseAgent: true, AgentSocket: sock})
+	_, _, cleanup, err := authMethods(SSHOptions{User: "tim", UseAgent: true, AgentSocket: sock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestAuthMethodsUsesOnlyOneAgent(t *testing.T) {
 	serveAgentSocket(t, sshAuth)
 	t.Setenv("SSH_AUTH_SOCK", sshAuth)
 
-	methods, cleanup, err := authMethods(SSHOptions{User: "tim", UseAgent: true})
+	methods, _, cleanup, err := authMethods(SSHOptions{User: "tim", UseAgent: true})
 	if err != nil {
 		t.Fatal(err)
 	}

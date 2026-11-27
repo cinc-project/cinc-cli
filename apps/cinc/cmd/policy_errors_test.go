@@ -5,23 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	cinc "github.com/cinc-project/cinc-api"
 )
-
-func wantErrMentions(t *testing.T, err error, wants ...string) {
-	t.Helper()
-	if err == nil {
-		t.Fatalf("got no error, want one mentioning %q", wants)
-	}
-	for _, want := range wants {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should mention %q:\n%s", want, err)
-		}
-	}
-}
 
 // A missing lock is the first thing a new user hits after `policy create`:
 // the error says what a lock is and which command writes one.
