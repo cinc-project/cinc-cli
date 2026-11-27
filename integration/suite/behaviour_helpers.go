@@ -302,14 +302,15 @@ func (p validateProfile) wantCheck(t *testing.T, name string, passed bool) valid
 	return c
 }
 
-// behStderrLine returns r's stderr as one trimmed line, failing the case if the
-// CLI printed more than one: an error is one "Error: ..." sentence, not a
-// stack of wrapped fragments or a usage dump.
+// behStderrLine returns r's trimmed stderr, failing the case unless it is a
+// single error: one "Error: ..." message and no usage dump. The message may
+// run over several lines when it explains a concept and lists the steps
+// that fix it.
 func behStderrLine(t *testing.T, r result) string {
 	t.Helper()
 	line := strings.TrimSpace(r.stderr)
-	if strings.Count(line, "\n") > 0 {
-		t.Errorf("want a single error line on stderr: %s", r)
+	if strings.Count(line, "Error: ") != 1 || strings.Contains(line, "Usage:") {
+		t.Errorf("want a single error message on stderr: %s", r)
 	}
 	if !strings.HasPrefix(line, "Error: ") {
 		t.Errorf("want stderr to start with \"Error: \": %s", r)

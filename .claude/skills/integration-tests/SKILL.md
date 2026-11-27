@@ -44,8 +44,9 @@ Assertion traps that have caused flaky failures:
 - Match an HTTP status with `hasStatus(s, 403)`, never
   `strings.Contains(s, "403")`: every `uniqueName` ends in random hex, so a
   bare substring also matches inside object names.
-- An error is one line: `behStderrLine` fails the case on a stack of wrapped
-  fragments or a usage dump.
+- An error is one message: `behStderrLine` fails the case on a second
+  `Error:` or a usage dump. The message itself may span several lines when
+  it explains a concept and lists the steps that fix it.
 - A binary written during the run (`behRenamedCLI`) can be briefly
   unexecutable on Linux while a parallel case forks; `waitUntilExecutable`
   waits that out.

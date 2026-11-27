@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	cliclient "github.com/cinc-project/cinc-cli/cli/client"
 	"github.com/cinc-project/cinc-cli/cli/config"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 	"github.com/cinc-project/cinc-cli/cli/supermarket"
 )
 
@@ -93,7 +95,7 @@ var profileChecks = []profileCheck{
 		name: "Client name is configured",
 		run: func(_ context.Context, p config.Profile) checkOutcome {
 			if p.ClientName == "" {
-				return fail("client_name is required")
+				return fail("client_name isn't set. Add the name this profile signs requests as, usually your username on the Cinc server")
 			}
 			return pass()
 		},
@@ -102,7 +104,7 @@ var profileChecks = []profileCheck{
 		name: "Client key is configured",
 		run: func(_ context.Context, p config.Profile) checkOutcome {
 			if p.KeyPath == "" {
-				return fail("client_key is required")
+				return fail("client_key isn't set. Add the path to the private key (.pem) file for this profile's client_name")
 			}
 			return pass()
 		},
@@ -111,7 +113,7 @@ var profileChecks = []profileCheck{
 		name: "An endpoint is configured",
 		run: func(_ context.Context, p config.Profile) checkOutcome {
 			if p.RawServerURL == "" && p.SupermarketSite == "" {
-				return fail("configure cinc_server_url, chef_server_url, or supermarket_site")
+				return fail("this profile doesn't name a server. Set cinc_server_url to your Cinc server, like https://cinc.example.com/organizations/<org>, or supermarket_site for a Supermarket-only profile")
 			}
 			return pass()
 		},
@@ -123,7 +125,7 @@ var profileChecks = []profileCheck{
 		name:    "Server URL is valid",
 		applies: func(p config.Profile) bool { return p.RawServerURL != "" },
 		run: func(_ context.Context, p config.Profile) checkOutcome {
-			if _, _, err := cinc.ParseServerURL(p.RawServerURL); err != nil {
+			if err := config.ServerURLProblem(p.RawServerURL); err != nil {
 				return fail(err.Error())
 			}
 			return pass()
@@ -153,7 +155,7 @@ var profileChecks = []profileCheck{
 			case ":verify_none":
 				return warn("Insecure :verify_none mode configured")
 			default:
-				return fail("ssl_verify_mode must be :verify_peer or :verify_none")
+				return fail(fmt.Sprintf("ssl_verify_mode is %q, but it has to be :verify_peer (check the server's certificate) or :verify_none (don't check it, which is insecure). Note the leading colon", p.SSLVerifyMode))
 			}
 		},
 	},
@@ -190,7 +192,7 @@ var profileChecks = []profileCheck{
 				return fail(err.Error())
 			}
 			if _, err := cinc.LoadKeyFile(keyPath); err != nil {
-				return fail(err.Error())
+				return fail(keyFileProblem(keyPath, err))
 			}
 			return pass()
 		},
@@ -204,7 +206,7 @@ var profileChecks = []profileCheck{
 			// distinctly from a connection failure, then try to connect.
 			if host, err := parseServerHost(p.ServerURL); err == nil {
 				if _, err := resolveHost(ctx, host); err != nil {
-					return fail(fmt.Sprintf("cannot resolve host %q: %v", host, err))
+					return fail(fmt.Sprintf("we couldn't find the host %q (%v). Check the hostname in this profile's server URL, and that you're on a network that can reach it", host, err))
 				}
 			}
 			c, err := cliclient.New(p)
@@ -256,7 +258,7 @@ func runConfigChecks(ctx context.Context, path string, cfg *config.Config) confi
 			{
 				Name:   "At least one profile is defined",
 				Passed: hasProfiles,
-				Detail: cond(hasProfiles, "", "the credentials file defines no profiles"),
+				Detail: cond(hasProfiles, "", fmt.Sprintf("the credentials file doesn't have any profiles yet. Run `%s config create` to add one", progname.Get())),
 			},
 		},
 	}
@@ -305,6 +307,17 @@ func runProfileCheck(ctx context.Context, def profileCheck, p config.Profile) ch
 	ctx, cancel := context.WithTimeout(ctx, networkCheckTimeout)
 	defer cancel()
 	return def.run(ctx, p)
+}
+
+// keyFileProblem says in one line why the client key at path can't be used.
+func keyFileProblem(path string, err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf("there's no file at %s. Point client_key at this client's private key (.pem) file", path)
+	case errors.Is(err, fs.ErrPermission):
+		return fmt.Sprintf("your account doesn't have permission to read %s. Run `chmod 600 %s` to make it readable by you and nobody else", path, path)
+	}
+	return fmt.Sprintf("we can't use %s as a client key (%v). It should be the private key (.pem) file your Cinc server made for this client", path, err)
 }
 
 // parseServerHost validates that serverURL is a well-formed http(s) URL and
@@ -369,7 +382,10 @@ func writeCheckLine(w io.Writer, color bool, indent string, c checkResult) {
 	// reason, a warning, or an informational note on a pass. A warning's detail
 	// is drawn orange to match its mark.
 	if c.Detail != "" {
-		detail := c.Detail
+		// A detail that runs over several lines (a credentials file that
+		// doesn't parse, say) is indented under its check, so the report
+		// keeps its shape.
+		detail := strings.ReplaceAll(c.Detail, "\n", "\n"+indent+"    ")
 		if c.Warn {
 			detail = colorize(color, ansiOrange, detail)
 		}

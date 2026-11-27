@@ -465,6 +465,12 @@ func TestWriteProfileRoundTripsAllKeys(t *testing.T) {
 		t.Fatalf("Load written credentials: %v", err)
 	}
 	got := cfg.Profiles["worker"]
+	// A loaded profile also remembers where it came from, for error
+	// messages; that isn't part of what was written.
+	if got.name != "worker" || got.source != path || got.serverURLKey != "cinc_server_url" {
+		t.Errorf("loaded profile origin = (%q, %q, %q), want (worker, %s, cinc_server_url)", got.name, got.source, got.serverURLKey, path)
+	}
+	got.name, got.source, got.serverURLKey = "", "", ""
 	if got != want {
 		t.Fatalf("round-tripped profile = %+v, want %+v", got, want)
 	}
@@ -629,7 +635,7 @@ func TestWriteProfileRequiresName(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected name-required error")
 	}
-	if !strings.Contains(err.Error(), "profile name is required") {
+	if !strings.Contains(err.Error(), "we need a profile name") {
 		t.Fatalf("error = %q, want name-required message", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {

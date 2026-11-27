@@ -92,10 +92,10 @@ cinc config create`,
 			}
 
 			if clientName == "" {
-				return fmt.Errorf("cinc: --client-name is required")
+				return missingClientNameFlagError()
 			}
 			if clientKey == "" {
-				return fmt.Errorf("cinc: --client-key is required")
+				return missingClientKeyFlagError(clientName)
 			}
 			cfgPath, err = config.ExpandHome(cfgPath)
 			if err != nil {
@@ -574,13 +574,27 @@ func defaultClientKey(clientName string) string {
 	return filepath.Join(home, ".cinc", clientName+".pem")
 }
 
+// missingClientNameFlagError explains a config create run that ended up
+// with no client name, from the flags or a prompt answered with nothing.
+func missingClientNameFlagError() error {
+	prog := progname.Get()
+	return fmt.Errorf("we need a client name to set up this profile. It's the name your Cinc server knows you by, usually your username, and %s signs every request as that client. Pass it with --client-name, for example:\n  %s config create --client-name tim --client-key ~/.cinc/tim.pem --server-url https://cinc.example.com/organizations/<org>", prog, prog)
+}
+
+// missingClientKeyFlagError explains a config create run with a client name
+// but no key to sign its requests with.
+func missingClientKeyFlagError(clientName string) error {
+	return fmt.Errorf("we need the path to the client key for %q to set up this profile. That's the private key file (a .pem file) your Cinc server made for %q, and %s signs every request with it. Pass it with --client-key, for example --client-key ~/.cinc/%s.pem. If you don't have the key, ask whoever runs your Cinc server to create one for %q.",
+		clientName, clientName, progname.Get(), clientName, clientName)
+}
+
 // clearCredentials empties the credentials file at path so a replace
 // starts over. It truncates rather than deletes: truncating follows a
 // symlink, so a file kept in a dotfiles checkout stays linked, and the
 // file keeps its permissions. A file that does not exist yet is fine.
 func clearCredentials(path string) error {
 	if err := os.Truncate(path, 0); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("cinc: clear old credentials: %w", err)
+		return fmt.Errorf("we couldn't clear out the old credentials file at %s to replace it (%w). Make sure you can write to it, or pick \"Add a new profile\" instead of replacing the file.", path, err)
 	}
 	return nil
 }
