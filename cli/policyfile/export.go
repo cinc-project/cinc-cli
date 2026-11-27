@@ -49,10 +49,11 @@ func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lo
 		// the export directory.
 		dst, err := safeJoin(destDir, "cookbooks", name+"-"+ddi)
 		if err != nil {
-			return ExportResult{}, fmt.Errorf("policyfile: cookbook %q: %w", name, err)
+			return ExportResult{}, fmt.Errorf("the lock names cookbook %q with identifier %q, which we won't use as a directory name: %w. "+
+				"The lock is damaged or hand-edited; regenerate it from its Policyfile", name, ddi, err)
 		}
 		if err := copyCookbook(src, dst, cl.Version); err != nil {
-			return ExportResult{}, fmt.Errorf("policyfile: copy cookbook %q: %w", name, err)
+			return ExportResult{}, fmt.Errorf("we couldn't copy cookbook %q into the bundle at %s: %w", name, dst, err)
 		}
 	}
 
@@ -62,7 +63,8 @@ func Export(ctx context.Context, fetcher *Fetcher, lock *cinc.PolicyRevision, lo
 	}
 	policyFile, err := safeJoin(destDir, "policies", lock.Name+"-"+revision+".json")
 	if err != nil {
-		return ExportResult{}, fmt.Errorf("policyfile: %w", err)
+		return ExportResult{}, fmt.Errorf("the lock's policy name %q and revision %q can't be used as a file name: %w. "+
+			"Give the policy a plain name in its Policyfile (letters, numbers, dashes and underscores) and regenerate the lock", lock.Name, revision, err)
 	}
 	if err := os.WriteFile(policyFile, lockJSON, tarball.FileMode); err != nil {
 		return ExportResult{}, err

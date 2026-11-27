@@ -26,7 +26,7 @@ var versionRE = regexp.MustCompile(`^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-
 func ParseVersion(s string) (Version, error) {
 	m := versionRE.FindStringSubmatch(strings.TrimSpace(s))
 	if m == nil {
-		return Version{}, fmt.Errorf("invalid version %q", s)
+		return Version{}, fmt.Errorf("%q isn't a valid version: a version is up to three numbers separated by dots, like \"1.2.3\"", s)
 	}
 	v := Version{raw: s, PreRelease: m[4]}
 	v.Major, _ = strconv.Atoi(m[1])
@@ -140,7 +140,7 @@ var constraintRE = regexp.MustCompile(`^\s*(>=|<=|~>|~|!=|=|>|<)?\s*(\d+)(?:\.(\
 func ParseConstraint(s string) (Constraint, error) {
 	m := constraintRE.FindStringSubmatch(s)
 	if m == nil {
-		return Constraint{}, fmt.Errorf("invalid version constraint %q", s)
+		return Constraint{}, fmt.Errorf("%q isn't a valid version constraint: write an operator and a version, like \"~> 1.2\", \">= 2.0\" or \"= 1.4.3\"", s)
 	}
 	op := m[1]
 	if op == "" {

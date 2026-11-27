@@ -81,7 +81,7 @@ cinc policy install path/to/Policyfile.rb --format json`,
 				lockPath = filepath.Join(filepath.Dir(pfPath), "Policyfile.lock.json")
 			}
 			if err := os.WriteFile(lockPath, result.LockJSON, 0o644); err != nil {
-				return fmt.Errorf("cinc: write %s: %w", lockPath, err)
+				return fmt.Errorf("we resolved %s, but couldn't write the lock to %s (%w). Check that the directory exists and you can write to it, or pass --output to write the lock somewhere else", pfPath, lockPath, err)
 			}
 
 			if format == printer.FormatJSON {

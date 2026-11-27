@@ -373,8 +373,8 @@ func TestPolicyExportCommandEndToEnd(t *testing.T) {
 
 // Export needs the server only for chef_server cookbook sources. A lock
 // without one exports offline whatever state the config is in; a lock with
-// one surfaces the config problem instead of a vague "requires a configured
-// server connection" from deep inside the fetch.
+// one surfaces the config problem instead of a vague "we don't have a server
+// connection" from deep inside the fetch.
 func TestPolicyExportResolvesTheServerOnlyWhenTheLockNeedsIt(t *testing.T) {
 	broken := filepath.Join(t.TempDir(), "credentials")
 	if err := os.WriteFile(broken, []byte("[default\nnot toml"), 0o600); err != nil {
@@ -418,7 +418,7 @@ func TestPolicyExportResolvesTheServerOnlyWhenTheLockNeedsIt(t *testing.T) {
 		if err == nil {
 			t.Fatal("want an error: the lock needs the server and the config is unreadable")
 		}
-		if strings.Contains(err.Error(), "requires a configured server connection") || !strings.Contains(err.Error(), broken) {
+		if strings.Contains(err.Error(), "we don't have a server connection") || !strings.Contains(err.Error(), broken) {
 			t.Errorf("error = %q, want the config problem naming %s", err, broken)
 		}
 	})

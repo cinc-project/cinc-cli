@@ -37,10 +37,28 @@ func Locate(name, cookbookPath string) (string, error) {
 			return dir, nil
 		}
 	}
-	if cookbookPath == "" {
-		return "", fmt.Errorf("cookbook %q not found in current directory or ./<name>", name)
+	return "", notFoundError(name, cookbookPath)
+}
+
+// notFoundError explains where Locate looked for a cookbook and how to point
+// it at the right place.
+func notFoundError(name, cookbookPath string) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "we couldn't find cookbook %q. We looked for a directory holding a metadata.rb or metadata.json (the file that marks a directory as a cookbook) at:\n", name)
+	for _, base := range candidateBases(cookbookPath) {
+		abs := absDir(base)
+		fmt.Fprintf(&b, "  - %s\n", filepath.Join(abs, name))
+		if cookbookPath == "" {
+			fmt.Fprintf(&b, "  - %s itself (the current directory), in case you're inside the cookbook\n", abs)
+		}
 	}
-	return "", fmt.Errorf("cookbook %q not found in cookbook path %q", name, cookbookPath)
+	if cookbookPath != "" {
+		fmt.Fprintf(&b, "(those come from --cookbook-path %s)\n", cookbookPath)
+	}
+	fmt.Fprintf(&b, "\nCheck the name matches the cookbook's directory or the name in its metadata.rb. "+
+		"If your cookbooks live somewhere else, pass the directory that holds them with --cookbook-path, "+
+		"for example --cookbook-path ~/chef-repo/cookbooks (separate several directories with %q).", string(filepath.ListSeparator))
+	return errors.New(b.String())
 }
 
 // Load reads the cookbook in dir the way an upload sees it: the files Chef's
@@ -89,7 +107,7 @@ func BuildArchive(cb *cinc.LocalCookbook, overlay map[string][]byte) (Archive, e
 	for i, e := range entries {
 		files[i] = cb.Name + "/" + e.path
 		if err := writeTarEntry(tw, files[i], e.disk, e.data); err != nil {
-			return Archive{}, fmt.Errorf("write tar entry %s: %w", e.path, err)
+			return Archive{}, fmt.Errorf("we couldn't add %s to the %s cookbook archive: %w", e.path, cb.Name, err)
 		}
 	}
 	if err := tw.Close(); err != nil {

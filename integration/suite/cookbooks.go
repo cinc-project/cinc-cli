@@ -607,8 +607,8 @@ func testCookbookUploadMissingLocal(t *testing.T, _ Target, c *cli) {
 	ghost := uniqueName(t, "ghost")
 	path := t.TempDir()
 	r := c.fail("cookbook", "upload", ghost, "--cookbook-path", path)
-	if !strings.Contains(r.stderr, ghost) || !strings.Contains(r.stderr, "not found") {
-		t.Errorf("uploading a cookbook that is not on disk should name it and say not found: %s", r)
+	if !strings.Contains(r.stderr, ghost) || !strings.Contains(r.stderr, "couldn't find cookbook") {
+		t.Errorf("uploading a cookbook that is not on disk should name it and say it couldn't find it: %s", r)
 	}
 }
 

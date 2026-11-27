@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cinc-project/cinc-cli/cli/printer"
+	"github.com/cinc-project/cinc-cli/cli/progname"
 )
 
 // policyfileTemplate is the scaffold written by `cinc policy create`. The
@@ -56,12 +57,12 @@ cinc policy create base`,
 			}
 			if !force {
 				if _, err := os.Stat(path); err == nil {
-					return fmt.Errorf("%s already exists (use --force to overwrite)", path)
+					return fmt.Errorf("%s already exists, and we won't overwrite it unless you ask. Pass --force to replace it, or --file to write the new Policyfile somewhere else", path)
 				}
 			}
 			body := fmt.Sprintf(policyfileTemplate, name)
 			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-				return fmt.Errorf("cinc: write %s: %w", path, err)
+				return fmt.Errorf("we couldn't write the Policyfile to %s (%w). Check that the directory exists and you can write to it, or pass --file to write it somewhere else", path, err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Created Policyfile %s\n", path)
 			return nil
@@ -264,10 +265,14 @@ cinc policy diff appserver --revisions 1a2b3c4d 5e6f7a8b`,
 			name := args[0]
 			refs := args[1:]
 			if len(refs) != 2 {
+				prog := progname.Get()
 				if revisionsForm {
-					return fmt.Errorf("--revisions takes exactly two revision ids: cinc policy diff %s --revisions A B", name)
+					return fmt.Errorf("--revisions takes exactly two revision ids to compare, like `%s policy diff %s --revisions A B`, and you gave %d. "+
+						"Run `%s policy show %s` to see the policy's revision ids", prog, name, len(refs), prog, name)
 				}
-				return fmt.Errorf("give two policy group names: cinc policy diff %s GROUP1 GROUP2 (or use --revisions A B)", name)
+				return fmt.Errorf("give two policy group names to compare, like `%s policy diff %s staging production`, and you gave %d. "+
+					"Each group's active revision of %s is compared. To compare two revision ids instead, pass --revisions: `%s policy diff %s --revisions A B`",
+					prog, name, len(refs), name, prog, name)
 			}
 			fromRef, toRef := refs[0], refs[1]
 
@@ -320,7 +325,10 @@ func activeRevision(ctx context.Context, c *cinc.Client, group, policy string) (
 	if _, _, err := c.PolicyGroups.Get(ctx, group); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("policy %q is not assigned to group %q", policy, group)
+	prog := progname.Get()
+	return nil, fmt.Errorf("policy %q is not assigned to group %q, so there's no revision of it there to compare. "+
+		"Run `%s policy-group show %s` to see which policies the group has, or `%s policy push %s` to deploy %s to it",
+		policy, group, prog, group, prog, group, policy)
 }
 
 // renderPolicyDiff prints the human form of a diff.
